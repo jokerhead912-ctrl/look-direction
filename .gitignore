@@ -1,0 +1,10 @@
+# 本地備份檔（每次改版前 cp 出嚟嘅快照）— 只留喺本機，唔上 GitHub
+*.bak-*
+
+# macOS / 編輯器垃圾
+.DS_Store
+Thumbs.db
+*.swp
+
+# 測試產物（只喺 /tmp 生成，萬一唔小心放咗入嚟都唔好上）
+_v3_smoke.html

@@ -1,0 +1,2613 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-page-node-id="t12sbAUGaGFwJWHKTdArLW">
+<head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
+<meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
+<meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
+<title>Look Direction — 參考色方向工具 v4</title>
+<style>
+:root{
+  --bg:#14161a; --panel:#1b1e24; --panel2:#22262e; --panel3:#282d36;
+  --line:#2c313a; --line2:#3a4150;
+  --tx:#e6e8ee; --tx2:#98a0b0; --tx3:#868f9f;
+  --acc:#4fc3a1; --acc-soft:rgba(79,195,161,.14);
+  --warn:#e8a33d; --bad:#e05c5c;
+  --r:8px; --rl:12px;
+  --tw:150px; --th:84px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--tx);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang HK","PingFang SC","Microsoft JhengHei",Inter,sans-serif;
+  font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased;
+  overflow:hidden;
+}
+button,input,textarea{font-family:inherit;font-size:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+/* .empty / .gridbox / #cv 有自己嘅 display，會蓋過 UA 嘅 [hidden]，必須強制 */
+[hidden]{display:none !important}
+
+/* checkbox */
+.checks{display:flex;flex-direction:column;gap:6px}
+.chk{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--tx2);cursor:pointer}
+.chk input{accent-color:var(--acc);cursor:pointer;width:14px;height:14px;flex:0 0 auto}
+
+.app{display:flex;flex-direction:column;height:100vh;min-height:620px}
+
+/* ---------- header ---------- */
+header{
+  display:flex;align-items:center;gap:7px;padding:8px 14px;
+  border-bottom:1px solid var(--line);background:var(--panel);flex:0 0 auto;
+}
+.logo{font-size:13.5px;font-weight:500;letter-spacing:.2px;margin-right:6px;white-space:nowrap}
+.logo span{color:var(--acc)}
+.kbd{
+  font-size:10.5px;color:var(--tx3);border:1px solid var(--line2);border-radius:5px;
+  padding:0 5px;font-family:ui-monospace,Menlo,monospace;
+}
+.hspacer{flex:1}
+.hstatus{font-size:11px;color:var(--tx3);white-space:nowrap}
+
+/* ---------- main ---------- */
+/* 左＝方向/note　中＝主畫面　右＝調控板（用家習慣右手拉桿） */
+.main{flex:1 1 auto;display:grid;grid-template-columns:322px minmax(0,1fr) 292px;min-height:0}
+@media(max-width:1480px){.main{grid-template-columns:296px minmax(0,1fr) 274px}}
+@media(max-width:1240px){.main{grid-template-columns:minmax(0,1fr) 274px}.col-l{display:none}}
+@media(max-width:900px){.main{grid-template-columns:1fr}.col-r{display:none}}
+.col{min-height:0;overflow-y:auto;background:var(--panel);scrollbar-width:thin}
+.col::-webkit-scrollbar{width:8px}
+.col::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
+.col-l{border-right:1px solid var(--line);padding:11px 12px 24px}
+.col-c{background:var(--bg);display:flex;flex-direction:column;min-height:0;padding:10px 12px}
+.col-r{border-left:1px solid var(--line);padding:11px 12px 24px}
+
+.sec{margin-bottom:14px}
+.sec>h2{
+  font-size:10.5px;font-weight:500;color:var(--tx3);
+  letter-spacing:.5px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center;
+}
+
+/* vendor card */
+.vcard{border:1.5px dashed var(--line2);border-radius:var(--r);padding:8px;text-align:center;cursor:pointer;transition:.15s}
+.vcard:hover{border-color:var(--acc);background:var(--acc-soft)}
+.vcard.filled{border-style:solid;border-color:var(--line);padding:5px;background:var(--panel2)}
+.vcard canvas,.vcard .ph{width:100%;border-radius:5px;display:block}
+.vcard .ph{height:76px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--tx3);line-height:1.7}
+.vcard .cap{font-size:10.5px;color:var(--tx3);margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+hr.sep{border:0;border-top:1px solid var(--line);margin:12px 0}
+
+/* ---------- 自製 slider ---------- */
+.sl{margin-bottom:10px;outline:none}
+.sl-hd{display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:3px}
+.sl-nm{font-size:11.5px;color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sl-vl{
+  font-variant-numeric:tabular-nums;color:var(--tx3);font-size:10.5px;background:var(--panel2);
+  padding:0 5px;border-radius:4px;min-width:46px;text-align:right;cursor:ew-resize;
+  flex:0 0 auto;user-select:none;font-family:ui-monospace,Menlo,monospace;
+}
+.sl.mod .sl-vl{color:var(--acc);background:var(--acc-soft)}
+.sl.mod .sl-nm{color:var(--tx)}
+.sl-tr{position:relative;height:18px;cursor:pointer;touch-action:none}
+.sl-tr::before{content:'';position:absolute;left:0;right:0;top:7px;height:4px;background:var(--panel3);border-radius:3px}
+.sl-fl{position:absolute;top:7px;height:4px;background:var(--acc);border-radius:3px;opacity:.85;pointer-events:none}
+.sl-kn{position:absolute;top:3px;width:12px;height:12px;border-radius:50%;background:#d8dde6;
+  border:2px solid var(--panel);box-shadow:0 1px 3px rgba(0,0,0,.55);
+  transform:translateX(-50%);pointer-events:none;transition:background .1s}
+.sl:hover .sl-kn{background:#fff}
+.sl.dragging .sl-kn{background:var(--acc)}
+.sl-tip{font-size:9.5px;color:var(--tx3);margin-top:2px;opacity:.7}
+
+/* ---------- 摺疊群組 ---------- */
+.grp{border-top:1px solid var(--line);padding:6px 0 2px}
+.grp:first-of-type{border-top:0}
+.grp-hd{
+  width:100%;background:none;border:0;padding:5px 0;display:flex;align-items:center;gap:6px;
+  cursor:pointer;color:var(--tx2);font-size:11px;letter-spacing:.4px;text-align:left;
+}
+.grp-hd:hover{color:var(--tx)}
+.grp-hd .dot{width:6px;height:6px;border-radius:50%;background:var(--acc);display:none;flex:0 0 auto}
+.grp.mod .grp-hd .dot{display:block}
+.grp.mod .grp-hd{color:var(--tx)}
+.grp-hd .sp{flex:1}
+.grp-hd .cnt{font-size:9.5px;color:var(--tx3);font-family:ui-monospace,Menlo,monospace}
+.grp-hd .chev{font-size:9px;color:var(--tx3);transition:transform .15s;flex:0 0 auto}
+.grp:not(.open) .grp-hd .chev{transform:rotate(-90deg)}
+.grp-bd{display:none;padding:4px 0 8px}
+.grp.open .grp-bd{display:block}
+
+/* ---------- HSL ---------- */
+.huebar{display:flex;gap:3px;margin-bottom:8px}
+.huebar button{
+  flex:1;height:20px;border-radius:5px;border:1.5px solid transparent;cursor:pointer;
+  position:relative;padding:0;
+}
+.huebar button.on{border-color:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+.huebar button.mod::after{
+  content:'';position:absolute;top:-2px;right:-1px;width:5px;height:5px;
+  border-radius:50%;background:var(--acc);border:1px solid var(--panel);
+}
+.hslbox{border-left:2px solid var(--line);padding-left:8px;margin-left:2px}
+
+/* ---------- 分區調色輪 ---------- */
+.wheels{display:flex;gap:5px;margin-bottom:6px}
+.wheel{flex:1;text-align:center;min-width:0}
+.wheel canvas{
+  width:100%;max-width:70px;height:auto;border-radius:50%;cursor:grab;
+  display:block;margin:0 auto;touch-action:none;
+}
+.wheel canvas:active{cursor:grabbing}
+.wheel .wlb{font-size:9.5px;color:var(--tx3);margin-top:3px;line-height:1.3}
+.wheel .wlb b{display:block;color:var(--tx2);font-weight:500;
+  font-variant-numeric:tabular-nums;font-size:9px;font-family:ui-monospace,Menlo,monospace}
+
+/* ---------- center ---------- */
+.stagetop{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex:0 0 auto}
+.vmodes{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;flex:0 0 auto}
+.vmodes button{
+  background:var(--panel2);border:0;border-right:1px solid var(--line);
+  padding:4px 11px;font-size:11.5px;cursor:pointer;color:var(--tx2);transition:.12s;
+}
+.vmodes button:last-child{border-right:0}
+.vmodes button:hover{color:var(--tx)}
+.vmodes button.on{background:var(--acc-soft);color:var(--acc)}
+
+.stage{
+  flex:1 1 auto;position:relative;min-height:0;
+  border:1px solid var(--line);border-radius:var(--rl);overflow:hidden;
+  background:radial-gradient(120% 90% at 50% 0%,#151922 0%,#0b0d11 62%,#08090c 100%);
+}
+/* 內陰影：令張圖有「鑲」落去嘅感覺，而唔係一塊死板貼上去 */
+.stage::after{
+  content:'';position:absolute;inset:0;pointer-events:none;border-radius:var(--rl);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.035),inset 0 18px 44px rgba(0,0,0,.5);
+}
+#viewport{
+  position:absolute;inset:0;overflow:auto;display:flex;padding:16px;
+  scrollbar-width:thin;overscroll-behavior:contain;
+}
+#viewport::-webkit-scrollbar{width:9px;height:9px}
+#viewport::-webkit-scrollbar-thumb{background:var(--line2);border-radius:5px}
+#cv{
+  /* flex:0 0 auto 一定要有：#viewport 係 flex，canvas 設咗明確 width 之後
+     默認 flex-shrink:1 會將佢縮返入容器 —— 放大 200% 會變返同適應一樣闊，
+     scrollWidth 永遠等於 clientWidth，即係「放大咗但捲唔到」。 */
+  margin:auto;flex:0 0 auto;display:block;touch-action:none;background:#0d0f13;
+  max-width:100%;max-height:100%;
+  border-radius:7px;
+  box-shadow:0 12px 34px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.07);
+}
+.stage.single #cv{cursor:pointer}
+.stage.divider #cv{cursor:col-resize}
+.stage.panning #cv,
+.stage.panning.divider #cv{cursor:grabbing}
+/* zoom 掣（stagetop 右邊） */
+.zoombar{display:flex;align-items:center;border:1px solid var(--line);border-radius:7px;overflow:hidden;flex:0 0 auto}
+.zoombar button{
+  background:var(--panel2);border:0;border-right:1px solid var(--line);color:var(--tx2);
+  font:400 12px/1 -apple-system,sans-serif;padding:0 9px;height:24px;cursor:pointer;transition:.12s;
+}
+.zoombar button:last-child{border-right:0}
+.zoombar button:hover{color:var(--tx);background:var(--line)}
+.zoombar .zp{
+  min-width:54px;text-align:center;color:var(--tx3);background:var(--panel2);
+  font-family:ui-monospace,Menlo,monospace;font-size:10.5px;line-height:24px;
+  border-right:1px solid var(--line);
+}
+.empty{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;color:var(--tx3);
+  font-size:12px;line-height:2;padding:30px;
+}
+.empty .big{font-size:15px;color:var(--tx2);margin-bottom:6px;font-weight:500}
+.gridbox{
+  position:absolute;inset:0;overflow-y:auto;display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(216px,1fr));gap:11px;
+  padding:11px;align-content:start;scrollbar-width:thin;
+}
+.gridbox::-webkit-scrollbar{width:8px}
+.gridbox::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
+.gcell{
+  background:var(--panel2);border:1.5px solid var(--line);border-radius:var(--r);
+  overflow:hidden;cursor:pointer;transition:.15s;
+}
+.gcell:hover{border-color:var(--line2)}
+.gcell.on{border-color:var(--acc)}
+.gcell canvas{width:100%;display:block;background:#0d0f13}
+.gcell .glb{font-size:11px;padding:5px 8px;color:var(--tx2);display:flex;justify-content:space-between;gap:6px}
+.gcell.on .glb{color:var(--acc)}
+.gcell .glb em{font-style:normal;color:var(--tx3);font-family:ui-monospace,Menlo,monospace;font-size:10px}
+
+.holdpill{
+  position:absolute;left:50%;bottom:12px;transform:translateX(-50%);
+  background:rgba(13,15,19,.82);border:1px solid var(--line2);border-radius:20px;
+  padding:3px 12px;font-size:11px;color:var(--tx2);pointer-events:none;
+  display:flex;align-items:center;gap:6px;white-space:nowrap;
+}
+.holdpill.act{background:var(--acc);color:#0c1f19;border-color:var(--acc);font-weight:500}
+.badge-l,.badge-r{
+  position:absolute;top:10px;font-size:10px;font-family:ui-monospace,Menlo,monospace;
+  background:rgba(10,12,16,.8);color:var(--tx2);padding:2px 7px;border-radius:4px;pointer-events:none;
+}
+.badge-l{left:10px}
+.badge-r{right:10px;color:var(--acc)}
+/* 層次擠壓警告：掣位推到盡嗰陣半張圖會塞喺 1L 之內 */
+.warnflat{
+  position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:55;
+  background:rgba(58,32,10,.92);border:1px solid #d08b3a;border-radius:6px;
+  padding:4px 11px;font-size:11px;color:#ffca83;pointer-events:none;
+  display:flex;align-items:center;gap:7px;white-space:nowrap;
+  box-shadow:0 3px 14px rgba(0,0,0,.45);
+}
+.warnflat b{color:#ffb454;font-weight:600}
+
+#veil{
+  position:absolute;inset:0;background:rgba(20,22,26,.9);border:2px dashed var(--acc);
+  border-radius:var(--rl);display:none;align-items:center;justify-content:center;
+  font-size:14px;color:var(--acc);z-index:50;pointer-events:none;
+}
+#veil.show{display:flex}
+.toast{
+  position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+  background:var(--panel3);border:1px solid var(--line2);border-radius:7px;
+  padding:6px 13px;font-size:12px;color:var(--tx);z-index:60;opacity:0;transition:.2s;
+  pointer-events:none;
+}
+.toast.show{opacity:1}
+
+.rowbtns{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap;flex:0 0 auto;align-items:center}
+button.b{
+  background:var(--panel2);border:1px solid var(--line);border-radius:7px;
+  padding:5px 10px;font-size:11.5px;cursor:pointer;transition:.15s;white-space:nowrap;
+}
+button.b:hover{border-color:var(--acc);color:var(--acc)}
+button.b.pri{background:var(--acc);border-color:var(--acc);color:#0c1f19;font-weight:500}
+button.b.pri:hover{filter:brightness(1.08);color:#0c1f19}
+button.b:disabled{opacity:.35;cursor:not-allowed}
+button.b:disabled:hover{border-color:var(--line);color:inherit}
+button.b.sm{padding:3px 8px;font-size:10.5px}
+
+/* ---------- right ---------- */
+.dirlist{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.ditem{background:var(--panel2);border-radius:7px;padding:7px 9px;border-left:2px solid var(--line)}
+.ditem.hot{border-left-color:var(--acc)}
+.ditem.warn{border-left-color:var(--warn)}
+.ditem.bad{border-left-color:var(--bad);background:#2b1f1f}
+.ditem .k{font-size:10.5px;color:var(--tx3);margin-bottom:2px}
+.ditem .v{font-size:11.5px;line-height:1.55}
+.ditem .v em{font-style:normal;color:var(--acc);font-family:ui-monospace,Menlo,monospace}
+.ditem.bad .v em{color:#f0a0a0}
+.ditem.sec{border-left-color:var(--line2);background:#1f232b}
+.ditem.sec .v{font-size:11px;color:var(--tx2);font-family:ui-monospace,Menlo,monospace}
+textarea{
+  width:100%;min-height:120px;background:var(--panel2);border:1px solid var(--line);
+  border-radius:var(--r);padding:8px;font-size:10.5px;line-height:1.65;resize:vertical;
+  font-family:ui-monospace,Menlo,monospace;
+}
+
+/* ---------- bottom dock ---------- */
+.dock{flex:0 0 auto;background:var(--panel);border-top:1px solid var(--line);padding:6px 14px 10px}
+.dockrow{margin-bottom:7px}
+.dockrow:last-child{margin-bottom:0}
+.dockrow .hd{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  font-size:10.5px;color:var(--tx3);margin-bottom:5px}
+.dockrow .hd b{font-weight:500;color:var(--tx2);letter-spacing:.4px}
+.dockrow .hd .sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 摺疊：淨係收起片條，個 header 留低，隨時撳返開 */
+.dockrow.folded .strip{display:none}
+.dockrow.folded{margin-bottom:2px}
+.dockrow.folded .hd{margin-bottom:0}
+.foldbtn{
+  flex:0 0 auto;width:17px;height:17px;border-radius:4px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--tx3);font-size:9px;line-height:1;cursor:pointer;
+  padding:0;display:flex;align-items:center;justify-content:center;transition:.12s;
+}
+.foldbtn:hover{color:var(--tx);border-color:var(--line2)}
+.dockrow.folded .foldbtn{transform:rotate(-90deg)}
+.foldbtn .cnt{
+  font-family:ui-monospace,Menlo,monospace;font-size:9px;color:var(--tx3);
+  margin-left:5px;background:var(--panel2);border:1px solid var(--line);
+  padding:0 4px;border-radius:3px;
+}
+.minib{
+  flex:0 0 auto;background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+  color:var(--tx2);font:400 10.5px/1 -apple-system,sans-serif;padding:0 8px;height:20px;cursor:pointer;
+}
+.minib:hover{color:var(--acc);border-color:var(--acc)}
+.strip{display:flex;gap:7px;overflow-x:auto;padding-bottom:5px;scrollbar-width:thin}
+.strip::-webkit-scrollbar{height:7px}
+.strip::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
+/* 來稿 shot：有方向紙 marker，揀中嗰張要有明確框 */
+.tile.shot.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.tile.shot .sno{
+  position:absolute;top:3px;left:3px;font-size:9px;font-family:ui-monospace,Menlo,monospace;
+  background:rgba(10,12,16,.82);color:var(--tx2);padding:0 4px;border-radius:3px;
+}
+.tile.shot.on .sno{background:var(--acc);color:#0c1f19;font-weight:600}
+.tile.shot .done{
+  position:absolute;bottom:20px;left:3px;font-size:8.5px;font-weight:600;
+  background:rgba(79,195,161,.92);color:#0c1f19;padding:0 4px;border-radius:3px;
+}
+
+.tile{
+  flex:0 0 auto;width:var(--tw);border-radius:7px;overflow:hidden;cursor:pointer;
+  background:var(--panel2);border:1.5px solid var(--line);transition:.14s;position:relative;
+}
+.tile:hover{border-color:var(--line2)}
+.tile.on{border-color:var(--acc);background:var(--acc-soft)}
+.tile canvas{width:100%;height:var(--th);display:block;background:#0d0f13}
+.tile .lb{
+  font-size:10px;padding:3px 6px;color:var(--tx2);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;
+}
+.tile.on .lb{color:var(--acc)}
+.tile .no{
+  position:absolute;top:3px;left:3px;font-size:9px;font-family:ui-monospace,Menlo,monospace;
+  background:rgba(10,12,16,.8);color:var(--tx2);padding:0 4px;border-radius:3px;
+}
+.tile .rm{
+  position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:4px;
+  background:rgba(10,12,16,.8);color:var(--tx2);border:0;cursor:pointer;
+  font-size:12px;line-height:16px;text-align:center;padding:0;opacity:0;transition:.12s;
+}
+.tile:hover .rm{opacity:1}
+.tile .rm:hover{background:var(--bad);color:#fff}
+.tile.add{
+  width:calc(var(--tw) * .62);height:var(--th);border-style:dashed;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:1px;color:var(--tx3);font-size:10.5px;padding:0;
+}
+.tile.add:hover{border-color:var(--acc);color:var(--acc)}
+.tile.add .plus{font-size:16px;line-height:1}
+.tile .badge{
+  position:absolute;bottom:20px;right:3px;font-size:9px;font-family:ui-monospace,Menlo,monospace;
+  background:rgba(10,12,16,.78);color:var(--tx3);padding:0 4px;border-radius:3px;
+}
+.tile .cust{
+  position:absolute;bottom:20px;left:3px;font-size:8.5px;
+  background:rgba(79,195,161,.9);color:#0c1f19;padding:0 4px;border-radius:3px;font-weight:600;
+}
+.szbtns{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;flex:0 0 auto}
+.szbtns button{
+  background:var(--panel2);border:0;border-right:1px solid var(--line);
+  padding:0 7px;font-size:10px;cursor:pointer;color:var(--tx3);line-height:16px;
+}
+.szbtns button:last-child{border-right:0}
+.szbtns button.on{background:var(--acc-soft);color:var(--acc)}
+
+/* ---------- 放大鏡 ---------- */
+#mag{
+  position:fixed;z-index:300;background:var(--panel2);border:1px solid var(--line2);
+  border-radius:10px;padding:6px;pointer-events:none;display:none;
+  box-shadow:0 14px 38px rgba(0,0,0,.65);
+}
+#mag.show{display:block}
+#mag canvas{display:block;border-radius:6px;background:#0d0f13}
+#mag .mn{font-size:11px;color:var(--tx);margin-top:5px;display:flex;justify-content:space-between;gap:12px}
+#mag .mn em{font-style:normal;color:var(--tx3);font-family:ui-monospace,Menlo,monospace;font-size:10px}
+#mag .mh{font-size:9.5px;color:var(--tx3);margin-top:1px}
+</style>
+</head>
+<body data-page-node-id="29lABQzg4oTaKoeQDEhAnh">
+<div class="app" data-page-node-id="hAsgorcq5k2qpBrV4vfKXg">
+
+  <header data-page-node-id="LBGsddcN3gf6DWO2MyRJ0C">
+    <div class="logo" data-page-node-id="oittYfQpGjADXjq0Rrzcz7">Look <span data-page-node-id="Kp5SpXSZtbru0NXxdGbTLH">Direction</span></div>
+    <span class="kbd" data-page-node-id="waJJ5gYvxgxumcEPRXeZNX">1–9</span><span class="hstatus" data-page-node-id="Px7khZ39vhmvKqe8pkAr1W">揀 look</span>
+    <span class="kbd" data-page-node-id="yxXLKtLjqzG7OUv5WWfVG2">← →</span><span class="hstatus" data-page-node-id="OjHYvMVHoDZq3EWrV2Jnjq">上／下個 look</span>
+    <span class="kbd">[ ]</span><span class="hstatus">上／下張來稿</span>
+    <span class="kbd" data-page-node-id="K1b0LE06KMP5a0OrfkrB5u">`</span><span class="hstatus" data-page-node-id="NhlR9Q3EKfWSF5805UJxye">撳實睇原圖</span>
+    <span class="kbd" data-page-node-id="K1nofbbgZz60C5BaqVezbi">B</span><span class="hstatus" data-page-node-id="bVBRsFf6SuzeufQAuEMMVq">鎖定前後</span>
+    <span class="kbd" data-page-node-id="lDnKBSmn4zTPO4aFOXDXY6">G</span><span class="hstatus" data-page-node-id="zGfjfT8b32AIkAHMa86L4j">格仔</span>
+    <span class="kbd">0</span><span class="hstatus">縮返適應</span>
+    <span class="hstatus" data-page-node-id="80D2mIp6NqB6Eqm6EHEpkt">· ⌘滾輪放大 · 空白鍵拖 pan · Shift 拖拉桿 = 精細</span>
+    <span class="hspacer" data-page-node-id="DAlSMlpcA0SQvFc0tPkinQ"></span>
+    <span class="hstatus" id="hstatus" data-page-node-id="nJc67SjwHm18PSRFwXMhWD">未入圖</span>
+  </header>
+
+  <div class="main" data-page-node-id="vADVOhZ4NliqpL6SlAwaBo">
+
+    <!-- LEFT：方向 + note（調控板搬咗去右邊） -->
+    <div class="col col-l" data-page-node-id="1rGAmnHOrcOTDE9HTG33PD">
+      <div class="sec" data-page-node-id="IqrAAMtXqSPBT79jCTOVGW">
+        <h2 data-page-node-id="7Udr2llaWVSphaRTkQRDwH">方向 <span class="hstatus" id="refname" data-page-node-id="9XDyhsHlVBMVqxgKaB7iS9">—</span></h2>
+        <div class="dirlist" id="dirlist" data-page-node-id="DehDG9JEtXrXRhD9zFRUBk">
+          <div class="hstatus" data-page-node-id="BM1o29h5mOpGv0kMefiGGr">入圖 / 揀個 look 就自動計</div>
+        </div>
+      </div>
+      <div class="sec" data-page-node-id="0WYFAGY6VL6n95Ay8MDlV7">
+        <h2 data-page-node-id="TxESGMdGl44rFFr9OoALrh">可以抄出去嘅 note</h2>
+        <textarea id="note" readonly aria-label="方向文字，可複製" placeholder="方向會喺度出，直接抄去 email / 飛書畀供應商"></textarea>
+        <div class="rowbtns" data-page-node-id="0wihX4m6lwgTOk3JBWjKSB">
+          <button class="b" id="b-copy" type="button" data-page-node-id="Ey4gyF65FXCDdXsUyDZ3OF">抄方向</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER -->
+    <div class="col col-c" data-page-node-id="KHK6e9BPeUDFBb9Ag6RhCl">
+      <div class="stagetop" data-page-node-id="w5jfSLNTloGrj25DK1hcmK">
+        <div class="vmodes" id="vmodes" role="group" aria-label="對比模式" data-page-node-id="lYs1m9GlTDJJOSNyymGbL2">
+          <button type="button" data-m="single" class="on" data-page-node-id="X71t1EpUW1rDkG4Df5L7Mi">單圖</button>
+          <button type="button" data-m="wipe" data-page-node-id="hYlWTFTLz78uOYqQbnEP5l">抹除</button>
+          <button type="button" data-m="side" data-page-node-id="HmIFvwfhliaJBbP3jdd6UV">並排</button>
+          <button type="button" data-m="grid" data-page-node-id="Wt5e9tmxtbwDKtiXPE8wOD">格仔</button>
+        </div>
+        <span class="hspacer" data-page-node-id="mpShPvGQiRGf1lkpucN1ot"></span>
+        <span class="hstatus" id="cstat" data-page-node-id="wxzTdzp7nSxMF5xDM2DoDm"></span>
+        <div class="zoombar" role="group" aria-label="縮放">
+          <button type="button" id="z-out" aria-label="縮細">−</button>
+          <span class="zp" id="zpct">適應</span>
+          <button type="button" id="z-in" aria-label="放大">＋</button>
+          <button type="button" id="z-fit" aria-label="適應視窗">適應</button>
+          <button type="button" id="z-100" aria-label="原尺寸 1:1">1:1</button>
+        </div>
+      </div>
+
+      <div class="stage single" id="stage" data-page-node-id="kN1WBI4tTKx4YFlKHNf13p">
+        <div id="viewport"><canvas id="cv" hidden data-page-node-id="ElYWCyG5AlBAk26GPvTIFV"></canvas></div>
+        <div class="empty" id="empty" data-page-node-id="uVWQSRGIKXzsTzrfhoOb0o">
+          <div class="big" data-page-node-id="gyGjLJ4c8nFpUwwV3Ln0g9">拖啲供應商嘅圖入嚟</div>
+          拖幾多張都得 —— 會入落下面「來稿」嗰條，逐張撳就得<br data-page-node-id="MvEcICZWQWyLLy0lchfmlm">
+          參考圖拖落 REFERENCE 嗰條 · 或者直接撳內建 look 即刻試
+        </div>
+        <div class="gridbox" id="gridbox" hidden data-page-node-id="qFy0MQHx7xnDkiWlKnA1ne"></div>
+        <div class="badge-l" id="badgeL" hidden data-page-node-id="3izU7t24COyUh97WOgmGay">原圖 BEFORE</div>
+        <div class="badge-r" id="badgeR" hidden data-page-node-id="YIfqeZaNCD3P4qbZovfUnt">調色後 AFTER</div>
+        <div class="holdpill" id="holdpill" hidden data-page-node-id="eonXM5eBfXjmu9DWvDxhte">撳實睇原圖</div>
+        <div class="warnflat" id="warnflat" hidden data-page-node-id="qF7warnflat001"></div>
+        <div id="veil" data-page-node-id="JgAoyq3XUNc31pE3o0y150">放低就加入 reference</div>
+        <div class="toast" id="toast" data-page-node-id="lD5YOABRJv3FFgy684jJm6"></div>
+      </div>
+
+      <div class="rowbtns" data-page-node-id="ROpmx3NJJE9Xjy1uyf4piR">
+        <button class="b" id="b-save" type="button" data-page-node-id="eI0dWWyOEV9AIQhTGwZnrP">存為 LOOK</button>
+        <button class="b" id="b-reset" type="button" data-page-node-id="VcjBtPCccjdOA5IY3aYef8">重設微調</button>
+        <span class="hspacer" data-page-node-id="uBdSYA5hky1u18JsPaIKgX"></span>
+        <button class="b" id="b-side2" type="button" data-page-node-id="1yg5mGj7rWMrQiXdAT4YFA">抄對比圖</button>
+        <button class="b" id="b-png" type="button" data-page-node-id="79q8uJo45DdUunU74M23hw">匯出 PNG</button>
+        <button class="b" id="b-cube" type="button" data-page-node-id="5GL9xJdwHvImEsUplrOLKw">.cube LUT</button>
+        <button class="b pri" id="b-sheet" type="button" data-page-node-id="i22PEnogLuXPzLtbF4AlmF">出方向紙</button>
+      </div>
+    </div>
+
+    <!-- RIGHT：調控板（用家習慣右手拉桿） -->
+    <div class="col col-r" data-page-node-id="fRcqOqRurwQxXlVE7SuexH">
+      <div class="sec" data-page-node-id="Fq3eovGqo2jUqAwWx0I60a">
+        <h2 data-page-node-id="GjmcftVsnafhrduyr0eRis">調控板 <span class="hstatus" id="shotname">—</span></h2>
+        <div class="rowbtns" style="margin-bottom:10px">
+          <button class="b" id="b-addshot" type="button">＋ 加入來稿</button>
+          <button class="b" id="b-repshot" type="button">換呢張</button>
+        </div>
+      </div>
+
+      <div id="grpbox" data-page-node-id="TvpvjwrN5yqAfiSs6kQ3aR"></div>
+
+      <hr class="sep" data-page-node-id="F9BLQi27upx9XNKY5aMcgK">
+      <div class="hstatus" id="stat2" data-page-node-id="BQ7rdYvC1ObUlrsHxxJJZo">—</div>
+    </div>
+  </div>
+
+  <!-- DOCK -->
+  <div class="dock" data-page-node-id="mT7P0g1k0v7DHNGcxYMlZ1">
+    <div class="dockrow" id="row-shots">
+      <div class="hd" data-page-node-id="OlraOQsSplLVTRqyVbLQN2">
+        <button class="foldbtn" type="button" data-row="shots" aria-expanded="true" aria-label="摺疊來稿">▾</button>
+        <b>來稿 SHOTS</b>
+        <span class="sub" id="shotcount" data-page-node-id="hxnYJUlaEBFAqaQrfQGFdn">0 張 · 逐張撳 · 每張記住自己套設定</span>
+        <span class="hspacer" data-page-node-id="xJ7xKIZnAp7s00uIV0GTzE"></span>
+        <button class="minib" id="b-addshot2" type="button">＋ 加入來稿</button>
+        <div class="szbtns" id="szS" data-page-node-id="k3KZEbPb98SycochFprhXZ"></div>
+      </div>
+      <div class="strip" id="shots" role="radiogroup" aria-label="供應商來稿"></div>
+    </div>
+
+    <div class="dockrow folded" id="row-presets">
+      <div class="hd" data-page-node-id="cN2NC9HmTnGobGuKTMC6IQhd">
+        <button class="foldbtn" type="button" data-row="presets" aria-expanded="false" aria-label="摺疊內建 LOOK">▾</button>
+        <b data-page-node-id="4M3qfs7ox0tkXUsDvthugw">內建 LOOK</b>
+        <span class="sub">即刻試，唔使入圖 · hover 出大預覽</span>
+        <span class="hspacer" data-page-node-id="xJ7xKIZnAp7s00uIV0GTzE2"></span>
+        <div class="szbtns" id="szA" data-page-node-id="k3KZEbPb98SycochFprhXZ"></div>
+      </div>
+      <div class="strip" id="presets" role="radiogroup" aria-label="色調預設" data-page-node-id="CCTOJNOeO0QKlTTdrb2xay"></div>
+    </div>
+
+    <div class="dockrow" id="row-refs">
+      <div class="hd" data-page-node-id="C59kxu5i7zQl2TS0UBGrmv">
+        <button class="foldbtn" type="button" data-row="refs" aria-expanded="true" aria-label="摺疊 REFERENCE">▾</button>
+        <b data-page-node-id="S9WMSaUebZ6lgEWu6UmOLv">REFERENCE</b>
+        <span class="sub" id="refcount" data-page-node-id="vFCywQcCDVZt1qrPy2FaJi">0 張 · hover 即時預覽 · click 採用</span>
+        <span class="hspacer" data-page-node-id="uX8bSOp3HiD9Ul5ujMnjJF"></span>
+        <div class="szbtns" id="szB" data-page-node-id="i3QEhKgoEChHwpdKFWkYT0"></div>
+      </div>
+      <div class="strip" id="refs" role="radiogroup" aria-label="參考圖" data-page-node-id="jke3GUqnP0nplR1VO24A7y"></div>
+    </div>
+  </div>
+
+</div>
+
+<div id="mag" data-page-node-id="UEVQBzlM4nPF7TZ445e4zd"><canvas id="magcv" data-page-node-id="Dep8eJNvendpx8pg7wjqkd"></canvas>
+  <div class="mn" data-page-node-id="Zzn07qLjcVAnAP1qy1hbA3"><span id="magnm" data-page-node-id="5Cnc9pM5EtRtwHG7gQSk41">—</span><em id="magst" data-page-node-id="jRe62WoCGYc0DH1ZbHXmsg"></em></div>
+  <div class="mh" id="maghh" data-page-node-id="Uf3LswS5qttiW9FXYNVoi5"></div>
+</div>
+
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+const cl01=t=>t<0?0:(t>1?1:t);
+const smoothstep=(e0,e1,x)=>{const t=cl01((x-e0)/(e1-e0));return t*t*(3-2*t);};
+
+/* ============================================================
+   1. 色彩轉換  sRGB <-> Lab (D65)
+   ============================================================ */
+const Xn=0.95047, Yn=1.0, Zn=1.08883;
+const s2l = c => { c/=255; return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4); };
+const l2sRaw = c => { const v = c<=0.0031308 ? 12.92*c : 1.055*Math.pow(Math.max(c,0),1/2.4)-0.055;
+                      return Math.max(0,Math.min(255,Math.round(v*255))); };
+const fLab  = t => t>0.008856 ? Math.cbrt(t) : (7.787*t + 16/116);
+const fLabI = t => { const t3=t*t*t; return t3>0.008856 ? t3 : (t-16/116)/7.787; };
+
+const LUT_LIN=new Float32Array(256);
+for(let i=0;i<256;i++) LUT_LIN[i]=s2l(i);
+const LUT_S=new Uint8ClampedArray(4096);
+for(let i=0;i<4096;i++) LUT_S[i]=l2sRaw(i/4095*1.3);
+const _sIdx = c => { const i=Math.round(c/1.3*4095); return i<0?0:(i>4095?4095:i); };
+
+function rgbToLab(r,g,b){
+  const R=LUT_LIN[r],G=LUT_LIN[g],B=LUT_LIN[b];
+  const X=(0.4124564*R+0.3575761*G+0.1804375*B)/Xn;
+  const Y=(0.2126729*R+0.7151522*G+0.0721750*B)/Yn;
+  const Z=(0.0193339*R+0.1191920*G+0.9503041*B)/Zn;
+  const fx=fLab(X),fy=fLab(Y),fz=fLab(Z);
+  return [116*fy-16, 500*(fx-fy), 200*(fy-fz)];
+}
+function labToRgb(L,a,b){
+  const fy=(L+16)/116, fx=fy+a/500, fz=fy-b/200;
+  const X=fLabI(fx)*Xn, Y=fLabI(fy)*Yn, Z=fLabI(fz)*Zn;
+  return [ LUT_S[_sIdx( 3.2404542*X -1.5371385*Y -0.4985314*Z)],
+           LUT_S[_sIdx(-0.9692660*X +1.8760108*Y +0.0415560*Z)],
+           LUT_S[_sIdx( 0.0556434*X -0.2040259*Y +1.0572252*Z)] ];
+}
+
+/* ============================================================
+   2. 分析
+   ============================================================ */
+const BANDS=[[0,33],[33,66],[66,101]];
+const BCTR=[16.5,49.5,82.5];
+
+function labOf(id){
+  const n=id.width*id.height, d=id.data;
+  const L=new Float32Array(n), a=new Float32Array(n), b=new Float32Array(n);
+  for(let i=0;i<n;i++){ const p=i*4, q=rgbToLab(d[p],d[p+1],d[p+2]); L[i]=q[0];a[i]=q[1];b[i]=q[2]; }
+  return {L,a,b,w:id.width,h:id.height,n};
+}
+function analyze(id){
+  const lab=labOf(id), n=lab.n, Ls=lab.L, as=lab.a, bs=lab.b;
+  const hist=new Float64Array(256);
+  for(let i=0;i<n;i++){ let b=Math.round(Ls[i]/100*255); b=b<0?0:(b>255?255:b); hist[b]++; }
+  const cdf=new Float64Array(256); let acc=0;
+  for(let i=0;i<256;i++){ acc+=hist[i]; cdf[i]=acc/n; }
+  const pct=p=>{ const t=p*n; let a2=0; for(let i=0;i<256;i++){ a2+=hist[i]; if(a2>=t) return i/255*100; } return 100; };
+  const step=Math.max(1,Math.floor(n/120000));
+  const bandStats=BANDS.map(([lo,hi])=>{
+    let sa=0,sb=0,sc=0,c=0;
+    for(let i=0;i<n;i+=step){ const L=Ls[i]; if(L>=lo&&L<hi){ sa+=as[i]; sb+=bs[i]; sc+=Math.hypot(as[i],bs[i]); c++; } }
+    return {a:c?sa/c:0, b:c?sb/c:0, c:c?sc/c:0, n:c};
+  });
+  return Object.assign({}, lab, {hist,cdf,bandStats,lc:localContrast(id),
+          p1:pct(0.01),p10:pct(0.10),p50:pct(0.50),p90:pct(0.90),p99:pct(0.99)});
+}
+function localContrast(id){
+  const W=id.width,H=id.height,d=id.data;
+  const S=Math.max(1,Math.round(Math.min(W,H)/160));
+  const w=Math.max(2,Math.floor(W/S)), h=Math.max(2,Math.floor(H/S));
+  const g=new Float32Array(w*h);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const sx=Math.min(W-1,x*S), sy=Math.min(H-1,y*S), p=(sy*W+sx)*4;
+    g[y*w+x]=0.2126*d[p]+0.7152*d[p+1]+0.0722*d[p+2];
+  }
+  let s=0,c=0;
+  for(let y=0;y<h-1;y++)for(let x=0;x<w-1;x++){
+    const i=y*w+x; s+=Math.abs(g[i]-g[i+1])+Math.abs(g[i]+0-g[i+w]); c+=2;
+  }
+  return c? s/c : 0;
+}
+
+/* ============================================================
+   3. 追色（參考匹配）
+   ============================================================ */
+function smooth(m){
+  const o=new Float32Array(256);
+  for(let i=0;i<256;i++){ let s=0,c=0;
+    for(let k=-4;k<=4;k++){ const q=i+k; if(q>=0&&q<256){ s+=m[q]; c++; } }
+    o[i]=s/c;
+  }
+  return o;
+}
+function buildToneMap(src,ref){
+  const map=new Float32Array(256); let j=0;
+  for(let i=0;i<256;i++){
+    const t=src.cdf[i];
+    while(j<254 && ref.cdf[j+1]<t) j++;
+    const lo=ref.cdf[j], hi=ref.cdf[j+1];
+    map[i]=(j+(hi>lo?(t-lo)/(hi-lo):0))/255*100;
+  }
+  return smooth(map);
+}
+function buildPresetToneMap(src,ref){
+  const raw=[[0,0],[src.p1,ref.p1],[src.p10,ref.p10],[src.p50,ref.p50],
+             [src.p90,ref.p90],[src.p99,ref.p99],[100,100]];
+  const cp=[]; let lastX=-1;
+  for(const p of raw){ const xx=Math.min(100,Math.max(p[0], lastX+0.01)); cp.push([xx,p[1]]); lastX=xx; }
+  const map=new Float32Array(256);
+  for(let i=0;i<256;i++){
+    const x=i/255*100; let v=100;
+    for(let k=0;k<cp.length-1;k++){
+      const x0=cp[k][0],y0=cp[k][1],x1=cp[k+1][0],y1=cp[k+1][1];
+      if(x<=x1){ v=y0+(y1-y0)*((x1>x0)?(x-x0)/(x1-x0):0); break; }
+    }
+    map[i]=v;
+  }
+  return smooth(map);
+}
+const MAX_TINT=18;
+function buildGrade(src,ref,useBands,useTone){
+  const dA=[0,0,0], dB=[0,0,0], sC=[1,1,1];
+  const minPix=Math.max(60, src.n*0.004);
+  for(let k=0;k<3;k++){
+    if(!useBands[k]) continue;
+    if(src.bandStats[k].n<minPix || ref.bandStats[k].n<minPix) continue;
+    dA[k]=ref.bandStats[k].a - src.bandStats[k].a;
+    dB[k]=ref.bandStats[k].b - src.bandStats[k].b;
+    const mag=Math.hypot(dA[k],dB[k]);
+    if(mag>MAX_TINT){ dA[k]*=MAX_TINT/mag; dB[k]*=MAX_TINT/mag; }
+    const sc0=src.bandStats[k].c;
+    sC[k] = sc0>2.0 ? Math.max(0.7,Math.min(1.4, ref.bandStats[k].c/sc0)) : 1.0;
+  }
+  return {toneMap: useTone ? (ref.__preset? buildPresetToneMap(src,ref) : buildToneMap(src,ref)) : null,
+          dA,dB,sC};
+}
+function interpBand(L,v){
+  if(L<=BCTR[0]) return v[0];
+  if(L>=BCTR[2]) return v[2];
+  return L<BCTR[1] ? v[0]+(v[1]-v[0])*(L-BCTR[0])/(BCTR[1]-BCTR[0])
+                   : v[1]+(v[2]-v[1])*(L-BCTR[1])/(BCTR[2]-BCTR[1]);
+}
+function skinness(L,a,b){
+  return cl01((L-30)/10)*(1-cl01((L-80)/12))
+       * cl01((a-0)/7)  *(1-cl01((a-26)/10))
+       * cl01((b-2)/8)  *(1-cl01((b-32)/12));
+}
+const MAX_CHROMA=58;
+function applyPixel(L,a,b,g,opt){
+  const st=opt.strength;
+  const ts=opt.toneStrength!==undefined?opt.toneStrength:st;
+  if(g.toneMap){
+    let bin=Math.round(L/100*255); bin=bin<0?0:(bin>255?255:bin);
+    L = L + ts*(g.toneMap[bin]-L);
+    L = L<0?0:(L>100?100:L);
+  }
+  const da=interpBand(L,g.dA), db=interpBand(L,g.dB), sc=interpBand(L,g.sC);
+  let w=1;
+  if(opt.skinProtect) w = 1 - 0.55*skinness(L,a,b);
+  const scEff = 1 + st*(sc-1)*w;
+  let na=a*scEff + da*st*w, nb=b*scEff + db*st*w;
+  const cm=Math.hypot(na,nb);
+  if(cm>MAX_CHROMA){ na*=MAX_CHROMA/cm; nb*=MAX_CHROMA/cm; }
+  return [L,na,nb];
+}
+
+/* ============================================================
+   4. 二次創作（手動微調）— 疊加喺追色之上
+   ============================================================ */
+/* hue 係 Lab a-b 平面嘅角度 atan2(b,a)：0=洋紅紅, 90=黃, 134=綠, 190=青, 268=藍, 320=洋紅。
+   注意 sRGB 純藍 (0,0,255) 喺 Lab 係 306°，但一般「藍」(#3a6fd8 之類) 實測約 270-280°，
+   所以中心擺 268 而唔係 306 —— 否則天空／水嗰啲青藍會跌咗喺兩個 band 中間嘅窿度。 */
+const HSLB=[
+ {id:'red',   name:'紅',   hue:40,  sw:'#d9483f'},
+ {id:'orange',name:'橙',   hue:72,  sw:'#dd8138'},
+ {id:'yellow',name:'黃',   hue:102, sw:'#d4c23a'},
+ {id:'green', name:'綠',   hue:134, sw:'#59b455'},
+ {id:'aqua',  name:'青',   hue:190, sw:'#38bdb9'},
+ {id:'blue',  name:'藍',   hue:268, sw:'#4a72d4'},
+ {id:'magenta',name:'洋紅',hue:320, sw:'#c455b8'}
+];
+const WHEELS=[{id:'wsh',name:'陰影',L0:28},{id:'wmid',name:'中間調',L0:52},{id:'whi',name:'高光',L0:82}];
+
+function newSec(){
+  const hsl={};
+  for(const b of HSLB) hsl[b.id]={h:0,s:0,l:0};
+  return {exp:0,con:0,high:0,shad:0,white:0,black:0,
+          temp:0,tint:0,sat:0,vib:0,hsl,
+          wsh:{h:210,s:0,l:0}, wmid:{h:0,s:0,l:0}, whi:{h:40,s:0,l:0},
+          wblend:50, wbal:0};
+}
+let HUE_LUT=null;
+function getHueLUT(){
+  if(HUE_LUT) return HUE_LUT;
+  const t=new Float32Array(65536);
+  for(let ia=0;ia<256;ia++){ const a=ia-128;
+    for(let ib=0;ib<256;ib++){ const b=ib-128;
+      let h=Math.atan2(b,a)*180/Math.PI; if(h<0) h+=360;
+      t[ia*256+ib]=h;
+    }
+  }
+  HUE_LUT=t; return t;
+}
+/* σ=40：7 個 band 之間最大間距 74°，中點權重約 0.46，夠軟唔會留窿 */
+const GAUSS_LUT=new Float32Array(181);
+for(let d=0;d<=180;d++){ const q=d/40; GAUSS_LUT[d]=Math.exp(-q*q); }
+
+/* 軟膝壓縮：0..1 之內原樣通過，外面用拋物線收到 0/1，C1 連續。
+   上膝必須用 (1+k-t) 而唔係 (1-t)，否則 t=1-k 位會由 0.82 跳去 0.955。 */
+/* 上膝嘅參數：86L 開始收斂，極限 98.5L */
+const SK=0.86, SR=0.125;
+function softClip(t){
+  const k=0.18;
+  if(t<k) return t<=-k ? 0 : (t+k)*(t+k)/(4*k);        /* 下膝：拋物線，收落 0 */
+  /* 上膝改用「指數肩位」而唔係拋物線硬頂。
+     拋物線喺 t=1+k 就硬 cut 落 1.0，全部掣推到盡時成幅圖會貼死喺 100L
+     （實測 87–100，得 13L 層次）。指數肩位單調遞增、極限 0.985，
+     所以無論推幾盡都一定留到明暗分離。86L 以下完全原樣通過，
+     86→100 嘅正常人像高光只會由 100 收到 94.4 —— 同舊版差唔多。 */
+  if(t>SK) return SK + SR*(1-Math.exp(-(t-SK)/SR));
+  return t;
+}
+/* 偏移預算：每組掣都有自己嘅「最多推幾多」上限。
+   ±cap 之內原樣通過，超出嘅部分只收 keep 倍 —— 咁樣單一掣位仍然
+   全力發力，但曝光+陰影+黑位+高光+白位 五個一齊推到盡都唔會
+   無上限疊加成一塊死白。 */
+function budget(v,cap,keep){
+  if(v> cap) return cap + (v-cap)*keep;
+  if(v<-cap) return -cap + (v+cap)*keep;
+  return v;
+}
+/* key 必須係 wsh / wmid / whi —— applySec 用 'w'+w.id.slice(1) 反查，
+   大小寫唔啱會令每一粒 pixel throw */
+function buildZoneLUT(s){
+  const N=256, wsh=new Float32Array(N), wmid=new Float32Array(N), whi=new Float32Array(N);
+  const sigma=0.13+(s.wblend/100)*0.16, i2s=1/(2*sigma*sigma);
+  const bal=s.wbal/100;
+  const kS=Math.max(0,1-bal*0.7), kH=Math.max(0,1+bal*0.7);
+  for(let i=0;i<N;i++){
+    const x=i/(N-1);
+    const dS=x-0.18, dM=x-0.50, dH=x-0.85;
+    wsh[i] =kS*Math.exp(-dS*dS*i2s);
+    wmid[i]=    Math.exp(-dM*dM*i2s);
+    whi[i] =kH*Math.exp(-dH*dH*i2s);
+  }
+  return {wsh,wmid,whi};
+}
+function wheelAdd(z){
+  const rad=z.h*Math.PI/180, c=z.s/100*17;
+  return {a:Math.cos(rad)*c, b:Math.sin(rad)*c, l:z.l/100*10};
+}
+function buildSecPlan(s){
+  const p={active:false,tone:false,wb:false,sv:false,hasHue:false,hsl:[],zone:null,zkeys:[],add:{}};
+  p.tone = !!(s.exp||s.con||s.high||s.shad||s.white||s.black);
+  p.wb   = !!(s.temp||s.tint);
+  p.sv   = !!(s.sat||s.vib);
+  p.hsl  = HSLB.filter(b=>{const c=s.hsl[b.id]; return c&&(c.h||c.s||c.l);});
+  p.hasHue = p.hsl.length>0;
+  p.zkeys = WHEELS.filter(w=>{const z=s[w.id]; return z&&(z.s>0.5||z.l);});
+  if(p.zkeys.length){
+    p.zone=buildZoneLUT(s);
+    for(const w of p.zkeys) p.add[w.id]=wheelAdd(s[w.id]);
+  }
+  p.active = p.tone||p.wb||p.sv||p.hasHue||p.zkeys.length>0;
+  return p;
+}
+function applySec(L,a,b,s,p){
+  let dL=0;                       /* HSL／調色輪嘅亮度偏移集中喺收尾時一次過落 */
+  if(p.tone){
+    let x=L/100;
+    /* 曝光 ±100 → ±30L（約 3 級光圈）。原本 0.50 太猛，+60 已經爆三分一白位。
+       五個 tone 掣先夾埋成一個總偏移 d，再過 budget() —— 否則逐個疊加，
+       高光位會一次食晒 exp+high+white 三份，直接爆。 */
+    let d = s.exp/100*0.30;
+    if(s.shad)  d += s.shad/100 *0.30*(1-smoothstep(0.02,0.45,x));
+    if(s.black) d += s.black/100*0.26*(1-smoothstep(0.00,0.30,x));
+    if(s.high)  d += s.high/100 *0.30*smoothstep(0.55,0.98,x);
+    if(s.white) d += s.white/100*0.26*smoothstep(0.70,1.00,x);
+    x += budget(d,0.30,0.25);
+    if(s.con){
+      /* 對比用「有界 S 曲線」x²(3−2x)：天生鎖喺 [0,1] 入面，
+         唔似線性放大咁會將曝光偏移再乘大一次（舊版 ×(1+k·1.1)
+         令 +100 對比喺已推亮嘅圖上直接爆到 1.4）。負對比就用
+         圍繞 0.5 嘅線性壓平，同樣有界。
+         超出 [0,1] 就唔好再做 S —— 呢啲極端位交畀收尾嘅肩位處理，
+         否則 S 曲線會將 x<0 拉返去 0，反而食咗暗位。 */
+      const k=s.con/100;
+      if(k>0 && x>=0 && x<=1){ const ss=x*x*(3-2*x);
+                               x = x + (ss-x)*Math.min(1,k*1.15); }
+      else if(k<0){ x = 0.5 + (x-0.5)*(1+k*0.55); }
+    }
+    L = softClip(x)*100;
+  }
+  if(p.wb){ a += s.tint/100*14; b += s.temp/100*14; }
+  if(p.hasHue && (a*a+b*b)>2.25){
+    const HL=getHueLUT();
+    let ia=Math.round(a)+128; ia=ia<0?0:(ia>255?255:ia);
+    let ib=Math.round(b)+128; ib=ib<0?0:(ib>255?255:ib);
+    const h=HL[ia*256+ib];
+    let dh=0,ds=0,dl=0,wtot=0;
+    for(const bd of p.hsl){
+      const c=s.hsl[bd.id];
+      let d=Math.abs(h-bd.hue); if(d>180) d=360-d;
+      const w=GAUSS_LUT[Math.round(d)];
+      if(w<0.02) continue;
+      wtot+=w;
+      dh += w*c.h*0.40; ds += w*c.s*0.011; dl += w*c.l*0.16;
+    }
+    /* 相鄰 band 嘅高斯會重疊；一定要做加權平均，
+       否則一個 pixel 同時食幾份，7 個 band 全開會疊到 +40L 爆白 */
+    if(wtot>1){ dh/=wtot; ds/=wtot; dl/=wtot; }
+    if(dh){ const r=dh*Math.PI/180, cs=Math.cos(r), sn=Math.sin(r);
+            const na=a*cs-b*sn; b=a*sn+b*cs; a=na; }
+    if(ds){ const f=Math.max(0,1+ds); a*=f; b*=f; }
+    if(dl) dL+=dl;
+  }
+  if(p.zone){
+    let bin=Math.round(L/100*255); bin=bin<0?0:(bin>255?255:bin);
+    const z=p.zone;
+    let aa=0,bb=0,ll=0,wtot=0;
+    for(const w of p.zkeys){
+      const lut=z['w'+w.id.slice(1)];
+      if(!lut) continue;                 /* 防護：key 唔啱都唔好拖垮成個 render */
+      const t=p.add[w.id], k=lut[bin];
+      if(k<0.01) continue;
+      wtot+=k; aa+=t.a*k; bb+=t.b*k; ll+=t.l*k;
+    }
+    if(wtot>1){ aa/=wtot; bb/=wtot; ll/=wtot; }
+    a+=aa; b+=bb; dL+=ll;
+  }
+  if(p.sv){
+    if(s.vib){ const C=Math.hypot(a,b); const f=1+s.vib/100*1.0*(1-cl01(C/48)); a*=f; b*=f; }
+    if(s.sat){ const f=1+s.sat/100*0.9; a*=f; b*=f; }
+  }
+  /* 收尾：7 條 HSL 明度 + 3 個調色輪明度合計最多推 ~16L，
+     再多淨係收到 25%，避免全部推到盡時疊成一片白 */
+  if(dL) L = softClip(L/100 + budget(dL/100,0.16,0.25))*100;
+  const cm=Math.hypot(a,b);
+  if(cm>MAX_CHROMA){ a*=MAX_CHROMA/cm; b*=MAX_CHROMA/cm; }
+  return [clamp(L,0,100),a,b];
+}
+
+/* 一條龍：追色 + 二次創作 */
+function gradeRGB(r,g,b,grade,opt,sec,plan){
+  const lab=rgbToLab(Math.round(r),Math.round(g),Math.round(b));
+  let q=applyPixel(lab[0],lab[1],lab[2],grade,opt);
+  if(plan&&plan.active) q=applySec(q[0],q[1],q[2],sec,plan);
+  return labToRgb(q[0],q[1],q[2]);
+}
+function imageDataFrom(lab,grade,opt,sec,plan){
+  const n=lab.n, out=new ImageData(lab.w,lab.h), o=out.data;
+  const useSec = plan&&plan.active;
+  for(let i=0;i<n;i++){
+    let q=applyPixel(lab.L[i],lab.a[i],lab.b[i],grade,opt);
+    if(useSec) q=applySec(q[0],q[1],q[2],sec,plan);
+    const c=labToRgb(q[0],q[1],q[2]), p=i*4;
+    o[p]=c[0]; o[p+1]=c[1]; o[p+2]=c[2]; o[p+3]=255;
+  }
+  return out;
+}
+
+/* ============================================================
+   5. 方向
+   ============================================================ */
+const TH=1.6;
+function tint(da,db){
+  const p=[];
+  if(da>TH) p.push('推紅／洋紅'); else if(da<-TH) p.push('推青綠');
+  if(db>TH) p.push('推黃（加暖）'); else if(db<-TH) p.push('推藍（減暖）');
+  return p.length? p.join(' ＋ ') : '基本不變';
+}
+const sgn=v=>(v>=0?'+':'')+v.toFixed(1);
+const fmt1=v=>(v>0?'+':'')+v.toFixed(v%1?1:0);
+
+function buildDirection(src,ref,g,opt){
+  const items=[], lines=[];
+  const dL=ref.p50-src.p50;
+  const rR=ref.p90-ref.p10, sR=src.p90-src.p10;
+  const cRatio=sR>0.5? rR/sR : 1;
+  const lcRatio=src.lc>0.5? ref.lc/src.lc : 1;
+
+  if(lcRatio>1.45){
+    items.push({k:'光比 — 調色救唔到',v:`參考嘅局部對比係來稿 <em>${lcRatio.toFixed(2)}×</em>。呢個係<em>打燈</em>問題，唔係調色問題 —— 要供應商收窄 fill／加 key，調 LUT 都唔會出到嗰種立體感。`,cls:'bad'});
+    lines.push(`■ 光比（最緊要）：參考局部對比 ${lcRatio.toFixed(2)}× 於來稿。屬打燈問題，唔係調色。請供應商收窄 fill / 加強 key 光比，用 LUT 解決唔到。`);
+  }else if(lcRatio<0.7){
+    items.push({k:'光比 — 調色救唔到',v:`參考比來稿<em>柔</em> <em>${(1/lcRatio).toFixed(2)}×</em>。要<em>減光比／加 fill</em>，壓 contrast 只會令成件事灰埋。`,cls:'bad'});
+    lines.push(`■ 光比（最緊要）：來稿對比過強，參考柔 ${(1/lcRatio).toFixed(2)}×。請加 fill / 減 key，唔好靠壓 contrast 扮柔和。`);
+  }else{
+    items.push({k:'光比',v:`局部對比比例 <em>${lcRatio.toFixed(2)}×</em> —— 差唔多，<em>調色可以搞掂</em>。`,cls:'hot'});
+    lines.push(`■ 光比：來稿同參考差 ${((lcRatio-1)*100).toFixed(0)}%，光比大致吻合，剩低嘅用調色就收得掂。`);
+  }
+
+  const expTxt = Math.abs(dL)<2 ? '差唔多，唔使點改'
+               : (dL>0 ? `要<em>推亮 ${dL.toFixed(1)}</em> L` : `要<em>壓暗 ${Math.abs(dL).toFixed(1)}</em> L`);
+  items.push({k:'整體曝光（中位亮度）',v:`來稿 ${src.p50.toFixed(0)} → 目標 ${ref.p50.toFixed(0)}　${expTxt}`,cls:Math.abs(dL)<2?'':'hot'});
+  lines.push(`■ 曝光：來稿中位亮度 L=${src.p50.toFixed(0)}，目標 L=${ref.p50.toFixed(0)}，${dL>0?'推亮':'壓暗'} 約 ${Math.abs(dL).toFixed(0)} L（L 係 0–100 亮度標度，約 10 L ≈ 半級光圈）。`);
+
+  const cTxt = cRatio>1.12 ? `要<em>加對比 ${((cRatio-1)*100).toFixed(0)}%</em>`
+             : cRatio<0.88 ? `要<em>減對比 ${((1-cRatio)*100).toFixed(0)}%</em>` : '差唔多';
+  items.push({k:'對比（P10–P90 闊度）',v:`來稿 ${sR.toFixed(0)} → 目標 ${rR.toFixed(0)}　${cTxt}`,cls:(cRatio>1.12||cRatio<0.88)?'hot':''});
+  lines.push(`■ 對比：目標嘅 P10–P90 闊度係來稿嘅 ${cRatio.toFixed(2)}×，${cTxt.replace(/<[^>]+>/g,'')}。`);
+
+  const names=['陰影','中間調','高光'];
+  for(let k=0;k<3;k++){
+    if(!opt.useBands[k]){ lines.push(`■ ${names[k]}色調：唔跟目標（已關閉）`); continue; }
+    const da=g.dA[k], db=g.dB[k], sc=g.sC[k];
+    if(Math.abs(da)<TH && Math.abs(db)<TH && Math.abs(sc-1)<0.06) continue;
+    items.push({k:names[k]+'色調',v:`a <em>${sgn(da)}</em>　b <em>${sgn(db)}</em>　→ ${tint(da,db)}`,cls:'hot'});
+    lines.push(`■ ${names[k]}：a ${sgn(da)}，b ${sgn(db)}。${tint(da,db)}。飽和度 ×${sc.toFixed(2)}。`);
+  }
+
+  const wb=(g.dB[1]+g.dB[2])/2;
+  if(Math.abs(wb)>2.5){
+    const t = wb>0 ? '整體要<em>加暖</em>（黃／b 推向正）' : '整體要<em>減暖、偏冷</em>（b 推向負）';
+    items.push({k:'色溫方向（中高光）',v:`b 偏移 <em>${sgn(wb)}</em>　→ ${t}`,cls:'hot'});
+    lines.push(`■ 色溫方向：中高光 b 偏移 ${sgn(wb)}，${t.replace(/<[^>]+>/g,'')}。實際 K 數唔喺度估，請供應商按畫面白點自行微調。`);
+  }
+  return {items,text:lines.join('\n')};
+}
+
+/* 二次創作 → 供應商讀得明嘅文字 */
+function secSummary(s){
+  const out=[];
+  const add=(n,v)=>{ if(Math.abs(v)>0.5) out.push(n+fmt1(v)); };
+  add('曝光',s.exp); add('對比',s.con); add('高光',s.high);
+  add('陰影',s.shad); add('白位',s.white); add('黑位',s.black);
+  add('色溫（正=加暖／負=偏藍）',s.temp);
+  add('色調（正=洋紅／負=綠）',s.tint);
+  add('飽和度',s.sat); add('自然飽和',s.vib);
+  for(const b of HSLB){
+    const c=s.hsl[b.id];
+    if(c.h||c.s||c.l){
+      const bits=[];
+      if(c.h) bits.push('色調'+fmt1(c.h));
+      if(c.s) bits.push('飽和'+fmt1(c.s));
+      if(c.l) bits.push('明度'+fmt1(c.l));
+      out.push('HSL '+b.name+'：'+bits.join(' / '));
+    }
+  }
+  for(const w of WHEELS){
+    const z=s[w.id];
+    if(z.s>0.5||z.l) out.push('分區調色 '+w.name+'：色相 '+z.h+'° 強度 '+z.s+' 明度'+fmt1(z.l));
+  }
+  return out;
+}
+
+/* ============================================================
+   6. 內建 LOOK
+   ============================================================ */
+const PRESETS=[
+ {id:'neutral',name:'中性還原', dL:0,  dC:1.00,dA:[0,0,0],   dB:[0,0,0],   sC:[1,1,1]},
+ {id:'airy',   name:'明亮通透', dL:+8, dC:0.92,dA:[-1,0,1],  dB:[1,2,3],   sC:[0.9,1,1.05]},
+ {id:'moody',  name:'低調沉穩', dL:-9, dC:1.18,dA:[0,0,0],   dB:[-2,-1,0], sC:[0.75,0.85,0.9]},
+ {id:'teal',   name:'青橙電影', dL:-2, dC:1.10,dA:[-6,-1,3], dB:[-9,-2,7], sC:[1.15,1,1.1]},
+ {id:'jp',     name:'日系清新', dL:+6, dC:0.85,dA:[-3,-2,-1],dB:[-1,1,2],  sC:[0.8,0.9,0.95]},
+ {id:'film',   name:'復古膠片', dL:+3, dC:0.88,dA:[2,3,2],   dB:[3,5,4],   sC:[0.85,0.95,0.9]},
+ {id:'tech',   name:'冷調科技', dL:-1, dC:1.08,dA:[-4,-3,-2],dB:[-7,-4,-2],sC:[1.05,1,0.95]},
+ {id:'sun',    name:'暖陽',     dL:+4, dC:1.02,dA:[3,4,3],   dB:[6,7,5],   sC:[1.1,1.15,1.05]}
+];
+function makePseudoRef(src,p){
+  const c=p.dC, sp=src.p50;
+  return {
+    __preset:true, n:src.n, lc:src.lc,
+    p1:  Math.max(0, sp-(sp-src.p1 )*c),
+    p10: Math.max(0, sp-(sp-src.p10)*c),
+    p50: Math.max(0,Math.min(100, sp+p.dL)),
+    p90: Math.min(100, sp+(src.p90-sp)*c),
+    p99: Math.min(100, sp+(src.p99-sp)*c),
+    bandStats: src.bandStats.map((s,k)=>({a:s.a+p.dA[k], b:s.b+p.dB[k], c:s.c*p.sC[k], n:s.n}))
+  };
+}
+
+/* ============================================================
+   7. State
+   ============================================================ */
+const S={
+  vendorImg:null, vendorName:'',
+  vendorLabFull:null, vendorLabQuick:null, vendorAn:null, vendorOrig:null,
+  refs:[], customs:[],
+  /* 來稿庫：每張 shot 記住自己套設定（揀咗邊個 look + 全部微調 + checkbox） */
+  shots:[], shotIdx:-1,
+  active:-1, hover:-1,
+  mode:'single', split:0.5, hold:false, flip:false, dragging:null,
+  chromaStr:70, toneStr:45,
+  sec:newSec(), secPlan:null, hslSel:'orange',
+  outCanvas:null, lastGrade:null, sharpT:null,
+  pvKey:0, pvCache:new Map(), tileSize:'M',
+  zoom:0, panning:false,                       /* zoom: 0 = 適應視窗 */
+  dockFold:{shots:false,presets:true,refs:false}   /* 內建 LOOK 預設收起（用家話唔用） */
+};
+const cv=$('cv'), ctx=cv.getContext('2d');
+
+const opt=()=>({
+  strength:S.chromaStr/100,
+  toneStrength:S.toneStr/100,
+  useBands:[$('b0').checked,$('b1').checked,$('b2').checked],
+  skinProtect:$('skin').checked
+});
+const allItems=()=>[].concat(
+  PRESETS.map(p=>({kind:'preset',name:p.name,spec:p})),
+  S.refs,
+  S.customs
+);
+const itemCount=()=>PRESETS.length+S.refs.length+S.customs.length;
+
+function statsOf(i){
+  const it=allItems()[i];
+  if(!it) return null;
+  if(it.kind==='preset') return makePseudoRef(S.vendorAn,it.spec);
+  if(it.kind==='image')  return it.an;
+  /* 自訂 LOOK 自己冇統計，要用返佢個基準（內建 look 或 reference 圖） */
+  const p=PRESETS.find(x=>x.id===it.baseId);
+  if(p) return makePseudoRef(S.vendorAn,p);
+  const r=S.refs.find(x=>x.name===it.baseName);
+  if(r) return r.an;
+  return makePseudoRef(S.vendorAn,PRESETS[0]);
+}
+function gradeFor(i){ return buildGrade(S.vendorAn, statsOf(i), opt().useBands, $('tone').checked); }
+
+/* ---------- 影像工具 ---------- */
+function fitSize(img,mw,mh){
+  const s=Math.min(mw/img.width, mh/img.height, 1);
+  return {w:Math.max(1,Math.round(img.width*s)), h:Math.max(1,Math.round(img.height*s))};
+}
+function drawTo(src,w,h){
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const x=c.getContext('2d',{willReadFrequently:true});
+  x.imageSmoothingQuality='high'; x.drawImage(src,0,0,w,h);
+  return x.getImageData(0,0,w,h);
+}
+function idToCanvas(id){
+  const c=document.createElement('canvas'); c.width=id.width; c.height=id.height;
+  c.getContext('2d').putImageData(id,0,0); return c;
+}
+function imgToCanvas(img,w,h){
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  c.getContext('2d').drawImage(img,0,0,w,h); return c;
+}
+function imgToCanvasCover(img,w,h){
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const x=c.getContext('2d');
+  const s=Math.max(w/img.width, h/img.height);
+  const dw=img.width*s, dh=img.height*s;
+  x.drawImage(img,(w-dw)/2,(h-dh)/2,dw,dh);
+  return c;
+}
+function imgToCanvasFit(img,mw,mh){
+  const s=Math.min(mw/img.width, mh/img.height, 1);
+  const c=document.createElement('canvas');
+  c.width=Math.max(1,Math.round(img.width*s));
+  c.height=Math.max(1,Math.round(img.height*s));
+  c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  return c;
+}
+
+/* ============================================================
+   8. 自製 slider（拖 = 粗，Shift 拖 = 1/5 速度）
+   ============================================================ */
+const SLIDERS={};
+function makeSlider(host,key,cfg){
+  const el=document.createElement('div');
+  el.className='sl'; el.tabIndex=0; el.dataset.k=key;
+  el.innerHTML='<div class="sl-hd"><span class="sl-nm"></span><span class="sl-vl"></span></div>'+
+               '<div class="sl-tr"><div class="sl-fl"></div><div class="sl-kn"></div></div>';
+  el.querySelector('.sl-nm').textContent=cfg.label;
+  const vl=el.querySelector('.sl-vl'), tr=el.querySelector('.sl-tr'),
+        fl=el.querySelector('.sl-fl'), kn=el.querySelector('.sl-kn');
+  const min=cfg.min!==undefined?cfg.min:-100, max=cfg.max!==undefined?cfg.max:100,
+        def=cfg.def!==undefined?cfg.def:0, step=cfg.step||1;
+  let v=cfg.value!==undefined?cfg.value:def;
+
+  const q=x=>+(Math.round(x/step)*step).toFixed(4);
+  function fmt(x){
+    const s = step<1 ? x.toFixed(1) : String(Math.round(x));
+    return cfg.unit===false ? s : (s+(cfg.unit||''));
+  }
+  function paint(){
+    const t=(v-min)/(max-min);
+    if(min<0&&max>0){
+      const z=(0-min)/(max-min);
+      if(t>=z){ fl.style.left=(z*100)+'%'; fl.style.width=((t-z)*100)+'%'; }
+      else    { fl.style.left=(t*100)+'%'; fl.style.width=((z-t)*100)+'%'; }
+    }else{ fl.style.left='0%'; fl.style.width=(t*100)+'%'; }
+    kn.style.left=(t*100)+'%';
+    vl.textContent=fmt(v);
+    el.classList.toggle('mod', Math.abs(v-def)>1e-9);
+  }
+  /* mode:
+       true    = silent：淨係改值，乜都唔好 trigger（syncSecSliders 用）
+       'live'  = 拖緊／滾緊：即刻出「預覽」render，但唔 trigger onCommit
+       其他     = 直接落，連 onCommit 一齊
+     之前 onCommit 喺 pointermove 每格都 call 一次 → 每格都做全解 render，
+     拖桿會窒；而且色調強度／光暗跟隨兩條根本冇 render，所以「拉極都冇反應」。 */
+  let commitT=null;
+  function set(x,mode){
+    const nx=clamp(q(x),min,max);
+    if(nx===v){ paint(); return; }
+    v=nx; paint();
+    if(cfg.onInput) cfg.onInput(v);
+    /* 拖緊都要即刻見到 group dot 同色帶掣嘅改動標記。
+       呢兩樣好平（十幾個 classList.toggle），但舊版要等到 150ms 後嘅
+       onCommit 先 update，撳方向掣改 HSL 會見到 dot 慢半拍。 */
+    if(typeof updateGroupDots==='function') updateGroupDots();
+    if(typeof refreshHueBar==='function') refreshHueBar();
+    if(mode===true) return;
+    const live = (mode==='live');
+    if(typeof scheduleRender==='function') scheduleRender(live);  /* 拖緊用 quick，放手先全解 */
+    if(live){
+      /* 滾輪／鍵盤冇「放手」事件，所以 debounce 一下先做全解 + 重出縮圖 */
+      clearTimeout(commitT);
+      commitT=setTimeout(()=>{ if(cfg.onCommit) cfg.onCommit(v); },150);
+    }else if(cfg.onCommit) cfg.onCommit(v);
+  }
+  function setFromX(cx,mode){
+    const r=tr.getBoundingClientRect();
+    if(!r.width) return;
+    set(min+clamp((cx-r.left)/r.width,0,1)*(max-min),mode);
+  }
+  let dragging=false,lastShift=false,sx=0,sv=0;
+  tr.addEventListener('pointerdown',e=>{
+    e.preventDefault(); dragging=true; lastShift=e.shiftKey;
+    sx=e.clientX; sv=v;
+    try{ tr.setPointerCapture(e.pointerId); }catch(_){}
+    el.classList.add('dragging'); el.focus();
+    /* 撳落嗰一下都當 live：否則撳落去即刻做全解（1400px）render，
+       拖桿第一格就會窒一下。 */
+    if(!e.shiftKey) setFromX(e.clientX,'live');
+  });
+  tr.addEventListener('pointermove',e=>{
+    if(!dragging) return;
+    if(e.shiftKey!==lastShift){ lastShift=e.shiftKey; sx=e.clientX; sv=v; }
+    if(e.shiftKey){
+      const r=tr.getBoundingClientRect();
+      const w=r.width||180;
+      set(sv+(e.clientX-sx)*((max-min)/w)*0.2,'live');
+    }else setFromX(e.clientX,'live');
+  });
+  const endDrag=e=>{
+    if(!dragging) return;
+    dragging=false; el.classList.remove('dragging');
+    try{ tr.releasePointerCapture(e.pointerId); }catch(_){}
+    clearTimeout(commitT);
+    if(cfg.onCommit) cfg.onCommit(v);
+  };
+  tr.addEventListener('pointerup',endDrag);
+  tr.addEventListener('pointercancel',endDrag);
+  tr.addEventListener('dblclick',e=>{ e.preventDefault(); set(def,true); if(cfg.onCommit) cfg.onCommit(v); });
+  tr.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const d=(e.deltaY<0?1:-1)*step*(e.shiftKey?0.25:1);
+    set(v+d,'live');
+  },{passive:false});
+  el.addEventListener('keydown',e=>{
+    const s=(e.shiftKey?step/4:step);
+    if(e.key==='ArrowRight'||e.key==='ArrowUp'){ set(v+s,'live'); e.preventDefault(); e.stopPropagation(); }
+    else if(e.key==='ArrowLeft'||e.key==='ArrowDown'){ set(v-s,'live'); e.preventDefault(); e.stopPropagation(); }
+    else if(e.key==='Home'){ set(def); e.preventDefault(); e.stopPropagation(); }
+  });
+  /* 數字位都可以拖（Lightroom 式） */
+  let vdrag=false,vx=0,vv=0,vsh=false;
+  vl.addEventListener('pointerdown',e=>{
+    e.preventDefault(); e.stopPropagation(); vdrag=true; vx=e.clientX; vv=v; vsh=e.shiftKey;
+    try{ vl.setPointerCapture(e.pointerId); }catch(_){}
+  });
+  vl.addEventListener('pointermove',e=>{
+    if(!vdrag) return;
+    if(e.shiftKey!==vsh){ vsh=e.shiftKey; vx=e.clientX; vv=v; }
+    set(vv+(e.clientX-vx)*((max-min)/(e.shiftKey?900:220)),'live');
+  });
+  const vend=()=>{ if(!vdrag)return; vdrag=false; clearTimeout(commitT); if(cfg.onCommit) cfg.onCommit(v); };
+  vl.addEventListener('pointerup',vend);
+  vl.addEventListener('pointercancel',vend);
+
+  paint();
+  if(host) host.appendChild(el);
+  const api={el,get:()=>v,set:x=>set(x,true),def,paint,label:cfg.label};
+  SLIDERS[key]=api;
+  return api;
+}
+
+/* ============================================================
+   9. 左欄：摺疊群組
+   ============================================================ */
+const SECDEF=[
+  {k:'exp',  label:'曝光',      min:-100,max:100,def:0},
+  {k:'con',  label:'對比',      min:-100,max:100,def:0},
+  {k:'high', label:'高光',      min:-100,max:100,def:0},
+  {k:'shad', label:'陰影',      min:-100,max:100,def:0},
+  {k:'white',label:'白位',      min:-100,max:100,def:0},
+  {k:'black',label:'黑位',      min:-100,max:100,def:0},
+  {k:'temp', label:'色溫　冷←→暖',min:-100,max:100,def:0},
+  {k:'tint', label:'色調　綠←→洋紅',min:-100,max:100,def:0},
+  {k:'sat',  label:'飽和度',    min:-100,max:100,def:0},
+  {k:'vib',  label:'自然飽和',  min:-100,max:100,def:0}
+];
+function secChanged(){ S.pvKey++; S.pvCache.clear(); scheduleRender(); updateGroupDots(); }
+function secCommitted(){ renderPresets(); }
+
+function buildLeftPanel(){
+  const box=$('grpbox'); box.innerHTML='';
+
+  /* --- 追色（永遠開） --- */
+  const g1=mkGroup(box,'match','追色（參考匹配）',true);
+  /* 呢兩條之前得 onInput 同 renderPresets() —— 主畫面從來冇 render 過，
+     所以「拉極都冇反應」。而家 set() 會自動出預覽，onCommit 再出全解 + 重出縮圖。 */
+  makeSlider(g1.body,'chromaStr',{label:'色調強度',min:0,max:100,def:70,value:S.chromaStr,unit:'%',
+    onInput:v=>{S.chromaStr=v;},
+    onCommit:()=>{S.pvKey++;S.pvCache.clear();renderPresets();scheduleRender();}});
+  makeSlider(g1.body,'toneStr',{label:'光暗跟隨',min:0,max:100,def:45,value:S.toneStr,unit:'%',
+    onInput:v=>{S.toneStr=v;},
+    onCommit:()=>{S.pvKey++;S.pvCache.clear();renderPresets();scheduleRender();}});
+
+  const bandWrap=document.createElement('div');
+  bandWrap.className='checks';
+  bandWrap.style.cssText='display:flex;flex-direction:column;gap:6px;margin:6px 0 8px';
+  [['b0','陰影色調',true],['b1','中間調色調',true],['b2','高光色調',true]].forEach(([id,lb,ck])=>{
+    const l=document.createElement('label'); l.className='chk';
+    l.innerHTML='<input type="checkbox" id="'+id+'" '+(ck?'checked':'')+'> '+lb;
+    l.querySelector('input').addEventListener('change',()=>{ S.pvKey++; S.pvCache.clear(); scheduleRender(); });
+    bandWrap.appendChild(l);
+  });
+  g1.body.appendChild(bandWrap);
+
+  const optWrap=document.createElement('div');
+  optWrap.className='checks';
+  optWrap.style.cssText='display:flex;flex-direction:column;gap:6px';
+  [['tone','跟 reference 改光暗分佈',true],['skin','保護膚色',true]].forEach(([id,lb,ck])=>{
+    const l=document.createElement('label'); l.className='chk';
+    l.innerHTML='<input type="checkbox" id="'+id+'" '+(ck?'checked':'')+'> '+lb;
+    l.querySelector('input').addEventListener('change',()=>{
+      S.pvKey++; S.pvCache.clear();
+      if(id==='tone') renderPresets();
+      scheduleRender();
+    });
+    optWrap.appendChild(l);
+  });
+  g1.body.appendChild(optWrap);
+  g1.secKeys=['chromaStr','toneStr'];
+
+  /* --- 光暗 --- */
+  const g2=mkGroup(box,'tone','光暗 TONE',false);
+  ['exp','con','high','shad','white','black'].forEach(k=>{
+    const d=SECDEF.find(x=>x.k===k);
+    makeSlider(g2.body,k,{label:d.label,min:d.min,max:d.max,def:d.def,value:S.sec[k],
+      onInput:v=>{S.sec[k]=v;},onCommit:()=>{secChanged();secCommitted();}});
+  });
+  g2.secKeys=['exp','con','high','shad','white','black'];
+
+  /* --- 白平衡 --- */
+  const g3=mkGroup(box,'wb','白平衡 WB',false);
+  ['temp','tint'].forEach(k=>{
+    const d=SECDEF.find(x=>x.k===k);
+    makeSlider(g3.body,k,{label:d.label,min:d.min,max:d.max,def:d.def,value:S.sec[k],
+      onInput:v=>{S.sec[k]=v;},onCommit:()=>{secChanged();secCommitted();}});
+  });
+  g3.secKeys=['temp','tint'];
+
+  /* --- 色彩 --- */
+  const g4=mkGroup(box,'col','色彩 SATURATION',false);
+  ['sat','vib'].forEach(k=>{
+    const d=SECDEF.find(x=>x.k===k);
+    makeSlider(g4.body,k,{label:d.label,min:d.min,max:d.max,def:d.def,value:S.sec[k],
+      onInput:v=>{S.sec[k]=v;},onCommit:()=>{secChanged();secCommitted();}});
+  });
+  g4.secKeys=['sat','vib'];
+
+  /* --- HSL --- */
+  const g5=mkGroup(box,'hsl','HSL 單色微調',false);
+  const bar=document.createElement('div'); bar.className='huebar';
+  HSLB.forEach(b=>{
+    const btn=document.createElement('button');
+    btn.type='button'; btn.dataset.h=b.id; btn.style.background=b.sw;
+    btn.setAttribute('aria-label',b.name);
+    btn.onclick=()=>{ S.hslSel=b.id; refreshHueBar(); buildHslSliders(g5.body); };
+    bar.appendChild(btn);
+  });
+  g5.body.appendChild(bar);
+  g5.hslHost=document.createElement('div'); g5.hslHost.className='hslbox';
+  g5.body.appendChild(g5.hslHost);
+  buildHslSliders(g5.body);
+  g5.secKeys=null; g5.isHsl=true;
+  refreshHueBar();
+
+  /* --- 分區調色 --- */
+  const g6=mkGroup(box,'wheels','分區調色 COLOR GRADING',false);
+  const wr=document.createElement('div'); wr.className='wheels';
+  WHEELS.forEach(w=>{
+    const d=document.createElement('div'); d.className='wheel';
+    const c=document.createElement('canvas'); c.width=68; c.height=68;
+    c.dataset.w=w.id; c.setAttribute('aria-label',w.name+'調色輪');
+    d.appendChild(c);
+    const lb=document.createElement('div'); lb.className='wlb';
+    lb.innerHTML=w.name+'<b data-w="'+w.id+'"></b>';
+    d.appendChild(lb);
+    wr.appendChild(d);
+    wireWheel(c,w.id);
+  });
+  g6.body.appendChild(wr);
+  ['wsh','wmid','whi'].forEach(k=>{
+    const w=WHEELS.find(x=>x.id===k);
+    makeSlider(g6.body,k+'_l',{label:w.name+'明度',min:-100,max:100,def:0,value:S.sec[k].l,
+      onInput:v=>{S.sec[k].l=v;},onCommit:()=>{secChanged();drawAllWheels();secCommitted();}});
+  });
+  makeSlider(g6.body,'wblend',{label:'融合',min:0,max:100,def:50,value:S.sec.wblend,
+    onInput:v=>{S.sec.wblend=v;},onCommit:()=>{secChanged();secCommitted();}});
+  makeSlider(g6.body,'wbal',{label:'平衡　陰影←→高光',min:-100,max:100,def:0,value:S.sec.wbal,
+    onInput:v=>{S.sec.wbal=v;},onCommit:()=>{secChanged();secCommitted();}});
+  g6.secKeys=null; g6.isWheel=true;
+  drawAllWheels();
+  updateGroupDots();
+}
+function mkGroup(host,id,title,open){
+  const g=document.createElement('div');
+  g.className='grp'+(open?' open':''); g.dataset.g=id;
+  g.innerHTML='<button class="grp-hd" type="button" aria-expanded="'+(open?'true':'false')+'">'+
+    '<span class="dot"></span><span class="nm"></span><span class="sp"></span>'+
+    '<span class="cnt"></span><span class="chev">▾</span></button><div class="grp-bd"></div>';
+  g.querySelector('.nm').textContent=title;
+  const hd=g.querySelector('.grp-hd'), body=g.querySelector('.grp-bd');
+  hd.onclick=()=>{ const on=g.classList.toggle('open'); hd.setAttribute('aria-expanded',on?'true':'false'); };
+  host.appendChild(g);
+  return {el:g,hd,body,id};
+}
+function buildHslSliders(host){
+  const box=host.querySelector('.hslbox'); if(!box) return;
+  box.innerHTML='';
+  const b=HSLB.find(x=>x.id===S.hslSel)||HSLB[0];
+  /* 一定要動態攞：applyCustom / 重設會換咗成個 S.sec 物件 */
+  const cc=()=>S.sec.hsl[b.id];
+  const hd=document.createElement('div');
+  hd.style.cssText='font-size:10.5px;color:var(--tx2);margin-bottom:5px;display:flex;align-items:center;gap:6px';
+  hd.innerHTML='<span style="width:11px;height:11px;border-radius:3px;background:'+b.sw+';display:inline-block"></span>'+b.name+'（'+b.hue+'°）';
+  box.appendChild(hd);
+  [['h','色調',-100,100],['s','飽和',-100,100],['l','明度',-100,100]].forEach(([kk,lb,mn,mx])=>{
+    makeSlider(box,'hsl_'+b.id+'_'+kk,{label:lb,min:mn,max:mx,def:0,value:cc()[kk],
+      onInput:v=>{cc()[kk]=v;},onCommit:()=>{secChanged();refreshHueBar();secCommitted();}});
+  });
+}
+function refreshHueBar(){
+  document.querySelectorAll('.huebar button').forEach(btn=>{
+    const id=btn.dataset.h, c=S.sec.hsl[id];
+    btn.classList.toggle('on', id===S.hslSel);
+    btn.classList.toggle('mod', !!(c&&(c.h||c.s||c.l)));
+  });
+}
+function updateGroupDots(){
+  document.querySelectorAll('.grp').forEach(g=>{
+    let n=0;
+    if(g.dataset.g==='hsl'){
+      for(const b of HSLB){ const c=S.sec.hsl[b.id]; if(c.h||c.s||c.l) n++; }
+    }else if(g.dataset.g==='wheels'){
+      for(const w of WHEELS){ const z=S.sec[w.id]; if(z.s>0.5||z.l) n++; }
+      if(S.sec.wblend!==50) n++;
+      if(S.sec.wbal!==0) n++;
+    }else if(g.dataset.g==='match'){
+      if(S.chromaStr!==70) n++;
+      if(S.toneStr!==45) n++;
+      ['b0','b1','b2','tone','skin'].forEach(id=>{ const e=$(id); if(e&&!e.checked) n++; });
+    }else{
+      const keys={tone:['exp','con','high','shad','white','black'],wb:['temp','tint'],col:['sat','vib']}[g.dataset.g]||[];
+      keys.forEach(k=>{ if(Math.abs(S.sec[k])>0.5) n++; });
+    }
+    g.classList.toggle('mod',n>0);
+    const cnt=g.querySelector('.cnt'); if(cnt) cnt.textContent=n? String(n):'';
+  });
+}
+function drawAllWheels(){
+  document.querySelectorAll('.wheel canvas').forEach(c=>{
+    const w=WHEELS.find(x=>x.id===c.dataset.w); if(!w) return;
+    drawWheel(c,S.sec[w.id],w.L0);
+    const lb=document.querySelector('.wlb b[data-w="'+w.id+'"]');
+    if(lb){
+      const z=S.sec[w.id];
+      lb.textContent = z.s>0.5 ? (z.s+' @ '+z.h+'°') : '—';
+      lb.style.color = z.s>0.5 ? 'var(--acc)' : 'var(--tx3)';
+    }
+  });
+}
+function drawWheel(canvas,zone,L0){
+  const S0=68,R=32;
+  canvas.width=S0; canvas.height=S0;
+  const x=canvas.getContext('2d');
+  const id=x.createImageData(S0,S0), d=id.data;
+  for(let y=0;y<S0;y++)for(let xx=0;xx<S0;xx++){
+    const dx=(xx-S0/2)/R, dy=(y-S0/2)/R, p=(y*S0+xx)*4;
+    if(dx*dx+dy*dy>1){ d[p+3]=0; continue; }
+    const c=labToRgb(L0, dx*46, dy*46);
+    d[p]=c[0]; d[p+1]=c[1]; d[p+2]=c[2]; d[p+3]=255;
+  }
+  x.putImageData(id,0,0);
+  const rad=zone.h*Math.PI/180, rr=clamp(zone.s/100,0,1);
+  x.beginPath();
+  x.arc(S0/2+Math.cos(rad)*rr*R, S0/2+Math.sin(rad)*rr*R, 4.5, 0, 6.2832);
+  x.fillStyle='#fff'; x.fill();
+  x.lineWidth=2; x.strokeStyle='rgba(0,0,0,.7)'; x.stroke();
+}
+function wireWheel(canvas,wid){
+  const Z=()=>S.sec[wid];               /* 動態：S.sec 會被換物件 */
+  let on=false, ax=0,ay=0, h0=0,s0=0, sh=false;
+  function pick(e,anchor){
+    const z=Z();
+    const r=canvas.getBoundingClientRect();
+    if(!r.width||!r.height) return;
+    if(e.shiftKey){
+      /* 精細：由撳低嗰點起計，拉成個輪闊先得 30% */
+      const dx=(e.clientX-ax)/r.width, dy=(e.clientY-ay)/r.height;
+      z.s = Math.round(clamp(s0 + Math.hypot(dx,dy)*30, 0, 100));
+      if(Math.hypot(dx,dy)>0.01){ let h=Math.atan2(dy,dx)*180/Math.PI; if(h<0)h+=360; z.h=Math.round(h); }
+    }else{
+      const dx=(e.clientX-r.left)/r.width*2-1, dy=(e.clientY-r.top)/r.height*2-1;
+      const rr=Math.hypot(dx,dy);
+      z.s = Math.round(clamp(rr,0,1)*100);
+      if(rr>0.02){ let h=Math.atan2(dy,dx)*180/Math.PI; if(h<0)h+=360; z.h=Math.round(h); }
+    }
+    if(anchor){ ax=e.clientX; ay=e.clientY; h0=z.h; s0=z.s; }
+    drawAllWheels(); secChanged();
+  }
+  canvas.addEventListener('pointerdown',e=>{
+    e.preventDefault(); e.stopPropagation(); on=true; sh=e.shiftKey;
+    try{ canvas.setPointerCapture(e.pointerId); }catch(_){}
+    pick(e,true);
+  });
+  canvas.addEventListener('pointermove',e=>{
+    if(!on) return;
+    if(e.shiftKey!==sh){ sh=e.shiftKey; pick(e,true); return; }
+    pick(e,false);
+  });
+  const end=()=>{ if(!on) return; on=false; renderPresets(); };
+  canvas.addEventListener('pointerup',end);
+  canvas.addEventListener('pointercancel',end);
+  canvas.addEventListener('dblclick',e=>{
+    e.stopPropagation();
+    const z=Z(); z.h=0; z.s=0; z.l=0;
+    const sl=SLIDERS[wid+'_l']; if(sl) sl.set(0);
+    drawAllWheels(); secChanged(); renderPresets();
+  });
+}
+
+/* ============================================================
+   10. 匯入
+   ============================================================ */
+/* 舊邏輯係「第一張做來稿、之後全部做參考」—— 換供應商素材要成個 reload，好麻煩。
+   而家：拖入／撳 ＋ = 加落來稿庫（可以一次過拖十張）；
+   參考圖有自己一條 REFERENCE，拖落去或者撳佢個 ＋ 先會當參考。 */
+function handleFile(file,where){
+  if(!file || !file.type.startsWith('image/')) return;
+  const url=URL.createObjectURL(file);
+  const im=new Image();
+  im.onload=()=>{
+    if(where==='ref') addRef(im,file.name);
+    else              addShot(im,file.name);
+    URL.revokeObjectURL(url);
+  };
+  im.onerror=()=>{ toast('讀唔到呢張圖'); URL.revokeObjectURL(url); };
+  im.src=url;
+}
+function pickFilesFor(where){
+  const inp=document.createElement('input');
+  inp.type='file'; inp.accept='image/*'; inp.multiple=true;
+  inp.onchange=()=>{ Array.prototype.forEach.call(inp.files,f=>handleFile(f,where)); };
+  inp.click();
+}
+/* ---------- 來稿庫（多張 shot，每張記住自己套設定） ---------- */
+/* analyze() 連 L/a/b 三條 Float32Array 一齊返（700×700 ≈ 5.9MB）；
+   之後 grade 淨係用統計數字（cdf / bandStats / p1–p99 / lc），
+   所以入庫前剝走陣列 —— 唔係 10 張來稿就食 60MB。 */
+function slimAn(an){
+  if(!an) return an;
+  return {n:an.n,w:an.w,h:an.h,hist:an.hist,cdf:an.cdf,bandStats:an.bandStats,lc:an.lc,
+          p1:an.p1,p10:an.p10,p50:an.p50,p90:an.p90,p99:an.p99};
+}
+function shortName(name,fallback){
+  return (name||fallback).replace(/\.[^.]+$/,'');
+}
+function addShot(img,name){
+  const q=fitSize(img,620,420);
+  S.shots.push({name:shortName(name,'shot '+(S.shots.length+1)), img,
+                an:slimAn(analyze(drawTo(img,700,700))),
+                labQuick:labOf(drawTo(img,q.w,q.h)),
+                st:null});          /* st=null：第一次切過去先用預設值 */
+  renderShots();
+  switchShot(S.shots.length-1);
+  toast('加咗「'+S.shots[S.shots.length-1].name+'」');
+}
+function shotState(){
+  return {
+    active:S.active, chromaStr:S.chromaStr, toneStr:S.toneStr,
+    bands:opt().useBands.slice(), tone:$('tone').checked, skin:$('skin').checked,
+    sec:JSON.parse(JSON.stringify(S.sec))
+  };
+}
+function saveShotState(){
+  const sh=S.shots[S.shotIdx]; if(!sh) return;
+  sh.st=shotState();
+}
+function applyShotState(st){
+  setCheck('b0',!!st.bands[0]); setCheck('b1',!!st.bands[1]); setCheck('b2',!!st.bands[2]);
+  setCheck('tone',!!st.tone);   setCheck('skin',!!st.skin);
+  S.chromaStr=st.chromaStr; S.toneStr=st.toneStr;
+  if(SLIDERS.chromaStr) SLIDERS.chromaStr.set(st.chromaStr);
+  if(SLIDERS.toneStr)   SLIDERS.toneStr.set(st.toneStr);
+  S.sec=JSON.parse(JSON.stringify(st.sec));
+  syncSecSliders();
+  S.active=Math.min(Math.max(0,st.active|0), Math.max(0,itemCount()-1));
+  updateGroupDots(); refreshHueBar(); buildHslSliders(currentHslHost());
+}
+function defaultShotState(){
+  /* active 繼承「而家揀緊嗰個 look／reference」而唔係跳返 0（中性還原）。
+     中性還原係 by design 乜都唔做 —— 如果每加一張新來稿就彈返去中性，
+     用家拖入第 2、3 張會以為「拉極都冇反應」。
+     實際 workflow 係：揀好一張 reference，再逐張 vendor render 擺入嚟對。 */
+  return {active:Math.max(0,S.active|0),chromaStr:70,toneStr:45,
+          bands:[true,true,true],tone:true,skin:true,sec:newSec()};
+}
+function switchShot(i){
+  if(i<0||i>=S.shots.length) return;
+  if(i===S.shotIdx) return;
+  saveShotState();
+  S.shotIdx=i;
+  S.hover=-1; S.hold=false;              /* 換 shot 一定要清 hover，否則會 render 錯張 */
+  const sh=S.shots[i];
+  S.vendorImg=sh.img; S.vendorName=sh.name;
+  S.vendorAn=sh.an;
+  S.vendorLabQuick=sh.labQuick;
+  const f=fitSize(sh.img,1400,900);
+  S.vendorLabFull=labOf(drawTo(sh.img,f.w,f.h));
+  S.vendorOrig   =imgToCanvas(sh.img,f.w,f.h);
+  $('empty').hidden=true; cv.hidden=false;
+  applyShotState(sh.st||defaultShotState());
+  S.pvKey++; S.pvCache.clear();
+  renderShots(); renderPresets(); renderRefs(); drawAllWheels();
+  $('shotname').textContent=sh.name+'　'+sh.img.width+'×'+sh.img.height;
+  $('hstatus').textContent='來稿 '+sh.img.width+'×'+sh.img.height;
+  $('stat2').textContent='預覽 '+f.w+'×'+f.h+'　·　分析 '+(S.vendorAn.n/1000).toFixed(0)+'k px';
+  S.zoom=0; applyZoom();
+  if(S.mode==='grid') renderGrid(); else render(false);
+}
+function removeShot(i){
+  if(i<0||i>=S.shots.length) return;
+  if(S.shots.length<=1){ toast('得返一張，唔刪得'); return; }
+  const nm=S.shots[i].name;
+  S.shots.splice(i,1);
+  S.shotIdx=-1;                                     /* 張圖換咗，強制重載 */
+  switchShot(Math.min(i,S.shots.length-1));
+  toast('移除咗「'+nm+'」');
+}
+/* 換「呢張」嘅圖，但 keep 住佢喺庫入面嘅位置同名 */
+function replaceShot(file){
+  if(!file||!file.type.startsWith('image/')) return;
+  const url=URL.createObjectURL(file);
+  const im=new Image();
+  im.onload=()=>{
+    const sh=S.shots[S.shotIdx];
+    const name=shortName(file.name,S.vendorName||'shot');
+    const q=fitSize(im,620,420), f=fitSize(im,1400,900);
+    const an=slimAn(analyze(drawTo(im,700,700)));
+    S.vendorImg=im; S.vendorName=name;
+    S.vendorAn=an;
+    S.vendorLabQuick=labOf(drawTo(im,q.w,q.h));
+    S.vendorLabFull =labOf(drawTo(im,f.w,f.h));
+    S.vendorOrig    =imgToCanvas(im,f.w,f.h);
+    if(sh){ sh.img=im; sh.name=name; sh.an=an; sh.labQuick=S.vendorLabQuick; sh.st=null; }
+    URL.revokeObjectURL(url);
+    S.pvKey++; S.pvCache.clear();
+    renderShots();
+    $('shotname').textContent=name+'　'+im.width+'×'+im.height;
+    $('hstatus').textContent='來稿 '+im.width+'×'+im.height;
+    S.zoom=0; applyZoom();
+    render(false);
+    toast('換咗「'+name+'」');
+  };
+  im.onerror=()=>{ toast('讀唔到呢張圖'); URL.revokeObjectURL(url); };
+  im.src=url;
+}
+function shotTweaked(st){
+  if(!st) return false;
+  if(st.active!==0) return true;
+  if(st.chromaStr!==70||st.toneStr!==45) return true;
+  if(!st.tone||!st.skin) return true;
+  if(st.bands.some(b=>!b)) return true;
+  try{ return secSummary(st.sec).length>0; }catch(_){ return false; }
+}
+function renderShots(){
+  const box=$('shots'); if(!box) return;
+  box.innerHTML='';
+  const add=document.createElement('button');
+  add.className='tile add'; add.type='button';
+  add.innerHTML='<span class="plus">＋</span><span>拖入 / ⌘V</span>';
+  add.setAttribute('aria-label','加入來稿');
+  add.onclick=()=>pickFiles();
+  box.appendChild(add);
+
+  S.shots.forEach((sh,i)=>{
+    const on=S.shotIdx===i;
+    const t=document.createElement('div');
+    t.className='tile shot'+(on?' on':'');
+    t.setAttribute('role','radio'); t.setAttribute('aria-checked',on?'true':'false');
+    t.tabIndex=on?0:-1;
+    t.appendChild(imgToCanvasCover(sh.img,208,104));
+    t.appendChild(mkLabel(sh.name));
+    const n=document.createElement('div'); n.className='sno'; n.textContent=(i+1);
+    t.appendChild(n);
+    if(!on && shotTweaked(sh.st)){
+      const d=document.createElement('div'); d.className='done'; d.textContent='已較';
+      t.appendChild(d);
+    }
+    const rm=document.createElement('button');
+    rm.className='rm'; rm.type='button'; rm.textContent='×';
+    rm.setAttribute('aria-label','移除 '+sh.name);
+    rm.onclick=e=>{ e.stopPropagation(); removeShot(i); };
+    t.appendChild(rm);
+    t.onclick=()=>switchShot(i);
+    t.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); switchShot(i); } };
+    box.appendChild(t);
+  });
+  const n=S.shots.length;
+  $('shotcount').textContent = n
+    ? n+' 張 · 撳就跳過去 · 每張記住自己套設定（而家第 '+(S.shotIdx+1)+' 張）'
+    : '拖幾多張都得 · 逐張撳 · 每張記住自己套設定';
+}
+function addRef(img,name){
+  S.refs.push({kind:'image',
+    name:shortName(name,'ref '+(S.refs.length+1)),
+    img, an:slimAn(analyze(drawTo(img,700,700)))});
+  renderRefs();
+  setActive(PRESETS.length+S.refs.length-1);
+  toast('加咗「'+S.refs[S.refs.length-1].name+'」');
+}
+
+/* ============================================================
+   11. 渲染
+   ============================================================ */
+/* 層次擠壓警告。
+   全部掣推到盡嗰陣，實測有 68% 像素塞喺最高 2L 之內 —— 呢個係物理正確
+   （曝光 +100 已經係 3 級光圈，再疊對比+高光+白位+7 條 HSL 明度+3 個輪明度，
+   Lightroom 咁推一樣爆），但用家一定要睇到，否則會以為自己張圖仲有層次、
+   照抄個數俾供應商。淨係喺全解 render（拖桿放手嗰下）先計，
+   用 quick lab + stride 抽樣，所以唔會拖慢拖桿。 */
+function flatWarn(lab,g,opt,sec,plan){
+  const n=lab.n, stride=Math.max(1,Math.floor(n/20000));
+  const hist=new Int32Array(256); let cnt=0;
+  for(let i=0;i<n;i+=stride){
+    let q=applyPixel(lab.L[i],lab.a[i],lab.b[i],g,opt);
+    if(plan&&plan.active) q=applySec(q[0],q[1],q[2],sec,plan);
+    let b=Math.round(q[0]); if(b<0)b=0; else if(b>255)b=255;
+    hist[b]++; cnt++;
+  }
+  if(!cnt) return {flat:0,topL:0};
+  let top=255; while(top>0 && hist[top]===0) top--;
+  const near=hist[top]+(top>0?hist[top-1]:0)+(top>1?hist[top-2]:0);
+  return {flat:near/cnt*100, topL:top};
+}
+const FLAT_WARN=35;                 /* 高過呢個 % 就彈警告 */
+function updateFlatWarn(lab,g,opt,sec,plan){
+  const el=$('warnflat'); if(!el) return;
+  if(S.mode==='grid'){ el.hidden=true; return; }
+  const fw=flatWarn(lab,g,opt,sec,plan);
+  S.flat=fw.flat;
+  if(fw.flat>FLAT_WARN){
+    el.hidden=false;
+    el.innerHTML='<b>層次擠壓 '+fw.flat.toFixed(0)+'%</b> 最高得返 '+fw.topL+
+                 'L · 掣位推太盡，拉返少少先好抄數俾供應商';
+  } else el.hidden=true;
+}
+function render(quick){
+  if(!S.vendorImg || !S.vendorAn) return;
+  const idx = S.hover>=0 ? S.hover : S.active;
+  if(idx<0){ S.outCanvas=null; paint(); if($('warnflat')) $('warnflat').hidden=true; return; }
+  const t0=performance.now();
+  const g=gradeFor(idx);
+  S.lastGrade=g;
+  S.secPlan=buildSecPlan(S.sec);
+  const lab = quick ? S.vendorLabQuick : S.vendorLabFull;
+  const o=opt();
+  S.outCanvas = idToCanvas(imageDataFrom(lab,g,o,S.sec,S.secPlan));
+  paint();
+  updateDirection(idx,g);
+  if(!quick) updateFlatWarn(S.vendorLabQuick,g,o,S.sec,S.secPlan);
+  $('cstat').textContent=(quick?'預覽':'全解')+' · '+(performance.now()-t0).toFixed(0)+'ms';
+}
+function drawFit(c2d,img,x,y,w,h){
+  if(!img||!img.width) return;
+  const s=Math.min(w/img.width,h/img.height);
+  const dw=img.width*s, dh=img.height*s;
+  c2d.drawImage(img, x+(w-dw)/2, y+(h-dh)/2, dw, dh);
+}
+function paint(){
+  if(!S.vendorImg) return;
+  if(S.mode==='grid') return;
+  const W=S.vendorLabFull.w, H=S.vendorLabFull.h;
+  if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
+  const after = S.outCanvas || S.vendorOrig;
+  const showBefore = S.hold || S.flip;
+
+  if(S.mode==='side'){
+    const lw=Math.round(W*S.split), rw=W-lw;
+    ctx.fillStyle='#0d0f13'; ctx.fillRect(0,0,W,H);
+    drawFit(ctx,S.vendorOrig,0,0,lw,H);
+    drawFit(ctx,after,lw,0,rw,H);
+    ctx.strokeStyle='rgba(79,195,161,.95)'; ctx.lineWidth=Math.max(1,Math.round(W/700));
+    ctx.beginPath(); ctx.moveTo(lw,0); ctx.lineTo(lw,H); ctx.stroke();
+  }else if(S.mode==='wipe'){
+    ctx.clearRect(0,0,W,H);
+    ctx.drawImage(after,0,0,W,H);
+    const wx=Math.round(W*S.split);
+    ctx.save(); ctx.beginPath(); ctx.rect(0,0,wx,H); ctx.clip();
+    ctx.drawImage(S.vendorOrig,0,0,W,H); ctx.restore();
+    ctx.strokeStyle='rgba(79,195,161,.95)'; ctx.lineWidth=Math.max(1,Math.round(W/700));
+    ctx.beginPath(); ctx.moveTo(wx,0); ctx.lineTo(wx,H); ctx.stroke();
+    ctx.fillStyle='rgba(79,195,161,.95)';
+    const hs=Math.max(6,Math.round(W/160));
+    ctx.beginPath(); ctx.moveTo(wx-hs,H/2-hs); ctx.lineTo(wx+hs,H/2); ctx.lineTo(wx-hs,H/2+hs); ctx.closePath(); ctx.fill();
+  }else{
+    ctx.clearRect(0,0,W,H);
+    ctx.drawImage(showBefore? S.vendorOrig : after, 0,0,W,H);
+  }
+  const pill=$('holdpill');
+  pill.hidden = (S.mode!=='single');
+  if(S.mode==='single'){
+    pill.classList.toggle('act',showBefore);
+    pill.textContent = showBefore ? '原圖 BEFORE' : '撳實睇原圖 · 或撳 `';
+  }
+  $('badgeL').hidden = !(S.mode==='side');
+  $('badgeR').hidden = !(S.mode==='side');
+  applyZoom();          /* 每次重繪都要守住 zoom（轉 before/after 都唔好彈返適應） */
+}
+/* ---------- zoom / pan ----------
+   張圖用 CSS 尺寸放大，唔使 re-render，所以 zoom 係零成本。
+   zoom: 0 = 適應視窗；>0 = 相對「適應」嘅倍率。 */
+const viewport=$('viewport');
+let spaceDown=false;
+function fitScale(){
+  if(!S.vendorLabFull) return 1;
+  const W=S.vendorLabFull.w, H=S.vendorLabFull.h;
+  const r=viewport.getBoundingClientRect();
+  const pad=32;                                  /* #viewport 有 16px padding ×2 */
+  return Math.min((r.width-pad)/W,(r.height-pad)/H)||1;
+}
+function applyZoom(){
+  if(!S.vendorLabFull) return;
+  const W=S.vendorLabFull.w, H=S.vendorLabFull.h, el=$('zpct');
+  if(S.zoom<=0){
+    /* 適應模式都落明確 px：靠 max-width:100% 嘅話，canvas 嘅實際闊度
+       由瀏覽器 layout 決定，setZoom(2) 之後 fitScale() 會量到唔同嘅值，
+       倍率會飄。統一由 JS 算，倍率先會準。 */
+    const s0=fitScale();
+    cv.style.maxWidth='none'; cv.style.maxHeight='none';
+    cv.style.width =Math.round(W*s0)+'px';
+    cv.style.height=Math.round(H*s0)+'px';
+    if(el) el.textContent='適應';
+  }else{
+    const s=fitScale()*S.zoom;
+    cv.style.maxWidth='none'; cv.style.maxHeight='none';
+    cv.style.width =Math.round(W*s)+'px';
+    cv.style.height=Math.round(H*s)+'px';
+    if(el) el.textContent=Math.round(S.zoom*100)+'%';
+  }
+}
+/* anchorX/Y 用嚟做「對住游標 zoom」 */
+function setZoom(z,anchorX,anchorY){
+  if(!S.vendorLabFull) return;
+  const f=fitScale();
+  const old=S.zoom<=0? f : f*S.zoom;
+  S.zoom=clamp(z,0,8);
+  applyZoom();
+  if(S.zoom<=0){ viewport.scrollLeft=0; viewport.scrollTop=0; return; }
+  if(anchorX!=null){
+    const nw=f*S.zoom, k=nw/old, r=viewport.getBoundingClientRect();
+    viewport.scrollLeft=(viewport.scrollLeft+anchorX-r.left)*k-(anchorX-r.left);
+    viewport.scrollTop =(viewport.scrollTop +anchorY-r.top )*k-(anchorY-r.top );
+  }
+}
+function zoomStep(dir){
+  const cur=S.zoom<=0? 1 : S.zoom;
+  setZoom(dir>0? cur*1.25 : cur/1.25);
+}
+function zoom100(){ const f=fitScale(); if(f>0) setZoom(1/f); }
+$('z-out').onclick=()=>zoomStep(-1);
+$('z-in').onclick =()=>zoomStep(1);
+$('z-fit').onclick=()=>setZoom(0);
+$('z-100').onclick=zoom100;
+/* ⌘／Ctrl + 滾輪 = zoom（對游標）；淨滾輪 = 交畀瀏覽器 scroll（pan） */
+viewport.addEventListener('wheel',e=>{
+  if(!(e.ctrlKey||e.metaKey)) return;
+  e.preventDefault();
+  const cur=S.zoom<=0? 1 : S.zoom;
+  setZoom(cur*(e.deltaY<0?1.12:1/1.12), e.clientX, e.clientY);
+},{passive:false});
+/* 空白鍵拖 或 中鍵拖 = pan。要 stopPropagation，否則會 trigger 撳實睇原圖 */
+let panState=null;
+viewport.addEventListener('pointerdown',e=>{
+  if(!(e.button===1 || (e.button===0&&spaceDown))) return;
+  e.preventDefault(); e.stopPropagation();
+  panState={x:e.clientX,y:e.clientY,sl:viewport.scrollLeft,st:viewport.scrollTop};
+  S.panning=true; stage.classList.add('panning');
+  try{ viewport.setPointerCapture(e.pointerId); }catch(_){}
+});
+viewport.addEventListener('pointermove',e=>{
+  if(!panState) return;
+  viewport.scrollLeft=panState.sl-(e.clientX-panState.x);
+  viewport.scrollTop =panState.st-(e.clientY-panState.y);
+});
+const endPan=e=>{
+  if(!panState) return;
+  panState=null; S.panning=false; stage.classList.remove('panning');
+  try{ viewport.releasePointerCapture(e.pointerId); }catch(_){}
+};
+viewport.addEventListener('pointerup',endPan);
+viewport.addEventListener('pointercancel',endPan);
+/* 適應模式嘅闊度而家係 JS 算出嚟嘅 px，所以視窗一改大細一定要重算，
+   唔係張圖會 keep 住舊尺寸、留白或者超晒出去。 */
+window.addEventListener('resize',()=>{ if(S.vendorLabFull) applyZoom(); });
+
+function updateDirection(idx,g){
+  const it=allItems()[idx]; if(!it) return;
+  const dir=buildDirection(S.vendorAn, statsOf(idx), g, opt());
+  const sec=secSummary(S.sec);
+  const items=dir.items.slice();
+  if(sec.length) items.push({k:'二次創作（手動微調，疊加喺追色之上）',v:sec.join('　·　'),cls:'sec'});
+  $('dirlist').innerHTML=items.map(i=>
+    '<div class="ditem '+(i.cls||'')+'"><div class="k">'+i.k+'</div><div class="v">'+i.v+'</div></div>').join('');
+
+  let txt='【色彩方向 — 參考：'+it.name+'】\n';
+  txt+='追色強度：色調 '+S.chromaStr+'% / 光暗跟隨 '+S.toneStr+'%\n';
+  txt+='分區：'+opt().useBands.map((b,i)=>b?['陰影','中間調','高光'][i]:null).filter(Boolean).join('、')+'\n\n';
+  txt+=dir.text+'\n';
+  if(sec.length) txt+='\n■ 二次創作（手動微調）：\n　'+sec.join('\n　')+'\n';
+  txt+='\n────────────────\n備註：以上係「調色做得到」嘅部分。標明「調色救唔到」嘅項目要供應商喺打燈／材質階段改。';
+  $('note').value=txt;
+  $('refname').textContent=it.name;
+}
+
+/* ---------- dock ---------- */
+function tileSizeVals(){
+  return S.tileSize==='S'?{w:104,h:58} : S.tileSize==='L'?{w:208,h:116} : {w:150,h:84};
+}
+function applyTileSize(){
+  const v=tileSizeVals();
+  document.documentElement.style.setProperty('--tw',v.w+'px');
+  document.documentElement.style.setProperty('--th',v.h+'px');
+  document.querySelectorAll('#szA button,#szB button').forEach(b=>{
+    b.classList.toggle('on',b.dataset.s===S.tileSize);
+  });
+}
+function mkSizeBtns(host){
+  host.innerHTML='';
+  ['S','M','L'].forEach(s=>{
+    const b=document.createElement('button');
+    b.type='button'; b.textContent=s; b.dataset.s=s;
+    b.setAttribute('aria-label','縮圖大細 '+s);
+    b.onclick=()=>{ S.tileSize=s; try{localStorage.setItem('ld.tile',s);}catch(_){}
+      applyTileSize(); renderPresets(); renderRefs(); };
+    host.appendChild(b);
+  });
+}
+function renderPresets(){
+  const box=$('presets'); box.innerHTML='';
+  PRESETS.forEach((p,i)=>{
+    const t=document.createElement('div');
+    t.className='tile'+(S.active===i?' on':'');
+    t.setAttribute('role','radio'); t.setAttribute('aria-checked',S.active===i?'true':'false');
+    t.tabIndex=S.active===i?0:-1;
+    const c=document.createElement('canvas'); c.width=208; c.height=104;
+    drawPresetThumb(c,p); t.appendChild(c);
+    t.appendChild(mkLabel(p.name));
+    t.appendChild(mkNo(i+1));
+    wireTile(t,i);
+    box.appendChild(t);
+  });
+  S.customs.forEach((cu,i)=>{
+    const gi=PRESETS.length+S.refs.length+i;
+    const t=document.createElement('div');
+    t.className='tile'+(S.active===gi?' on':'');
+    t.setAttribute('role','radio'); t.setAttribute('aria-checked',S.active===gi?'true':'false');
+    t.tabIndex=S.active===gi?0:-1;
+    const c=document.createElement('canvas'); c.width=208; c.height=104;
+    drawCustomThumb(c,cu); t.appendChild(c);
+    t.appendChild(mkLabel(cu.name));
+    t.appendChild(mkNo(gi+1));
+    const bd=document.createElement('div'); bd.className='cust'; bd.textContent='自訂'; t.appendChild(bd);
+    const rm=document.createElement('button');
+    rm.className='rm'; rm.type='button'; rm.textContent='×';
+    rm.setAttribute('aria-label','移除 '+cu.name);
+    rm.onclick=e=>{ e.stopPropagation(); removeCustom(i); };
+    t.appendChild(rm);
+    wireTile(t,gi);
+    box.appendChild(t);
+  });
+}
+function mkLabel(txt){ const d=document.createElement('div'); d.className='lb'; d.textContent=txt; return d; }
+function mkNo(n){ const d=document.createElement('div'); d.className='no'; d.textContent=n; return d; }
+function drawPresetThumb(c,p){
+  const tmp=document.createElement('canvas'); tmp.width=c.width; tmp.height=c.height;
+  const tx=tmp.getContext('2d',{willReadFrequently:true});
+  const grd=tx.createLinearGradient(0,0,0,c.height);
+  grd.addColorStop(0,'#20242c'); grd.addColorStop(0.5,'#6e7480'); grd.addColorStop(1,'#c8ccd4');
+  tx.fillStyle=grd; tx.fillRect(0,0,c.width,c.height);
+  tx.fillStyle='#8d6f5c';
+  tx.beginPath(); tx.ellipse(c.width*0.36,c.height*0.6,c.width*0.13,c.height*0.26,0,0,7); tx.fill();
+  if(S.vendorAn){
+    const pr=makePseudoRef(S.vendorAn,p);
+    const g=buildGrade(S.vendorAn,pr,[true,true,true],$('tone').checked);
+    const id=tx.getImageData(0,0,c.width,c.height), d=id.data;
+    for(let i=0;i<id.width*id.height;i++){
+      const q=i*4;
+      const o=gradeRGB(d[q],d[q+1],d[q+2],g,{strength:1,toneStrength:S.toneStr/100,useBands:[true,true,true],skinProtect:false},null,null);
+      d[q]=o[0]; d[q+1]=o[1]; d[q+2]=o[2];
+    }
+    tx.putImageData(id,0,0);
+  }
+  c.getContext('2d').drawImage(tmp,0,0);
+}
+function drawCustomThumb(c,cu){
+  const base=PRESETS.find(p=>p.id===cu.baseId);
+  if(base){ drawPresetThumb(c,base); return; }
+  const ref=S.refs.find(r=>r.name===cu.baseName);
+  if(ref){ c.getContext('2d').drawImage(imgToCanvasCover(ref.img,208,104),0,0); return; }
+  const x=c.getContext('2d');
+  x.fillStyle='#22262e'; x.fillRect(0,0,c.width,c.height);
+  x.fillStyle='#868f9f'; x.font='400 12px -apple-system,sans-serif';
+  x.fillText('（基準圖唔喺度）',10,c.height/2);
+}
+function renderRefs(){
+  const box=$('refs'); box.innerHTML='';
+  const add=document.createElement('button');
+  add.className='tile add'; add.type='button';
+  add.innerHTML='<span class="plus">＋</span><span>拖入 / ⌘V</span>';
+  add.setAttribute('aria-label','加入參考圖');
+  add.onclick=()=>pickFiles();
+  box.appendChild(add);
+
+  S.refs.forEach((r,i)=>{
+    const gi=PRESETS.length+i;
+    const t=document.createElement('div');
+    t.className='tile'+(S.active===gi?' on':'');
+    t.setAttribute('role','radio'); t.setAttribute('aria-checked',S.active===gi?'true':'false');
+    t.tabIndex=S.active===gi?0:-1;
+    t.appendChild(imgToCanvasCover(r.img,208,104));
+    t.appendChild(mkLabel(r.name));
+    t.appendChild(mkNo(gi+1));
+    const bd=document.createElement('div'); bd.className='badge'; bd.textContent='L'+r.an.p50.toFixed(0);
+    t.appendChild(bd);
+    const rm=document.createElement('button');
+    rm.className='rm'; rm.type='button'; rm.textContent='×';
+    rm.setAttribute('aria-label','移除 '+r.name);
+    rm.onclick=e=>{ e.stopPropagation(); removeRef(i); };
+    t.appendChild(rm);
+    wireTile(t,gi);
+    box.appendChild(t);
+  });
+  const n=S.refs.length;
+  $('refcount').textContent = n
+    ? n+' 張 · hover 即時預覽 · click 採用 · 出面可以拉大細' : '0 張 · 拖入或 ⌘V 貼相';
+}
+function wireTile(t,i){
+  t.onclick=()=>setActive(i);
+  t.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); setActive(i); } };
+  t.onmouseenter=()=>{
+    if(S.grid || !S.vendorImg) return;
+    S.hover=i; render(true);
+    clearTimeout(S.sharpT);
+    S.sharpT=setTimeout(()=>{ if(S.hover===i) render(false); },170);
+    showMag(t,i);
+  };
+  t.onmouseleave=()=>{ S.hover=-1; clearTimeout(S.sharpT); render(false); hideMag(); };
+}
+function setActive(i){
+  if(!S.vendorImg) return;
+  const it=allItems()[i];
+  if(it&&it.kind==='custom') applyCustom(it);
+  S.active=i;
+  renderPresets(); renderRefs();
+  if(S.mode==='grid') renderGrid(); else render(false);
+}
+
+/* ---------- 自訂 LOOK ---------- */
+function currentSnapshot(){
+  const it=allItems()[S.active];
+  let baseId=null, baseName=null;
+  if(it&&it.kind==='preset') baseId=it.spec.id;
+  else if(it&&it.kind==='image') baseName=it.name;
+  else if(it&&it.kind==='custom'){ baseId=it.baseId; baseName=it.baseName; }  /* 繼承基準，唔好變孤兒 */
+  return {
+    baseId, baseName,
+    chromaStr:S.chromaStr, toneStr:S.toneStr,
+    bands:opt().useBands.slice(), tone:$('tone').checked, skin:$('skin').checked,
+    sec:JSON.parse(JSON.stringify(S.sec))
+  };
+}
+function applyCustom(cu){
+  setCheck('b0',cu.bands[0]); setCheck('b1',cu.bands[1]); setCheck('b2',cu.bands[2]);
+  setCheck('tone',cu.tone); setCheck('skin',cu.skin);
+  S.chromaStr=cu.chromaStr; S.toneStr=cu.toneStr;
+  if(SLIDERS.chromaStr) SLIDERS.chromaStr.set(cu.chromaStr);
+  if(SLIDERS.toneStr) SLIDERS.toneStr.set(cu.toneStr);
+  S.sec=JSON.parse(JSON.stringify(cu.sec));
+  syncSecSliders();
+  S.pvKey++; S.pvCache.clear();
+  updateGroupDots(); drawAllWheels(); refreshHueBar(); buildHslSliders(currentHslHost());
+}
+function currentHslHost(){
+  const g=document.querySelector('.grp[data-g="hsl"]'); return g||document.body;
+}
+function setCheck(id,v){ const e=$(id); if(e) e.checked=!!v; }
+function syncSecSliders(){
+  ['exp','con','high','shad','white','black','temp','tint','sat','vib'].forEach(k=>{
+    if(SLIDERS[k]) SLIDERS[k].set(S.sec[k]);
+  });
+  ['wsh','wmid','whi'].forEach(k=>{
+    if(SLIDERS[k+'_l']) SLIDERS[k+'_l'].set(S.sec[k].l);
+  });
+  if(SLIDERS.wblend) SLIDERS.wblend.set(S.sec.wblend);
+  if(SLIDERS.wbal) SLIDERS.wbal.set(S.sec.wbal);
+  for(const b of HSLB){
+    const c=S.sec.hsl[b.id];
+    ['h','s','l'].forEach(kk=>{ const sl=SLIDERS['hsl_'+b.id+'_'+kk]; if(sl) sl.set(c[kk]); });
+  }
+}
+function saveCustom(){
+  if(!S.vendorImg||S.active<0){ toast('未揀 look'); return; }
+  const snap=currentSnapshot();
+  const nm=(prompt('呢個 look 叫咩名？','LOOK '+(S.customs.length+1))||'').trim();
+  if(!nm) return;
+  S.customs.push(Object.assign({kind:'custom',name:nm},snap));
+  renderPresets();
+  setActive(PRESETS.length+S.refs.length+S.customs.length-1);
+  toast('存咗「'+nm+'」');
+}
+function removeCustom(i){
+  if(i<0||i>=S.customs.length) return;
+  const nm=S.customs[i].name;
+  S.customs.splice(i,1);
+  const max=itemCount();
+  if(S.active>=max) S.active=Math.max(0,max-1);
+  renderPresets();
+  if(S.mode==='grid') renderGrid(); else render(false);
+  toast('移除咗「'+nm+'」');
+}
+function removeRef(i){
+  if(i<0||i>=S.refs.length) return;
+  const nm=S.refs[i].name;
+  S.refs.splice(i,1);
+  const max=itemCount();
+  if(S.active>=max) S.active=Math.max(0,max-1);
+  renderRefs(); renderPresets();
+  if(S.mode==='grid') renderGrid(); else render(false);
+  toast('移除咗「'+nm+'」');
+}
+function pickFiles(){ pickFilesFor('ref'); }   /* 畀 REFERENCE 嗰條用 */
+
+/* ---------- 放大鏡 ---------- */
+const mag=$('mag'), magcv=$('magcv');
+function previewCanvas(i){
+  const key=i+'|'+S.pvKey;
+  if(S.pvCache.has(key)) return S.pvCache.get(key);
+  const lab=S.vendorLabQuick;
+  const w=340, h=Math.max(1,Math.round(w*lab.h/lab.w));
+  const id=imageDataFrom(lab,gradeFor(i),opt(),S.sec,S.secPlan||buildSecPlan(S.sec));
+  const c=idToCanvas(id);
+  const o=document.createElement('canvas'); o.width=w; o.height=h;
+  const ox=o.getContext('2d'); ox.imageSmoothingQuality='high';
+  ox.drawImage(c,0,0,w,h);
+  if(S.pvCache.size>24) S.pvCache.clear();
+  S.pvCache.set(key,o);
+  return o;
+}
+function showMag(tile,i){
+  if(!S.vendorImg||!S.vendorAn) return;
+  const it=allItems()[i]; if(!it) return;
+  const src=previewCanvas(i);
+  magcv.width=src.width; magcv.height=src.height;
+  magcv.getContext('2d').drawImage(src,0,0);
+  $('magnm').textContent=it.name;
+  const st=statsOf(i);
+  $('magst').textContent = st? ('L'+st.p50.toFixed(0)+' · 對比'+(st.p90-st.p10).toFixed(0)) : '';
+  $('maghh').textContent = it.kind==='custom' ? '自訂 LOOK（基準：'+(it.baseId? (PRESETS.find(p=>p.id===it.baseId)||{}).name : it.baseName)+'）'
+                          : (it.kind==='preset'? '內建 LOOK · 上面係落喺你張圖嘅效果'
+                                               : 'REFERENCE · 上面係落喺你張圖嘅效果');
+  mag.classList.add('show');
+  const r=tile.getBoundingClientRect();
+  const mw=mag.offsetWidth||360, mh=mag.offsetHeight||240;
+  let left=r.left+r.width/2-mw/2;
+  left=clamp(left,8,window.innerWidth-mw-8);
+  let top=r.top-mh-10;
+  if(top<8) top=Math.min(window.innerHeight-mh-8, r.bottom+10);
+  mag.style.left=left+'px'; mag.style.top=top+'px';
+}
+function hideMag(){ mag.classList.remove('show'); }
+
+/* ---------- 格仔比較 ---------- */
+function setMode(m){
+  S.mode=m;
+  document.querySelectorAll('#vmodes button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
+  const st=$('stage');
+  st.classList.toggle('single',m==='single');
+  st.classList.toggle('divider',m==='wipe'||m==='side');
+  cv.hidden = (m==='grid');
+  $('gridbox').hidden = (m!=='grid');
+  S.grid = (m==='grid');
+  if($('warnflat')) $('warnflat').hidden=true;   /* 轉模式就收警告，render() 會重新計 */
+  if(m==='grid') renderGrid(); else render(false);
+}
+function renderGrid(){
+  const box=$('gridbox'); box.innerHTML='';
+  const items=allItems();
+  /* 格仔模式唔行 render()，所以要喺度補：
+     否則喺格仔模式下匯出 PNG / .cube 會用舊嘅 grade */
+  S.secPlan = buildSecPlan(S.sec);
+  if(S.active>=0 && S.active<items.length) S.lastGrade = gradeFor(S.active);
+  items.forEach((it,i)=>{
+    const cell=document.createElement('div');
+    cell.className='gcell'+(S.active===i?' on':'');
+    const c=document.createElement('canvas');
+    c.width=260; c.height=Math.max(1,Math.round(260*S.vendorLabQuick.h/S.vendorLabQuick.w));
+    cell.appendChild(c);
+    const lb=document.createElement('div'); lb.className='glb';
+    lb.innerHTML='<span>'+(i+1)+'. '+it.name+'</span><em>'+(it.kind==='preset'?'內建':it.kind==='custom'?'自訂':'ref')+'</em>';
+    cell.appendChild(lb);
+    cell.onclick=()=>{ setActive(i); setMode('single'); };
+    box.appendChild(cell);
+  });
+  let k=0;
+  (function step(){
+    if(S.mode!=='grid' || k>=items.length) return;
+    const i=k++;
+    const c=idToCanvas(imageDataFrom(S.vendorLabQuick,gradeFor(i),opt(),S.sec,S.secPlan));
+    const cell=box.children[i];
+    const cc=cell? cell.querySelector('canvas') : null;
+    if(cc) cc.getContext('2d').drawImage(c,0,0,cc.width,cc.height);
+    requestAnimationFrame(step);
+  })();
+}
+
+/* ============================================================
+   12. 匯出
+   ============================================================ */
+function download(canvas,name,mime){
+  canvas.toBlob(b=>{
+    if(!b) return;
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(b); a.download=name; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+  },mime||'image/png');
+}
+/* 全解匯出：用原圖真正尺寸（上限 2600） */
+function exportFull(){
+  const img=S.vendorImg;
+  const s=Math.min(2600/img.width, 2600/img.height, 1);
+  const w=Math.round(img.width*s), h=Math.round(img.height*s);
+  const lab=labOf(drawTo(img,w,h));
+  return idToCanvas(imageDataFrom(lab,S.lastGrade,opt(),S.sec,buildSecPlan(S.sec)));
+}
+$('b-png').onclick=()=>{
+  if(!S.vendorImg||!S.lastGrade) return;
+  toast('出緊全解 PNG…');
+  setTimeout(()=>{
+    download(exportFull(),'look-direction.png');
+    toast('匯出咗 look-direction.png');
+  },20);
+};
+$('b-cube').onclick=()=>{
+  if(!S.lastGrade) return;
+  /* 一定要即場計：S.secPlan 係上一次 render 嘅快照，用家啱啱拖完條桿
+     但 render 仲喺 rAF 排緊隊嗰陣會攞到舊嘢，出嚟嘅 LUT 會漏咗手動微調。 */
+  const o=opt(), N=33, sp=buildSecPlan(S.sec);
+  const L=['# Generated by Look Direction v3',
+           '# ref: '+(allItems()[S.active]||{name:'-'}).name+
+           ' | chroma '+S.chromaStr+'% tone '+S.toneStr+'%'+
+           (sp.active?' | +secondary':''),
+           'TITLE "LookDirection"','LUT_3D_SIZE '+N,''];
+  for(let bi=0;bi<N;bi++)for(let gi=0;gi<N;gi++)for(let ri=0;ri<N;ri++){
+    const q=gradeRGB(ri/(N-1)*255, gi/(N-1)*255, bi/(N-1)*255, S.lastGrade, o, S.sec, sp);
+    L.push((q[0]/255).toFixed(6)+' '+(q[1]/255).toFixed(6)+' '+(q[2]/255).toFixed(6));
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([L.join('\n')],{type:'text/plain'}));
+  a.download='look-direction.cube'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+  toast('匯出咗 .cube（已包埋二次調整）');
+};
+/* 圓角矩形（canvas 冇內建，自己寫） */
+function rr(x,px,py,w,h,r){
+  r=Math.min(r,w/2,h/2);
+  x.beginPath();
+  x.moveTo(px+r,py);
+  x.arcTo(px+w,py,px+w,py+h,r);
+  x.arcTo(px+w,py+h,px,py+h,r);
+  x.arcTo(px,py+h,px,py,r);
+  x.arcTo(px,py,px+w,py,r);
+  x.closePath();
+}
+/* 抄對比圖：一張左右並排 PNG 直接 paste 去 WeChat / email */
+$('b-side2').onclick=()=>{
+  if(!S.vendorImg||!S.outCanvas) return;
+  const A=S.vendorOrig, B=S.outCanvas;
+  const it=allItems()[S.active]||{name:''};
+  const pad=16, gap=16, capH=40, vw=Math.min(A.width,1100);
+  const vh=Math.round(vw*A.height/A.width);
+  const W=vw*2+gap+pad*2, H=vh+capH+pad*2;
+  const c=document.createElement('canvas'); c.width=W; c.height=H;
+  const x=c.getContext('2d');
+  const F=(sz,w)=>w+' '+sz+'px -apple-system,"PingFang HK","Helvetica Neue",sans-serif';
+  x.fillStyle='#101318'; x.fillRect(0,0,W,H);
+  [[A,0,'BEFORE','供應商來稿',false],[B,vw+gap,'AFTER',it.name,true]].forEach(([img,dx,tag,sub,ac])=>{
+    const px=pad+dx, py=pad;
+    x.save(); rr(x,px,py,vw,vh+capH,11);
+    x.fillStyle='#171b22'; x.fill();
+    x.strokeStyle=ac? '#4fc3a1' : '#282e38';
+    x.lineWidth=ac? 2 : 1; x.stroke();
+    x.restore();
+    x.save(); rr(x,px+1,py+1,vw-2,vh-2,10); x.clip();
+    x.drawImage(img,px,py,vw,vh); x.restore();
+    /* tag pill + 名 */
+    x.font=F(10.5,700);
+    const tw=x.measureText(tag).width+18;
+    rr(x,px+10,py+vh+10,tw,20,10);
+    x.fillStyle=ac? '#4fc3a1' : '#2b313b'; x.fill();
+    x.fillStyle=ac? '#0c1f19' : '#98a1b1';
+    x.fillText(tag, px+19, py+vh+24);
+    x.fillStyle='#8b94a5'; x.font=F(12,400);
+    x.fillText(sub, px+tw+18, py+vh+24);
+  });
+  const done=()=>{ toast('抄咗對比圖，可以直接 paste'); };
+  if(navigator.clipboard&&window.ClipboardItem){
+    c.toBlob(b=>{
+      if(!b){ download(c,'look-before-after.png'); return; }
+      navigator.clipboard.write([new ClipboardItem({'image/png':b})]).then(done)
+        .catch(()=>{ download(c,'look-before-after.png'); toast(' clipboard 唔批，改咗做下載'); });
+    },'image/png');
+  }else{ download(c,'look-before-after.png'); }
+};
+$('b-copy').onclick=()=>{
+  const t=$('note'); t.select();
+  if(navigator.clipboard) navigator.clipboard.writeText(t.value).catch(()=>{});
+  $('b-copy').textContent='抄咗 ✓'; setTimeout(()=>{$('b-copy').textContent='抄方向';},1400);
+};
+$('b-save').onclick=saveCustom;
+$('b-reset').onclick=()=>{
+  S.sec=newSec();
+  syncSecSliders();
+  S.pvKey++; S.pvCache.clear();
+  updateGroupDots(); drawAllWheels(); refreshHueBar(); buildHslSliders(currentHslHost());
+  renderPresets(); render(false);
+  toast('微調全部歸零');
+};
+$('b-sheet').onclick=()=>{
+  if(!S.outCanvas || S.active<0){ toast('未揀 look'); return; }
+  const it=allItems()[S.active]; if(!it) return;
+  const W=1700, PAD=46, H0=3400;
+  const c=document.createElement('canvas'); c.width=W; c.height=H0;
+  const x=c.getContext('2d');
+  const F=(sz,w)=>(w||400)+' '+sz+'px -apple-system,"PingFang HK","Helvetica Neue",sans-serif';
+
+  const bg=x.createLinearGradient(0,0,0,H0);
+  bg.addColorStop(0,'#171a20'); bg.addColorStop(1,'#0f1115');
+  x.fillStyle=bg; x.fillRect(0,0,W,H0);
+
+  /* ---- header ---- */
+  const hh=112;
+  const hg=x.createLinearGradient(0,0,W,0);
+  hg.addColorStop(0,'#1f242e'); hg.addColorStop(1,'#141920');
+  x.fillStyle=hg; x.fillRect(0,0,W,hh);
+  x.fillStyle='#4fc3a1'; x.fillRect(0,0,4,hh);
+  x.fillStyle='#e9ecf2'; x.font=F(25,600);
+  x.fillText('色彩方向紙', PAD, 50);
+  x.fillStyle='#7f8899'; x.font=F(12.5,400);
+  x.fillText('LOOK DIRECTION　·　俾供應商嘅調色同打燈方向', PAD, 74);
+  const d=new Date();
+  const ds=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  x.textAlign='right';
+  x.fillStyle='#a8b1c0'; x.font=F(13,500);
+  x.fillText(S.vendorName||'來稿', W-PAD, 46);
+  x.fillStyle='#6f7889'; x.font=F(11.5,400);
+  x.fillText(ds+'　·　參考：'+it.name, W-PAD, 68);
+  x.textAlign='left';
+  x.fillStyle='#2a2f38'; x.fillRect(0,hh,W,1);
+
+  /* ---- 三格並排 ---- */
+  const sec=secSummary(S.sec);
+  let y=hh+38;
+  x.fillStyle='#8b94a5'; x.font=F(12.5,400);
+  x.fillText('色調 '+S.chromaStr+'%　·　光暗跟隨 '+S.toneStr+'%'+(sec.length?'　·　含手動微調':''), PAD, y-12);
+
+  const gap=22, bw=(W-PAD*2-gap*2)/3, bh=430;
+  const panels=[
+    {img:S.vendorOrig, tag:'BEFORE',    name:S.vendorName||'供應商來稿', accent:false},
+    {img:S.outCanvas,  tag:'AFTER',     name:'建議方向 · '+it.name,      accent:true},
+    {img: it.kind==='image'? imgToCanvasFit(it.img,900,900) : null,
+     tag:'REFERENCE', name: it.kind==='image'? it.name
+                          : (it.kind==='custom'? '自訂 LOOK' : '內建 look · '+it.name), accent:false}
+  ];
+  panels.forEach((p,i)=>{
+    const px=PAD+i*(bw+gap), py=y;
+    x.save(); rr(x,px,py,bw,bh,12);
+    x.fillStyle='#12151b'; x.fill();
+    x.strokeStyle=p.accent? '#4fc3a1' : '#262b34'; x.lineWidth=p.accent?2.5:1; x.stroke();
+    x.restore();
+    const ix=px+14, iy=py+14, iw=bw-28, ih=bh-62;
+    x.save(); rr(x,ix,iy,iw,ih,7); x.clip();
+    x.fillStyle='#0b0d11'; x.fillRect(ix,iy,iw,ih);
+    if(p.img){
+      const s=Math.min(iw/p.img.width, ih/p.img.height);
+      x.drawImage(p.img, ix+(iw-p.img.width*s)/2, iy+(ih-p.img.height*s)/2, p.img.width*s, p.img.height*s);
+    }else{
+      x.fillStyle='#1d212a'; x.fillRect(ix,iy,iw,ih);
+      x.fillStyle='#6f7889'; x.font=F(14,400); x.textAlign='center';
+      x.fillText('內建 look（冇參考圖）', ix+iw/2, iy+ih/2); x.textAlign='left';
+    }
+    x.restore();
+    x.font=F(10.5,700);
+    const tw=x.measureText(p.tag).width+18;
+    rr(x,px+12,py+bh-38,tw,20,10);
+    x.fillStyle=p.accent? '#4fc3a1' : '#2b313b'; x.fill();
+    x.fillStyle=p.accent? '#0c1f19' : '#98a1b1';
+    x.fillText(p.tag, px+21, py+bh-24);
+    x.fillStyle='#98a1b1'; x.font=F(12,400);
+    x.fillText(p.name, px+tw+20, py+bh-24);
+  });
+  y += bh+36;
+
+  /* ---- 方向分項（用結構化卡片，唔係倒啲 plain text 落去） ---- */
+  x.fillStyle='#e9ecf2'; x.font=F(19,600);
+  x.fillText('方向（分項）', PAD, y+20); y+=48;
+  const dir=buildDirection(S.vendorAn, statsOf(S.active), S.lastGrade, opt());
+  const items=dir.items.slice();
+  if(sec.length) items.push({k:'二次創作（手動微調，疊加喺追色之上）',v:sec.join('　·　'),cls:'sec'});
+  for(const di of items){
+    const bad = di.cls==='bad';
+    const txt = String(di.v).replace(/<[^>]+>/g,'');
+    x.font=F(13,400);
+    const lines=wrapText(x,txt, W-PAD*2-40);
+    const h=26+lines.length*21+14;
+    rr(x,PAD,y,W-PAD*2,h,10);
+    x.fillStyle = bad? '#241a1c' : (di.cls==='sec'? '#1b1f26' : '#161a21'); x.fill();
+    x.fillStyle = bad? '#e07a7a' : (di.cls==='sec'? '#8b94a5' : '#4fc3a1');
+    x.fillRect(PAD,y,3,h);
+    x.fillStyle = bad? '#f0a0a0' : '#ccd3de'; x.font=F(13.5,600);
+    x.fillText(di.k, PAD+18, y+25);
+    x.fillStyle='#9aa3b2'; x.font=F(13,400);
+    lines.forEach((ln,i)=>x.fillText(ln, PAD+18, y+47+i*21));
+    y += h+10;
+  }
+  y += 12;
+  x.strokeStyle='#2a2f38'; x.lineWidth=1;
+  x.beginPath(); x.moveTo(PAD,y); x.lineTo(W-PAD,y); x.stroke(); y+=28;
+  x.fillStyle='#6f7889'; x.font=F(11.5,400);
+  x.fillText('標明「調色救唔到」嘅項目要供應商喺打燈／材質階段改 —— 調 LUT 解決唔到。', PAD, y);
+  y += 26;
+
+  /* 裁走多餘高度 */
+  const out=document.createElement('canvas'); out.width=W; out.height=y+28;
+  const ox=out.getContext('2d');
+  ox.fillStyle='#0f1115'; ox.fillRect(0,0,out.width,out.height);
+  ox.drawImage(c,0,0);
+  download(out,'look-direction-sheet.png');
+  toast('出咗方向紙');
+};
+function wrapText(x,text,maxw){
+  const out=[]; let cur='';
+  for(const ch of text){
+    if(cur && x.measureText(cur+ch).width>maxw){ out.push(cur); cur=ch; } else cur+=ch;
+  }
+  if(cur) out.push(cur);
+  return out.length? out : [''];
+}
+
+/* ============================================================
+   13. 事件
+   ============================================================ */
+let raf=null;
+function scheduleRender(quick){
+  if(raf) cancelAnimationFrame(raf);
+  raf=requestAnimationFrame(()=>{
+    raf=null;
+    updateGroupDots();          /* 無論邊條路改到設定，dot 都要跟返 */
+    render(!!quick);            /* 拖桿途中用 quick（620px），放手先做全解 */
+    if(S.mode==='grid') renderGrid();
+  });
+}
+/* 分區 checkbox 由左欄動態建立，用事件委派 */
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t&&t.id&&['b0','b1','b2','tone','skin'].indexOf(t.id)>=0){
+    S.pvKey++; S.pvCache.clear();
+    if(t.id==='tone') renderPresets(); else updateGroupDots();
+    scheduleRender();
+  }
+});
+document.addEventListener('input',e=>{
+  const t=e.target;
+  if(t&&t.id&&['b0','b1','b2','tone','skin'].indexOf(t.id)>=0){ updateGroupDots(); }
+});
+
+/* 主畫面：撳實睇原圖 + 拖分割線 */
+const stage=$('stage');
+stage.addEventListener('pointerdown',e=>{
+  if(!S.vendorImg||S.mode==='grid') return;
+  const r=cv.getBoundingClientRect();
+  if(!r.width) return;
+  const d=(e.clientX-r.left)/r.width;
+  if((S.mode==='wipe'||S.mode==='side') && Math.abs(d-S.split)<0.04){
+    S.dragging='div';
+    try{ stage.setPointerCapture(e.pointerId); }catch(_){}
+    S.split=clamp(d,0.03,0.97); paint(); return;
+  }
+  S.hold=true;
+  try{ stage.setPointerCapture(e.pointerId); }catch(_){}
+  paint();
+});
+stage.addEventListener('pointermove',e=>{
+  if(S.dragging==='div'){
+    const r=cv.getBoundingClientRect();
+    S.split=clamp((e.clientX-r.left)/r.width,0.03,0.97); paint(); return;
+  }
+  if(S.mode==='wipe'||S.mode==='side'){
+    const r=cv.getBoundingClientRect();
+    if(r.width){
+      const d=(e.clientX-r.left)/r.width;
+      stage.classList.toggle('divider',Math.abs(d-S.split)<0.04);
+    }
+  }
+});
+const endStage=e=>{
+  if(S.dragging==='div'){ S.dragging=null; try{ stage.releasePointerCapture(e.pointerId); }catch(_){} }
+  if(S.hold){ S.hold=false; try{ stage.releasePointerCapture(e.pointerId); }catch(_){} paint(); }
+};
+window.addEventListener('pointerup',endStage);
+window.addEventListener('pointercancel',endStage);
+
+document.querySelectorAll('#vmodes button').forEach(b=>{
+  b.onclick=()=>setMode(b.dataset.m);
+});
+
+/* ---------- 來稿掣 ---------- */
+$('b-addshot').onclick =()=>pickFilesFor('shot');
+$('b-addshot2').onclick=()=>pickFilesFor('shot');
+$('b-repshot').onclick =()=>{
+  if(!S.vendorImg){ pickFilesFor('shot'); return; }
+  const i=document.createElement('input');
+  i.type='file'; i.accept='image/*';
+  i.onchange=()=>{ if(i.files[0]) replaceShot(i.files[0]); };
+  i.click();
+};
+
+/* ---------- dock 三列摺疊（內建 LOOK 預設收起） ---------- */
+const DOCKKEY='ld.dock';
+try{ const d=JSON.parse(localStorage.getItem(DOCKKEY)||'null');
+     if(d&&typeof d==='object') Object.assign(S.dockFold,d); }catch(_){}
+function applyDockFold(){
+  ['shots','presets','refs'].forEach(k=>{
+    const row=$('row-'+k); if(!row) return;
+    const folded=!!S.dockFold[k];
+    row.classList.toggle('folded',folded);
+    const btn=row.querySelector('.foldbtn');
+    if(btn) btn.setAttribute('aria-expanded',folded?'false':'true');
+  });
+  try{ localStorage.setItem(DOCKKEY,JSON.stringify(S.dockFold)); }catch(_){}
+}
+document.querySelectorAll('.foldbtn').forEach(b=>{
+  b.onclick=()=>{ S.dockFold[b.dataset.row]=!S.dockFold[b.dataset.row]; applyDockFold(); };
+});
+
+/* drop 全視窗 */
+const veil=$('veil');
+let dragDepth=0;
+window.addEventListener('dragenter',e=>{ e.preventDefault(); dragDepth++; if(S.vendorImg) veil.classList.add('show'); });
+window.addEventListener('dragover',e=>e.preventDefault());
+window.addEventListener('dragleave',e=>{ e.preventDefault(); if(--dragDepth<=0){ dragDepth=0; veil.classList.remove('show'); } });
+window.addEventListener('drop',e=>{
+  e.preventDefault(); dragDepth=0; veil.classList.remove('show');
+  const fs=e.dataTransfer? e.dataTransfer.files : null;
+  if(!fs) return;
+  /* 拖落 REFERENCE 嗰條 = 參考；其他位 = 加落來稿庫 */
+  const onRefs = !!(e.target && e.target.closest && e.target.closest('#row-refs'));
+  Array.prototype.forEach.call(fs,f=>handleFile(f, onRefs?'ref':'shot'));
+});
+/* 貼上：未入過圖就當來稿，之後當參考（⌘V 多數係由瀏覽器抄參考圖返嚟） */
+window.addEventListener('paste',e=>{
+  const items=e.clipboardData? e.clipboardData.items : null; if(!items) return;
+  for(const it of items){
+    if(it.type.indexOf('image/')===0){
+      const f=it.getAsFile();
+      if(f){ handleFile(f, S.shots.length? 'ref':'shot'); e.preventDefault(); }
+      break;
+    }
+  }
+});
+/* 鍵盤 */
+window.addEventListener('keydown',e=>{
+  if(e.target&&e.target.closest&&e.target.closest('.sl')) return;
+  const t=e.target.tagName;
+  if(t==='TEXTAREA'||t==='INPUT') return;
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+  /* 空白鍵撳住 = 拖 pan（要喺 !S.vendorImg 之前，等未入圖都唔會撳到跳掣） */
+  if(e.code==='Space'){
+    if(e.target===document.body||e.target===document.documentElement) e.preventDefault();
+    spaceDown=true; return;
+  }
+  if(!S.vendorImg) return;
+  if(e.key==='0'){ setZoom(0); e.preventDefault(); return; }
+  if(e.key==='-'||e.key==='_'){ zoomStep(-1); e.preventDefault(); return; }
+  if(e.key==='='||e.key==='+'){ zoomStep(1); e.preventDefault(); return; }
+  if(e.key==='['){ switchShot(S.shotIdx-1); e.preventDefault(); return; }
+  if(e.key===']'){ switchShot(S.shotIdx+1); e.preventDefault(); return; }
+  if(e.key==='`'){ if(!S.hold){ S.hold=true; paint(); } e.preventDefault(); return; }
+  if(e.key>='1'&&e.key<='9'){
+    const i=+e.key-1; if(i<itemCount()){ setActive(i); e.preventDefault(); }
+  }else if(e.key==='ArrowRight'){
+    setActive(Math.min(itemCount()-1,(S.active<0?0:S.active+1))); e.preventDefault();
+  }else if(e.key==='ArrowLeft'){
+    setActive(Math.max(0,(S.active<0?0:S.active-1))); e.preventDefault();
+  }else if(e.key==='g'||e.key==='G'){
+    setMode(S.mode==='grid'?'single':'grid'); e.preventDefault();
+  }else if(e.key==='v'||e.key==='V'){
+    const order=['single','wipe','side','grid'];
+    setMode(order[(order.indexOf(S.mode)+1)%4]); e.preventDefault();
+  }else if(e.key==='b'||e.key==='B'){
+    S.flip=!S.flip; paint(); e.preventDefault();
+  }else if((e.key==='Delete'||e.key==='Backspace') && S.active>=PRESETS.length){
+    const i=S.active-PRESETS.length;
+    if(i<S.refs.length) removeRef(i); else removeCustom(i-S.refs.length);
+    e.preventDefault();
+  }
+});
+window.addEventListener('keyup',e=>{
+  if(e.key==='`'){ S.hold=false; paint(); }
+  if(e.code==='Space'){ spaceDown=false; }
+});
+window.addEventListener('blur',()=>{ if(S.hold){ S.hold=false; paint(); } });
+
+let toastT=null;
+function toast(msg){
+  const t=$('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),1700);
+}
+
+/* ---------- init ---------- */
+try{ const s=localStorage.getItem('ld.tile'); if(s) S.tileSize=s; }catch(_){}
+mkSizeBtns($('szA')); mkSizeBtns($('szB')); mkSizeBtns($('szS'));
+applyTileSize();
+applyDockFold();
+buildLeftPanel();
+renderShots(); renderPresets(); renderRefs();
+
+/* ---------- IP 保護（防君子唔防小人） ----------
+   呢個 app 放喺公開 repo，source 本身就任睇，所以呢層唔係加密，
+   只係擋 casual 用戶一撳就把圖 save 走／抄走。
+   刻意留返 TEXTAREA / INPUT（方向 note、名欄）照常右鍵同選字。   */
+(function(){
+  const editable = el => !!el && (el.tagName==='TEXTAREA' || el.tagName==='INPUT' || el.isContentEditable);
+
+  /* 1. 禁右鍵（輸入框除外） */
+  document.addEventListener('contextmenu', e=>{
+    if(editable(e.target)) return;
+    e.preventDefault();
+    toast('已停用右鍵選單 — 出圖請用右上角「匯出 PNG」');
+  }, true);
+
+  /* 2. 禁拖圖／拖 canvas 出瀏覽器（唔影響由外面拖檔案入嚟） */
+  document.addEventListener('dragstart', e=>{
+    const t=e.target;
+    if(t && (t.tagName==='IMG' || t.tagName==='CANVAS')) e.preventDefault();
+  }, true);
+
+  /* 3. 禁 F12 / Ctrl+Shift+I,J,C / Cmd+Opt+I,J,C / Ctrl+U / Ctrl+S / Cmd+S */
+  document.addEventListener('keydown', e=>{
+    if(editable(e.target)) return;                  /* 輸入框全部照常 */
+    const k=(e.key||'').toLowerCase();
+    const mod = e.ctrlKey || e.metaKey;
+    if(k==='f12'){ e.preventDefault(); return; }
+    if(mod && e.shiftKey && (k==='i'||k==='j'||k==='c')){ e.preventDefault(); return; }
+    if(e.metaKey && e.altKey && (k==='i'||k==='j'||k==='c')){ e.preventDefault(); return; }
+    if(mod && !e.shiftKey && (k==='u'||k==='s')){ e.preventDefault(); return; }
+  }, true);
+})();
+</script>
+</body>
+</html>
