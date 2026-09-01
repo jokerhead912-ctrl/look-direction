@@ -9,7 +9,7 @@
   --bg:#14161a; --panel:#1b1e24; --panel2:#22262e; --panel3:#282d36;
   --line:#2c313a; --line2:#3a4150;
   --tx:#e6e8ee; --tx2:#98a0b0; --tx3:#868f9f;
-  --acc:#4fc3a1; --acc-soft:rgba(79,195,161,.14);
+  --acc:#4d8eff; --acc-soft:rgba(77,142,255,.18); --acc-glow:rgba(77,142,255,.45);
   --warn:#e8a33d; --bad:#e05c5c;
   --r:8px; --rl:12px;
   --tw:150px; --th:84px;
@@ -225,7 +225,7 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:12px 0}
   padding:3px 12px;font-size:11px;color:var(--tx2);pointer-events:none;
   display:flex;align-items:center;gap:6px;white-space:nowrap;
 }
-.holdpill.act{background:var(--acc);color:#0c1f19;border-color:var(--acc);font-weight:500}
+.holdpill.act{background:var(--acc);color:#0c1a2e;border-color:var(--acc);font-weight:500}
 .badge-l,.badge-r{
   position:absolute;top:10px;font-size:10px;font-family:ui-monospace,Menlo,monospace;
   background:rgba(10,12,16,.8);color:var(--tx2);padding:2px 7px;border-radius:4px;pointer-events:none;
@@ -262,11 +262,13 @@ button.b{
   padding:5px 10px;font-size:11.5px;cursor:pointer;transition:.15s;white-space:nowrap;
 }
 button.b:hover{border-color:var(--acc);color:var(--acc)}
-button.b.pri{background:var(--acc);border-color:var(--acc);color:#0c1f19;font-weight:500}
-button.b.pri:hover{filter:brightness(1.08);color:#0c1f19}
+button.b.pri{background:var(--acc);border-color:var(--acc);color:#0c1a2e;font-weight:500}
+button.b.pri:hover{filter:brightness(1.08);color:#0c1a2e}
 button.b:disabled{opacity:.35;cursor:not-allowed}
 button.b:disabled:hover{border-color:var(--line);color:inherit}
 button.b.sm{padding:3px 8px;font-size:10.5px}
+button.b.icon{padding:4px 9px;font-size:13px;line-height:1;font-weight:500;min-width:30px;text-align:center}
+button.b.icon:hover:not(:disabled){background:var(--acc-soft)}
 
 /* ---------- right ---------- */
 .dirlist{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
@@ -324,10 +326,10 @@ textarea{
   position:absolute;top:3px;left:3px;font-size:9px;font-family:ui-monospace,Menlo,monospace;
   background:rgba(10,12,16,.82);color:var(--tx2);padding:0 4px;border-radius:3px;
 }
-.tile.shot.on .sno{background:var(--acc);color:#0c1f19;font-weight:600}
+.tile.shot.on .sno{background:var(--acc);color:#0c1a2e;font-weight:600}
 .tile.shot .done{
   position:absolute;bottom:20px;left:3px;font-size:8.5px;font-weight:600;
-  background:rgba(79,195,161,.92);color:#0c1f19;padding:0 4px;border-radius:3px;
+  background:rgba(77,142,255,.95);color:#0c1a2e;padding:0 4px;border-radius:3px;
 }
 
 .tile{
@@ -365,7 +367,7 @@ textarea{
 }
 .tile .cust{
   position:absolute;bottom:20px;left:3px;font-size:8.5px;
-  background:rgba(79,195,161,.9);color:#0c1f19;padding:0 4px;border-radius:3px;font-weight:600;
+  background:rgba(77,142,255,.92);color:#0c1a2e;padding:0 4px;border-radius:3px;font-weight:600;
 }
 .szbtns{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;flex:0 0 auto}
 .szbtns button{
@@ -461,8 +463,11 @@ textarea{
       </div>
 
       <div class="rowbtns" data-page-node-id="ROpmx3NJJE9Xjy1uyf4piR">
+        <button class="b icon" id="b-undo" type="button" title="退回 (⌘Z)" disabled data-page-node-id="ld-undo">↶</button>
+        <button class="b icon" id="b-redo" type="button" title="重做 (⌘⇧Z)" disabled data-page-node-id="ld-redo">↷</button>
+        <button class="b icon" id="b-lock" type="button" title="鎖住原圖 (Shift+Z)" data-page-node-id="ld-lock">⤺</button>
         <button class="b" id="b-save" type="button" data-page-node-id="eI0dWWyOEV9AIQhTGwZnrP">存為 LOOK</button>
-        <button class="b" id="b-reset" type="button" data-page-node-id="VcjBtPCccjdOA5IY3aYef8">重設微調</button>
+        <button class="b" id="b-reset" type="button" title="全部微調歸零" data-page-node-id="VcjBtPCccjdOA5IY3aYef8">↺ 微調</button>
         <span class="hspacer" data-page-node-id="uBdSYA5hky1u18JsPaIKgX"></span>
         <button class="b" id="b-side2" type="button" data-page-node-id="1yg5mGj7rWMrQiXdAT4YFA">抄對比圖</button>
         <button class="b" id="b-png" type="button" data-page-node-id="79q8uJo45DdUunU74M23hw">匯出 PNG</button>
@@ -884,6 +889,14 @@ function gradeRGB(r,g,b,grade,opt,sec,plan){
 }
 function imageDataFrom(lab,grade,opt,sec,plan){
   const n=lab.n, out=new ImageData(lab.w,lab.h), o=out.data;
+  /* 原圖鎖定：唔理 LOOK / 微調，直接吐 vendor 圖 */
+  if(typeof S!=='undefined' && S.locked){
+    for(let i=0;i<n;i++){
+      const c=labToRgb(lab.L[i],lab.a[i],lab.b[i]), p=i*4;
+      o[p]=c[0]; o[p+1]=c[1]; o[p+2]=c[2]; o[p+3]=255;
+    }
+    return out;
+  }
   const useSec = plan&&plan.active;
   for(let i=0;i<n;i++){
     let q=applyPixel(lab.L[i],lab.a[i],lab.b[i],grade,opt);
@@ -1021,7 +1034,9 @@ const S={
   outCanvas:null, lastGrade:null, sharpT:null,
   pvKey:0, pvCache:new Map(), tileSize:'M',
   zoom:0, panning:false,                       /* zoom: 0 = 適應視窗 */
-  dockFold:{shots:false,presets:true,refs:false}   /* 內建 LOOK 預設收起（用家話唔用） */
+  dockFold:{shots:false,presets:true,refs:false},  /* 內建 LOOK 預設收起（用家話唔用） */
+  /* Undo / Redo / 原圖鎖定 */
+  hist:[], fut:[], histCap:30, locked:false
 };
 const cv=$('cv'), ctx=cv.getContext('2d');
 
@@ -1095,6 +1110,30 @@ const SLIDERS={};
 function makeSlider(host,key,cfg){
   const el=document.createElement('div');
   el.className='sl'; el.tabIndex=0; el.dataset.k=key;
+  /* wrap onCommit：commit 之前先 snapshot 「舊 state」，咁 undo 至 push 啱嘢。
+     applyingHist 期間 skip（undo/redo/load preset 自己處理）。
+     同步 push（唔 debounce）：拖 slider 用 'live' mode，commit 只喺 pointerup /
+     wheel / keyboard 收尾嘅一刻 fire，一次 commit 就一次 push。debounce 反而
+     會喺 fast 拖完 / multi-key 撳完時漏 push。
+     唔做 same-snap 去重：set() 已經 short-circuit 同 value，唔會重覆 trigger
+     commit。dblclick / reset 都明確 user action，每次都值得 push。 */
+  const _ocCommit=cfg.onCommit;
+  cfg.onCommit=function(v){
+    if(window.__ldDebug) window.__ldLog.push('CALLED '+cfg.label+' v='+v+' histLen='+S.hist.length);
+    try{
+      if(applyingHist){ if(_ocCommit) _ocCommit(v); return; }
+      const before=snapshot();
+      if(_ocCommit) _ocCommit(v);
+      S.hist.push({label:cfg.label,snap:before});
+      if(S.hist.length>S.histCap) S.hist.shift();
+      S.fut.length=0;
+      updateHistBtns();
+      if(window.__ldDebug) window.__ldLog.push('PUSHED '+cfg.label+' before.exp='+before.sec.exp+' hist.len='+S.hist.length);
+    }catch(e){
+      if(window.__ldDebug) window.__ldLog.push('ERR '+cfg.label+' '+e.message);
+      throw e;
+    }
+  };
   el.innerHTML='<div class="sl-hd"><span class="sl-nm"></span><span class="sl-vl"></span></div>'+
                '<div class="sl-tr"><div class="sl-fl"></div><div class="sl-kn"></div></div>';
   el.querySelector('.sl-nm').textContent=cfg.label;
@@ -1129,6 +1168,7 @@ function makeSlider(host,key,cfg){
   let commitT=null;
   function set(x,mode){
     const nx=clamp(q(x),min,max);
+    if(window.__ldDebug) window.__ldLog.push('SET '+cfg.label+' nx='+nx+' v='+v+' mode='+mode);
     if(nx===v){ paint(); return; }
     v=nx; paint();
     if(cfg.onInput) cfg.onInput(v);
@@ -1211,6 +1251,88 @@ function makeSlider(host,key,cfg){
   const api={el,get:()=>v,set:x=>set(x,true),def,paint,label:cfg.label};
   SLIDERS[key]=api;
   return api;
+}
+
+/* ============================================================
+   8b. Undo / Redo / 原圖鎖定（用家：一直調試會後悔）
+   ============================================================ */
+let applyingHist=false;
+function snapshot(){
+  const cb=id=>{const e=document.getElementById(id); return e?e.checked:false;};
+  return {
+    active:S.active,
+    chromaStr:S.chromaStr, toneStr:S.toneStr,
+    bands:[cb('b0'),cb('b1'),cb('b2')],
+    tone:cb('tone'), skin:cb('skin'),
+    sec:JSON.parse(JSON.stringify(S.sec))
+  };
+}
+function sameSnap(a,b){
+  if(!a||!b) return false;
+  if(a.active!==b.active) return false;
+  if(a.chromaStr!==b.chromaStr||a.toneStr!==b.toneStr) return false;
+  if(a.tone!==b.tone||a.skin!==b.skin) return false;
+  for(let i=0;i<3;i++) if(a.bands[i]!==b.bands[i]) return false;
+  for(const k in a.sec) if(a.sec[k]!==b.sec[k]) return false;
+  return true;
+}
+let histT=null;
+function pushHistNow(label){
+  if(applyingHist||S.locked) return;
+  S.hist.push({label,snap:snapshot()});
+  if(S.hist.length>S.histCap) S.hist.shift();
+  S.fut.length=0;
+  updateHistBtns();
+}
+function applySnap(snap,msg){
+  applyingHist=true;
+  S.active=snap.active;
+  S.chromaStr=snap.chromaStr; S.toneStr=snap.toneStr;
+  for(const k in snap.sec) S.sec[k]=snap.sec[k];
+  /* sync UI 但唔觸發 onCommit（mode=true 純 paint） */
+  if(SLIDERS.chromaStr) SLIDERS.chromaStr.set(snap.chromaStr,true);
+  if(SLIDERS.toneStr) SLIDERS.toneStr.set(snap.toneStr,true);
+  const cb=(id,v)=>{const el=document.getElementById(id); if(el) el.checked=v;};
+  cb('b0',snap.bands[0]); cb('b1',snap.bands[1]); cb('b2',snap.bands[2]);
+  cb('tone',snap.tone); cb('skin',snap.skin);
+  for(const k in snap.sec){ if(SLIDERS[k]) SLIDERS[k].set(snap.sec[k],true); }
+  S.pvKey++; S.pvCache.clear();
+  if(typeof updateGroupDots==='function') updateGroupDots();
+  if(typeof refreshHueBar==='function') refreshHueBar();
+  if(typeof drawAllWheels==='function') drawAllWheels();
+  renderPresets();
+  scheduleRender();
+  applyingHist=false;
+  if(msg) toast(msg);
+}
+function undo(){
+  if(!S.hist.length){ toast('冇嘢可退回'); return; }
+  const e=S.hist.pop();
+  S.fut.push({label:e.label,snap:snapshot()});
+  applySnap(e.snap,'退回：'+e.label);
+  updateHistBtns();
+}
+function redo(){
+  if(!S.fut.length){ toast('冇嘢可重做'); return; }
+  const e=S.fut.pop();
+  S.hist.push({label:e.label,snap:snapshot()});
+  applySnap(e.snap,'重做：'+e.label);
+  updateHistBtns();
+}
+function updateHistBtns(){
+  const u=$('b-undo'), r=$('b-redo');
+  if(u) u.disabled=S.hist.length===0;
+  if(r) r.disabled=S.fut.length===0;
+}
+function toggleLock(){
+  S.locked=!S.locked;
+  const b=$('b-lock');
+  if(b){
+    b.classList.toggle('pri',S.locked);
+    b.textContent=S.locked?'鎖住原圖':'⤺ 原圖';
+  }
+  scheduleRender();
+  toast(S.locked?'鎖住原圖（忽略所有調色）':'解除原圖鎖定');
 }
 
 /* ============================================================
@@ -1732,7 +1854,7 @@ function paint(){
     ctx.fillStyle='#0d0f13'; ctx.fillRect(0,0,W,H);
     drawFit(ctx,S.vendorOrig,0,0,lw,H);
     drawFit(ctx,after,lw,0,rw,H);
-    ctx.strokeStyle='rgba(79,195,161,.95)'; ctx.lineWidth=Math.max(1,Math.round(W/700));
+    ctx.strokeStyle='rgba(77,142,255,.95)'; ctx.lineWidth=Math.max(1,Math.round(W/700));
     ctx.beginPath(); ctx.moveTo(lw,0); ctx.lineTo(lw,H); ctx.stroke();
   }else if(S.mode==='wipe'){
     ctx.clearRect(0,0,W,H);
@@ -1740,9 +1862,9 @@ function paint(){
     const wx=Math.round(W*S.split);
     ctx.save(); ctx.beginPath(); ctx.rect(0,0,wx,H); ctx.clip();
     ctx.drawImage(S.vendorOrig,0,0,W,H); ctx.restore();
-    ctx.strokeStyle='rgba(79,195,161,.95)'; ctx.lineWidth=Math.max(1,Math.round(W/700));
+    ctx.strokeStyle='rgba(77,142,255,.95)'; ctx.lineWidth=Math.max(1,Math.round(W/700));
     ctx.beginPath(); ctx.moveTo(wx,0); ctx.lineTo(wx,H); ctx.stroke();
-    ctx.fillStyle='rgba(79,195,161,.95)';
+    ctx.fillStyle='rgba(77,142,255,.95)';
     const hs=Math.max(6,Math.round(W/160));
     ctx.beginPath(); ctx.moveTo(wx-hs,H/2-hs); ctx.lineTo(wx+hs,H/2); ctx.lineTo(wx-hs,H/2+hs); ctx.closePath(); ctx.fill();
   }else{
@@ -2001,6 +2123,7 @@ function wireTile(t,i){
 }
 function setActive(i){
   if(!S.vendorImg) return;
+  pushHistNow('切 LOOK');
   const it=allItems()[i];
   if(it&&it.kind==='custom') applyCustom(it);
   S.active=i;
@@ -2240,7 +2363,7 @@ $('b-side2').onclick=()=>{
     const px=pad+dx, py=pad;
     x.save(); rr(x,px,py,vw,vh+capH,11);
     x.fillStyle='#171b22'; x.fill();
-    x.strokeStyle=ac? '#4fc3a1' : '#282e38';
+    x.strokeStyle=ac? '#4d8eff' : '#282e38';
     x.lineWidth=ac? 2 : 1; x.stroke();
     x.restore();
     x.save(); rr(x,px+1,py+1,vw-2,vh-2,10); x.clip();
@@ -2249,8 +2372,8 @@ $('b-side2').onclick=()=>{
     x.font=F(10.5,700);
     const tw=x.measureText(tag).width+18;
     rr(x,px+10,py+vh+10,tw,20,10);
-    x.fillStyle=ac? '#4fc3a1' : '#2b313b'; x.fill();
-    x.fillStyle=ac? '#0c1f19' : '#98a1b1';
+    x.fillStyle=ac? '#4d8eff' : '#2b313b'; x.fill();
+    x.fillStyle=ac? '#0c1a2e' : '#98a1b1';
     x.fillText(tag, px+19, py+vh+24);
     x.fillStyle='#8b94a5'; x.font=F(12,400);
     x.fillText(sub, px+tw+18, py+vh+24);
@@ -2270,12 +2393,18 @@ $('b-copy').onclick=()=>{
   $('b-copy').textContent='抄咗 ✓'; setTimeout(()=>{$('b-copy').textContent='抄方向';},1400);
 };
 $('b-save').onclick=saveCustom;
+$('b-undo').onclick=undo;
+$('b-redo').onclick=redo;
+$('b-lock').onclick=toggleLock;
 $('b-reset').onclick=()=>{
+  pushHistNow('↺ 微調歸零');
+  applyingHist=true;
   S.sec=newSec();
   syncSecSliders();
   S.pvKey++; S.pvCache.clear();
   updateGroupDots(); drawAllWheels(); refreshHueBar(); buildHslSliders(currentHslHost());
   renderPresets(); render(false);
+  applyingHist=false;
   toast('微調全部歸零');
 };
 $('b-sheet').onclick=()=>{
@@ -2295,7 +2424,7 @@ $('b-sheet').onclick=()=>{
   const hg=x.createLinearGradient(0,0,W,0);
   hg.addColorStop(0,'#1f242e'); hg.addColorStop(1,'#141920');
   x.fillStyle=hg; x.fillRect(0,0,W,hh);
-  x.fillStyle='#4fc3a1'; x.fillRect(0,0,4,hh);
+  x.fillStyle='#4d8eff'; x.fillRect(0,0,4,hh);
   x.fillStyle='#e9ecf2'; x.font=F(25,600);
   x.fillText('色彩方向紙', PAD, 50);
   x.fillStyle='#7f8899'; x.font=F(12.5,400);
@@ -2328,7 +2457,7 @@ $('b-sheet').onclick=()=>{
     const px=PAD+i*(bw+gap), py=y;
     x.save(); rr(x,px,py,bw,bh,12);
     x.fillStyle='#12151b'; x.fill();
-    x.strokeStyle=p.accent? '#4fc3a1' : '#262b34'; x.lineWidth=p.accent?2.5:1; x.stroke();
+    x.strokeStyle=p.accent? '#4d8eff' : '#262b34'; x.lineWidth=p.accent?2.5:1; x.stroke();
     x.restore();
     const ix=px+14, iy=py+14, iw=bw-28, ih=bh-62;
     x.save(); rr(x,ix,iy,iw,ih,7); x.clip();
@@ -2345,8 +2474,8 @@ $('b-sheet').onclick=()=>{
     x.font=F(10.5,700);
     const tw=x.measureText(p.tag).width+18;
     rr(x,px+12,py+bh-38,tw,20,10);
-    x.fillStyle=p.accent? '#4fc3a1' : '#2b313b'; x.fill();
-    x.fillStyle=p.accent? '#0c1f19' : '#98a1b1';
+    x.fillStyle=p.accent? '#4d8eff' : '#2b313b'; x.fill();
+    x.fillStyle=p.accent? '#0c1a2e' : '#98a1b1';
     x.fillText(p.tag, px+21, py+bh-24);
     x.fillStyle='#98a1b1'; x.font=F(12,400);
     x.fillText(p.name, px+tw+20, py+bh-24);
@@ -2367,7 +2496,7 @@ $('b-sheet').onclick=()=>{
     const h=26+lines.length*21+14;
     rr(x,PAD,y,W-PAD*2,h,10);
     x.fillStyle = bad? '#241a1c' : (di.cls==='sec'? '#1b1f26' : '#161a21'); x.fill();
-    x.fillStyle = bad? '#e07a7a' : (di.cls==='sec'? '#8b94a5' : '#4fc3a1');
+    x.fillStyle = bad? '#e07a7a' : (di.cls==='sec'? '#8b94a5' : '#4d8eff');
     x.fillRect(PAD,y,3,h);
     x.fillStyle = bad? '#f0a0a0' : '#ccd3de'; x.font=F(13.5,600);
     x.fillText(di.k, PAD+18, y+25);
@@ -2525,7 +2654,17 @@ window.addEventListener('keydown',e=>{
   if(e.target&&e.target.closest&&e.target.closest('.sl')) return;
   const t=e.target.tagName;
   if(t==='TEXTAREA'||t==='INPUT') return;
+  /* ⌘Z / ⌘⇧Z · Undo / Redo（cross-platform：metaKey Mac, ctrlKey Win） */
+  if((e.metaKey||e.ctrlKey) && !e.altKey && (e.key==='z'||e.key==='Z')){
+    e.preventDefault();
+    if(e.shiftKey) redo(); else undo();
+    return;
+  }
   if(e.metaKey||e.ctrlKey||e.altKey) return;
+  /* Shift+Z 鎖住／解除原圖（即使 vendor 未入都可解鎖，但 render 會自動 no-op） */
+  if(e.shiftKey && (e.key==='Z'||e.key==='z') && !e.ctrlKey && !e.metaKey && !e.altKey){
+    toggleLock(); e.preventDefault(); return;
+  }
   /* 空白鍵撳住 = 拖 pan（要喺 !S.vendorImg 之前，等未入圖都唔會撳到跳掣） */
   if(e.code==='Space'){
     if(e.target===document.body||e.target===document.documentElement) e.preventDefault();
