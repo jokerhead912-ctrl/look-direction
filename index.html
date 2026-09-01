@@ -3,7 +3,7 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction — 參考色方向工具 v4</title>
+<title>Look Direction — 參考色方向工具 v5</title>
 <style>
 :root{
   --bg:#14161a; --panel:#1b1e24; --panel2:#22262e; --panel3:#282d36;
@@ -118,16 +118,22 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:12px 0}
 .grp.open .grp-bd{display:block}
 
 /* ---------- HSL ---------- */
-.huebar{display:flex;gap:3px;margin-bottom:8px}
-.huebar button{
-  flex:1;height:20px;border-radius:5px;border:1.5px solid transparent;cursor:pointer;
-  position:relative;padding:0;
+/* v5：7 粒方掣（白邊+黑影好突兀）→ 一個真正嘅 hue ring canvas。
+   外圈 Lab 色相環揀色帶；中心碟係當前色帶調整後嘅實色，上下拖推飽和；
+   雙擊歸零。tweak 過嘅色帶喺環外側標 accent 點。 */
+.huering{display:flex;gap:9px;align-items:center;margin-bottom:8px}
+.huering canvas{
+  width:92px;height:92px;flex:0 0 auto;cursor:pointer;touch-action:none;
+  display:block;border-radius:50%;
 }
-.huebar button.on{border-color:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
-.huebar button.mod::after{
-  content:'';position:absolute;top:-2px;right:-1px;width:5px;height:5px;
-  border-radius:50%;background:var(--acc);border:1px solid var(--panel);
-}
+.huering .hinfo{flex:1;min-width:0;line-height:1.55}
+.huering .hnm{display:flex;align-items:center;gap:6px;font-size:10.5px;
+  font-weight:500;color:var(--tx1)}
+.huering .hnm .hsw{width:11px;height:11px;border-radius:3px;display:inline-block;flex:0 0 auto}
+.huering .hst{font-family:ui-monospace,Menlo,monospace;font-size:9.5px;color:var(--tx3);
+  font-variant-numeric:tabular-nums}
+.huering .hlg{font-size:9px;color:var(--tx3)}
+.huering .hlg b{color:var(--acc);font-weight:500}
 .hslbox{border-left:2px solid var(--line);padding-left:8px;margin-left:2px}
 
 /* ---------- 分區調色輪 ---------- */
@@ -399,6 +405,8 @@ textarea{
     <span class="kbd" data-page-node-id="yxXLKtLjqzG7OUv5WWfVG2">← →</span><span class="hstatus" data-page-node-id="OjHYvMVHoDZq3EWrV2Jnjq">上／下個 look</span>
     <span class="kbd">[ ]</span><span class="hstatus">上／下張來稿</span>
     <span class="kbd" data-page-node-id="K1b0LE06KMP5a0OrfkrB5u">`</span><span class="hstatus" data-page-node-id="NhlR9Q3EKfWSF5805UJxye">撳實睇原圖</span>
+    <span class="kbd">⇧Z</span><span class="hstatus">鎖原圖</span>
+    <span class="kbd">⌘Z</span><span class="hstatus">退回</span>
     <span class="kbd" data-page-node-id="K1nofbbgZz60C5BaqVezbi">B</span><span class="hstatus" data-page-node-id="bVBRsFf6SuzeufQAuEMMVq">鎖定前後</span>
     <span class="kbd" data-page-node-id="lDnKBSmn4zTPO4aFOXDXY6">G</span><span class="hstatus" data-page-node-id="zGfjfT8b32AIkAHMa86L4j">格仔</span>
     <span class="kbd">0</span><span class="hstatus">縮返適應</span>
@@ -1423,17 +1431,20 @@ function buildLeftPanel(){
 
   /* --- HSL --- */
   const g5=mkGroup(box,'hsl','HSL 單色微調',false);
-  const bar=document.createElement('div'); bar.className='huebar';
-  HSLB.forEach(b=>{
-    const btn=document.createElement('button');
-    btn.type='button'; btn.dataset.h=b.id; btn.style.background=b.sw;
-    btn.setAttribute('aria-label',b.name);
-    btn.onclick=()=>{ S.hslSel=b.id; refreshHueBar(); buildHslSliders(g5.body); };
-    bar.appendChild(btn);
-  });
-  g5.body.appendChild(bar);
+  /* v5 色環：外圈係 Lab 色相環（角度同 app 嘅 hue 定義一致，band 中心一定啱位），
+     撳外圈揀色帶；中心碟顯示當前色帶調整後嘅實色，上下拖直接推飽和；雙擊歸零。
+     取代舊嘅 7 粒方掣（白邊+黑影突兀，而且細粒難撳）。 */
+  const hr=document.createElement('div'); hr.className='huering';
+  const rc=document.createElement('canvas');
+  rc.id='huering'; rc.width=184; rc.height=184;
+  rc.setAttribute('aria-label','HSL 色環：撳外圈揀色帶，中心上下拖調飽和，雙擊歸零');
+  hr.appendChild(rc);
+  const inf=document.createElement('div'); inf.className='hinfo'; inf.id='huering-info';
+  hr.appendChild(inf);
+  g5.body.appendChild(hr);
   g5.hslHost=document.createElement('div'); g5.hslHost.className='hslbox';
   g5.body.appendChild(g5.hslHost);
+  wireHueRing(rc);
   buildHslSliders(g5.body);
   g5.secKeys=null; g5.isHsl=true;
   refreshHueBar();
@@ -1482,23 +1493,33 @@ function buildHslSliders(host){
   const box=host.querySelector('.hslbox'); if(!box) return;
   box.innerHTML='';
   const b=HSLB.find(x=>x.id===S.hslSel)||HSLB[0];
-  /* 一定要動態攞：applyCustom / 重設會換咗成個 S.sec 物件 */
+  /* 一定要動態攞：applyCustom / 重設會換咗成個 S.sec 物件。
+     舊 preset 可能冇新色帶（例如 magenta 係後加嘅），冇就補個空嘅。 */
+  if(!S.sec.hsl[b.id]) S.sec.hsl[b.id]={h:0,s:0,l:0};
   const cc=()=>S.sec.hsl[b.id];
-  const hd=document.createElement('div');
-  hd.style.cssText='font-size:10.5px;color:var(--tx2);margin-bottom:5px;display:flex;align-items:center;gap:6px';
-  hd.innerHTML='<span style="width:11px;height:11px;border-radius:3px;background:'+b.sw+';display:inline-block"></span>'+b.name+'（'+b.hue+'°）';
-  box.appendChild(hd);
+  /* 色帶名／色票喺色環右邊嘅 hinfo 已經有，呢度唔重複 */
   [['h','色調',-100,100],['s','飽和',-100,100],['l','明度',-100,100]].forEach(([kk,lb,mn,mx])=>{
     makeSlider(box,'hsl_'+b.id+'_'+kk,{label:lb,min:mn,max:mx,def:0,value:cc()[kk],
       onInput:v=>{cc()[kk]=v;},onCommit:()=>{secChanged();refreshHueBar();secCommitted();}});
   });
 }
 function refreshHueBar(){
-  document.querySelectorAll('.huebar button').forEach(btn=>{
-    const id=btn.dataset.h, c=S.sec.hsl[id];
-    btn.classList.toggle('on', id===S.hslSel);
-    btn.classList.toggle('mod', !!(c&&(c.h||c.s||c.l)));
-  });
+  const c=document.getElementById('huering'); if(!c) return;
+  drawHueRing(c);
+  /* canvas 冇 per-band DOM 可以驗，用 dataset 俾冒煙測試斷言 */
+  c.dataset.sel=S.hslSel;
+  c.dataset.mod=HSLB.filter(b=>{ const z=S.sec.hsl[b.id]; return z&&(z.h||z.s||z.l); })
+                    .map(b=>b.id).join(',');
+  const b=HSLB.find(x=>x.id===S.hslSel)||HSLB[0], z=S.sec.hsl[b.id]||{h:0,s:0,l:0};
+  const inf=document.getElementById('huering-info');
+  if(inf){
+    const mods=HSLB.filter(q=>{ const w=S.sec.hsl[q.id]; return w&&(w.h||w.s||w.l); });
+    inf.innerHTML=
+      '<div class="hnm"><span class="hsw" style="background:'+b.sw+'"></span>'+b.name+'（'+b.hue+'°）</div>'+
+      '<div class="hst">H '+z.h+' · S '+z.s+' · L '+z.l+'</div>'+
+      '<div class="hlg">'+(mods.length? '已較 <b>'+mods.map(q=>q.name).join(' ')+'</b>'
+                                      : '撳外圈揀色帶 · 中心拖飽和 · 雙擊歸零')+'</div>';
+  }
 }
 function updateGroupDots(){
   document.querySelectorAll('.grp').forEach(g=>{
@@ -1593,6 +1614,106 @@ function wireWheel(canvas,wid){
   });
 }
 
+/* ---------- HSL 色環 ---------- */
+/* 畫布 184×184 device px，CSS 壓返 92×92（retina 自然 sharp）。
+   外圈半徑 78、內圈 56（device px）：色相直接喺 Lab a-b 平面取，
+   角度定義同成個 app 一致（0=洋紅紅、90=黃、190=青、268=藍）。 */
+function drawHueRing(canvas){
+  const S0=184, cx=S0/2, cy=S0/2, RO=78, RI=56;
+  canvas.width=S0; canvas.height=S0;
+  const x=canvas.getContext('2d');
+  const b=HSLB.find(q=>q.id===S.hslSel)||HSLB[0];
+  const c=S.sec.hsl[b.id]||{h:0,s:0,l:0};
+  const id=x.createImageData(S0,S0), d=id.data;
+  for(let y=0;y<S0;y++)for(let xx=0;xx<S0;xx++){
+    const dx=xx-cx, dy=y-cy, r=Math.hypot(dx,dy), p=(y*S0+xx)*4;
+    if(r>RO) continue;                          /* 環外透明，露出面板底色 */
+    if(r>=RI){                                  /* 外圈：Lab 色相環 */
+      let h=Math.atan2(dy,dx)*180/Math.PI; if(h<0)h+=360;
+      const rad=h*Math.PI/180;
+      const col=labToRgb(62, Math.cos(rad)*42, Math.sin(rad)*42);
+      d[p]=col[0]; d[p+1]=col[1]; d[p+2]=col[2]; d[p+3]=255;
+    }else{                                      /* 中心碟：當前色帶調整後嘅實色 */
+      const rad=(b.hue+c.h)*Math.PI/180, ch=7+c.s*0.4;
+      const col=labToRgb(clamp(56+c.l*0.35,10,90), Math.cos(rad)*ch, Math.sin(rad)*ch);
+      const sh=1-(r/RI)*0.22;                   /* 靠邊略暗，少少立體感 */
+      d[p]=clamp(col[0]*sh,0,255); d[p+1]=clamp(col[1]*sh,0,255);
+      d[p+2]=clamp(col[2]*sh,0,255); d[p+3]=255;
+    }
+  }
+  x.putImageData(id,0,0);
+  /* 色帶刻度：揀中嗰個係白點，其餘係細刻度；tweak 過嘅喺環外側標 accent 點 */
+  const acc=getComputedStyle(document.documentElement).getPropertyValue('--acc').trim()||'#4d8eff';
+  HSLB.forEach(q=>{
+    const rad=q.hue*Math.PI/180, rm=(RO+RI)/2;
+    const px=cx+Math.cos(rad)*rm, py=cy+Math.sin(rad)*rm;
+    const z=S.sec.hsl[q.id], mod=!!(z&&(z.h||z.s||z.l));
+    if(q.id===S.hslSel){
+      x.beginPath(); x.arc(px,py,9,0,6.2832);
+      x.fillStyle='#fff'; x.fill();
+      x.lineWidth=3; x.strokeStyle='rgba(0,0,0,.55)'; x.stroke();
+    }else{
+      x.beginPath(); x.arc(px,py,4,0,6.2832);
+      x.fillStyle='rgba(255,255,255,.8)'; x.fill();
+    }
+    if(mod){
+      x.beginPath();
+      x.arc(cx+Math.cos(rad)*(RO+8), cy+Math.sin(rad)*(RO+8), 5, 0, 6.2832);
+      x.fillStyle=acc; x.fill();
+      x.lineWidth=2; x.strokeStyle='#101318'; x.stroke();
+    }
+  });
+}
+function wireHueRing(canvas){
+  const RIN_CSS=28;              /* 中心碟半徑（CSS px）：入面拖飽和，外圈揀色帶 */
+  const hslC=()=>{ if(!S.sec.hsl[S.hslSel]) S.sec.hsl[S.hslSel]={h:0,s:0,l:0};
+                   return S.sec.hsl[S.hslSel]; };
+  let satDrag=false, ay=0, s0=0, before=null;
+  canvas.addEventListener('pointerdown',e=>{
+    e.preventDefault(); e.stopPropagation();
+    const r=canvas.getBoundingClientRect(); if(!r.width) return;
+    const dx=e.clientX-(r.left+r.width/2), dy=e.clientY-(r.top+r.height/2);
+    if(Math.hypot(dx,dy)>=RIN_CSS){
+      /* 外圈：揀最近 hue 嘅色帶。揀色帶係 UI 導航唔係調色，唔 push history */
+      let h=Math.atan2(dy,dx)*180/Math.PI; if(h<0)h+=360;
+      let best=null,bd=999;
+      for(const q of HSLB){ let d=Math.abs(q.hue-h); if(d>180)d=360-d; if(d<bd){bd=d;best=q;} }
+      if(best && S.hslSel!==best.id){ S.hslSel=best.id; refreshHueBar(); buildHslSliders(currentHslHost()); }
+      return;
+    }
+    /* 中心碟：垂直拖調當前色帶飽和（上推加、下拉減），放手先 commit + push history */
+    satDrag=true; ay=e.clientY; s0=hslC().s; before=snapshot();
+    try{ canvas.setPointerCapture(e.pointerId); }catch(_){}
+  });
+  canvas.addEventListener('pointermove',e=>{
+    if(!satDrag) return;
+    hslC().s=Math.round(clamp(s0+(ay-e.clientY)*0.7,-100,100));
+    const sl=SLIDERS['hsl_'+S.hslSel+'_s']; if(sl) sl.set(hslC().s,true);
+    refreshHueBar(); secChanged();
+  });
+  const end=()=>{
+    if(!satDrag) return; satDrag=false;
+    /* 有真係郁過先 push（唔好似 sameSnap 咁靠 object reference 比，hsl 係巢狀物件永遠唔等） */
+    if(before && hslC().s!==s0){
+      const bn=(HSLB.find(q=>q.id===S.hslSel)||{}).name||'';
+      S.hist.push({label:'HSL '+bn+'飽和',snap:before});
+      if(S.hist.length>S.histCap) S.hist.shift();
+      S.fut.length=0; updateHistBtns();
+    }
+    before=null; secCommitted();
+  };
+  canvas.addEventListener('pointerup',end);
+  canvas.addEventListener('pointercancel',end);
+  canvas.addEventListener('dblclick',e=>{
+    e.stopPropagation();
+    const c=hslC(); if(!c.h&&!c.s&&!c.l) return;
+    pushHistNow('HSL 色帶歸零');
+    c.h=0; c.s=0; c.l=0;
+    ['h','s','l'].forEach(kk=>{ const sl=SLIDERS['hsl_'+S.hslSel+'_'+kk]; if(sl) sl.set(0,true); });
+    refreshHueBar(); secChanged(); secCommitted();
+  });
+}
+
 /* ============================================================
    10. 匯入
    ============================================================ */
@@ -1651,6 +1772,11 @@ function saveShotState(){
   sh.st=shotState();
 }
 function applyShotState(st){
+  /* 切來稿／載入預設係「同步 UI 到某個 state」，唔係用家嘅調色 commit ——
+     一定要用 applyingHist 包住。否則 syncSecSliders 入面每條 value 有出入嘅
+     slider 都會經 wrapped onCommit push 一筆落 undo 堆：切完 shot 撳 ⌘Z
+     會彈出十幾個睇落冇反應嘅 junk entry，仲會順手清走 redo 堆。 */
+  applyingHist=true;
   setCheck('b0',!!st.bands[0]); setCheck('b1',!!st.bands[1]); setCheck('b2',!!st.bands[2]);
   setCheck('tone',!!st.tone);   setCheck('skin',!!st.skin);
   S.chromaStr=st.chromaStr; S.toneStr=st.toneStr;
@@ -1660,6 +1786,7 @@ function applyShotState(st){
   syncSecSliders();
   S.active=Math.min(Math.max(0,st.active|0), Math.max(0,itemCount()-1));
   updateGroupDots(); refreshHueBar(); buildHslSliders(currentHslHost());
+  applyingHist=false;
 }
 function defaultShotState(){
   /* active 繼承「而家揀緊嗰個 look／reference」而唔係跳返 0（中性還原）。
@@ -2123,7 +2250,7 @@ function wireTile(t,i){
 }
 function setActive(i){
   if(!S.vendorImg) return;
-  pushHistNow('切 LOOK');
+  if(i!==S.active) pushHistNow('切 LOOK');   /* 重複撳同一個唔好堆 junk history */
   const it=allItems()[i];
   if(it&&it.kind==='custom') applyCustom(it);
   S.active=i;
@@ -2146,6 +2273,8 @@ function currentSnapshot(){
   };
 }
 function applyCustom(cu){
+  /* 同上：載入自訂 LOOK 係同步 UI，唔係 commit，唔好污染 undo 堆 */
+  applyingHist=true;
   setCheck('b0',cu.bands[0]); setCheck('b1',cu.bands[1]); setCheck('b2',cu.bands[2]);
   setCheck('tone',cu.tone); setCheck('skin',cu.skin);
   S.chromaStr=cu.chromaStr; S.toneStr=cu.toneStr;
@@ -2155,6 +2284,7 @@ function applyCustom(cu){
   syncSecSliders();
   S.pvKey++; S.pvCache.clear();
   updateGroupDots(); drawAllWheels(); refreshHueBar(); buildHslSliders(currentHslHost());
+  applyingHist=false;
 }
 function currentHslHost(){
   const g=document.querySelector('.grp[data-g="hsl"]'); return g||document.body;
