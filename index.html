@@ -156,9 +156,13 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:12px 0}
   background:var(--panel2);color:var(--tx2);font-size:11px;cursor:pointer;
 }
 .pchip i{width:12px;height:12px;border-radius:3px;border:1px solid rgba(255,255,255,.18);display:inline-block}
-.pchip.sel{border-color:var(--acc);color:var(--tx)}
+.pchip.sel{border-color:var(--acc);color:var(--tx);background:var(--acc-soft)}
 .pchip.cus::after{content:'';width:5px;height:5px;border-radius:50%;background:var(--acc)}
 .palhint{font-size:10px;color:var(--tx3);margin-bottom:8px;line-height:1.5}
+.palhint b{color:var(--acc);font-weight:600}
+/* 忠實模式下，色板嘢唔會改圖 —— 調暗 + 提示，等用戶知點解「冇反應」 */
+.grp[data-g="palette"] .grp-bd.dim .palsw,.grp[data-g="palette"] .grp-bd.dim .palstops,
+.grp[data-g="palette"] .grp-bd.dim .sl{opacity:.35;pointer-events:none}
 
 /* ---------- 分區調色輪 ---------- */
 .wheels{display:flex;gap:5px;margin-bottom:6px}
@@ -256,6 +260,15 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:12px 0}
   display:flex;align-items:center;gap:6px;white-space:nowrap;
 }
 .holdpill.act{background:var(--acc);color:#0c1a2e;border-color:var(--acc);font-weight:500}
+/* 原圖鎖定：畫面 badge + 左面板半透明，等用戶一眼知「調色暫停咗」 */
+.lockpill{
+  position:absolute;left:50%;top:12px;transform:translateX(-50%);
+  background:var(--acc);color:#0c1a2e;border-radius:20px;
+  padding:4px 14px;font-size:11.5px;font-weight:600;pointer-events:none;
+  white-space:nowrap;box-shadow:0 2px 14px var(--acc-glow);z-index:5;
+}
+body.locked .left,body.locked .dock{opacity:.42;transition:opacity .15s}
+body.locked .rowbtns{opacity:1}
 .badge-l,.badge-r{
   position:absolute;top:10px;font-size:10px;font-family:ui-monospace,Menlo,monospace;
   background:rgba(10,12,16,.8);color:var(--tx2);padding:2px 7px;border-radius:4px;pointer-events:none;
@@ -489,6 +502,7 @@ textarea{
         <div class="badge-l" id="badgeL" hidden data-page-node-id="3izU7t24COyUh97WOgmGay">原圖 BEFORE</div>
         <div class="badge-r" id="badgeR" hidden data-page-node-id="YIfqeZaNCD3P4qbZovfUnt">調色後 AFTER</div>
         <div class="holdpill" id="holdpill" hidden data-page-node-id="eonXM5eBfXjmu9DWvDxhte">撳實睇原圖</div>
+        <div class="lockpill" id="lockpill" hidden>🔒 原圖鎖定中 · 調色已暫停 · 撳「◧ 原圖」或 Shift+Z 解除</div>
         <div class="warnflat" id="warnflat" hidden data-page-node-id="qF7warnflat001"></div>
         <div id="veil" data-page-node-id="JgAoyq3XUNc31pE3o0y150">放低就加入 reference</div>
         <div class="toast" id="toast" data-page-node-id="lD5YOABRJv3FFgy684jJm6"></div>
@@ -497,7 +511,7 @@ textarea{
       <div class="rowbtns" data-page-node-id="ROpmx3NJJE9Xjy1uyf4piR">
         <button class="b icon" id="b-undo" type="button" title="退回 (⌘Z)" disabled data-page-node-id="ld-undo">↶</button>
         <button class="b icon" id="b-redo" type="button" title="重做 (⌘⇧Z)" disabled data-page-node-id="ld-redo">↷</button>
-        <button class="b icon" id="b-lock" type="button" title="鎖住原圖 (Shift+Z)" data-page-node-id="ld-lock">⤺</button>
+        <button class="b" id="b-lock" type="button" title="暫停調色、鎖定顯示原圖 (Shift+Z)" data-page-node-id="ld-lock">◧ 原圖</button>
         <button class="b" id="b-save" type="button" data-page-node-id="eI0dWWyOEV9AIQhTGwZnrP">存為 LOOK</button>
         <button class="b" id="b-reset" type="button" title="全部微調歸零" data-page-node-id="VcjBtPCccjdOA5IY3aYef8">↺ 微調</button>
         <button class="b icon" id="b-lookexp" type="button" title="匯出自訂 LOOK（.json，搬去第部機用）" data-page-node-id="ld-lookexp">⇩</button>
@@ -1269,6 +1283,15 @@ function refreshPalUI(){
   seg.querySelectorAll('button').forEach(b=>{
     b.classList.toggle('on',(+b.dataset.m===1)===on);
   });
+  /* 動態提示：冇開模式就講明「唔會改圖」（用戶曾以為掣壞咗）；
+     開咗就話佢知而家揀緊邊個位。忠實模式下色票/位/融合調暗兼鎖住。 */
+  const bd=seg.closest('.grp-bd');
+  if(bd) bd.classList.toggle('dim',!on);
+  const ph=$('palhint');
+  if(ph){
+    if(!on) ph.innerHTML='色板模式<b>未開</b> —— 撳上面【色板】或 P 鍵，開咗先會改到圖';
+    else ph.innerHTML='而家揀緊<b>【'+({sh:'暗',mid:'中',hi:'亮'})[S.palSel]+'】</b>位 · 撳上面色票即換 · 雙擲位還原自動';
+  }
   const sw=$('palsw'); sw.innerHTML='';
   const idx=S.active;
   const pal=(S.vendorImg&&idx>=0)?paletteForItem(allItems()[idx]):null;
@@ -1283,6 +1306,7 @@ function refreshPalUI(){
         S.sec.palOv[S.palSel]={L:c.L,a:c.a,b:c.b};
         S.pvKey++; S.pvCache.clear();
         refreshPalUI(); updateGroupDots(); scheduleRender();
+        toast('【'+({sh:'暗',mid:'中',hi:'亮'})[S.palSel]+'】位已換色 ✓');
       };
       sw.appendChild(b);
     });
@@ -1566,10 +1590,12 @@ function toggleLock(){
   const b=$('b-lock');
   if(b){
     b.classList.toggle('pri',S.locked);
-    b.textContent=S.locked?'鎖住原圖':'⤺ 原圖';
+    b.textContent=S.locked?'🔒 原圖':'◧ 原圖';
   }
+  document.body.classList.toggle('locked',S.locked);
+  const lp=$('lockpill'); if(lp) lp.hidden=!S.locked;
   scheduleRender();
-  toast(S.locked?'鎖住原圖（忽略所有調色）':'解除原圖鎖定');
+  toast(S.locked?'原圖鎖定中 · 調色暫停（再撳 ◧ 或 Shift+Z 解除）':'解除鎖定 · 調色返嚟喇');
 }
 
 /* ============================================================
@@ -1659,8 +1685,7 @@ function buildLeftPanel(){
     pst.appendChild(ch);
   });
   g1b.body.appendChild(pst);
-  const phint=document.createElement('div'); phint.className='palhint';
-  phint.textContent='撳「暗/中/亮」揀位，再撳色票換色 · 雙擊位還原自動 · P 鍵切換';
+  const phint=document.createElement('div'); phint.className='palhint'; phint.id='palhint';
   g1b.body.appendChild(phint);
   makeSlider(g1b.body,'palBlend',{label:'融合',min:0,max:100,def:70,value:S.sec.palBlend,unit:'%',
     onInput:v=>{S.sec.palBlend=v;},onCommit:()=>{secChanged();refreshPalUI();secCommitted();}});
@@ -2411,6 +2436,24 @@ function mkSizeBtns(host){
 }
 function renderPresets(){
   const box=$('presets'); box.innerHTML='';
+  /* 「原圖」tile：一撳即睇 vendor 原圖（active=-1），唔使記快速鍵 */
+  {
+    const t=document.createElement('div');
+    t.className='tile orig'+(S.active===-1?' on':'');
+    t.setAttribute('role','radio'); t.setAttribute('aria-checked',S.active===-1?'true':'false');
+    t.tabIndex=S.active===-1?0:-1;
+    t.title='睇 vendor 原圖（冇任何調色）';
+    const c=document.createElement('canvas'); c.width=208; c.height=104;
+    const cx=c.getContext('2d');
+    cx.fillStyle='#14171d'; cx.fillRect(0,0,c.width,c.height);
+    if(S.vendorOrig){ drawFit(cx,S.vendorOrig,0,0,c.width,c.height); }
+    t.appendChild(c);
+    t.appendChild(mkLabel('原圖'));
+    const no=mkNo('0'); t.appendChild(no);
+    t.onclick=()=>setActive(-1);
+    t.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); setActive(-1); } };
+    box.appendChild(t);
+  }
   PRESETS.forEach((p,i)=>{
     const t=document.createElement('div');
     t.className='tile'+(S.active===i?' on':'');
