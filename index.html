@@ -3,7 +3,7 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction — 參考色方向工具 v5</title>
+<title>Look Direction — 參考色方向工具 v6</title>
 <style>
 :root{
   --bg:#14161a; --panel:#1b1e24; --panel2:#22262e; --panel3:#282d36;
@@ -135,6 +135,30 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:12px 0}
 .huering .hlg{font-size:9px;color:var(--tx3)}
 .huering .hlg b{color:var(--acc);font-weight:500}
 .hslbox{border-left:2px solid var(--line);padding-left:8px;margin-left:2px}
+/* ---------- 色板模式 ---------- */
+.palseg{display:flex;gap:4px;margin-bottom:8px}
+.palseg button{
+  flex:1;padding:5px 0;border-radius:6px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--tx2);font-size:11.5px;cursor:pointer;
+}
+.palseg button.on{background:var(--acc-soft);border-color:var(--acc);color:var(--tx);font-weight:600}
+.palsw{display:flex;gap:4px;margin-bottom:8px;min-height:26px;align-items:center}
+.palsw .psw{
+  flex:1;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,.14);
+  cursor:pointer;padding:0;transition:transform .12s;
+}
+.palsw .psw:hover{transform:scale(1.08);border-color:#fff}
+.palnone{font-size:10.5px;color:var(--tx3)}
+.palstops{display:flex;gap:4px;margin-bottom:6px}
+.pchip{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:5px;
+  padding:4px 0;border-radius:6px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--tx2);font-size:11px;cursor:pointer;
+}
+.pchip i{width:12px;height:12px;border-radius:3px;border:1px solid rgba(255,255,255,.18);display:inline-block}
+.pchip.sel{border-color:var(--acc);color:var(--tx)}
+.pchip.cus::after{content:'';width:5px;height:5px;border-radius:50%;background:var(--acc)}
+.palhint{font-size:10px;color:var(--tx3);margin-bottom:8px;line-height:1.5}
 
 /* ---------- 分區調色輪 ---------- */
 .wheels{display:flex;gap:5px;margin-bottom:6px}
@@ -476,6 +500,8 @@ textarea{
         <button class="b icon" id="b-lock" type="button" title="鎖住原圖 (Shift+Z)" data-page-node-id="ld-lock">⤺</button>
         <button class="b" id="b-save" type="button" data-page-node-id="eI0dWWyOEV9AIQhTGwZnrP">存為 LOOK</button>
         <button class="b" id="b-reset" type="button" title="全部微調歸零" data-page-node-id="VcjBtPCccjdOA5IY3aYef8">↺ 微調</button>
+        <button class="b icon" id="b-lookexp" type="button" title="匯出自訂 LOOK（.json，搬去第部機用）" data-page-node-id="ld-lookexp">⇩</button>
+        <button class="b icon" id="b-lookimp" type="button" title="匯入自訂 LOOK（.json）" data-page-node-id="ld-lookimp">⇧</button>
         <span class="hspacer" data-page-node-id="uBdSYA5hky1u18JsPaIKgX"></span>
         <button class="b" id="b-side2" type="button" data-page-node-id="1yg5mGj7rWMrQiXdAT4YFA">抄對比圖</button>
         <button class="b" id="b-png" type="button" data-page-node-id="79q8uJo45DdUunU74M23hw">匯出 PNG</button>
@@ -735,7 +761,22 @@ function newSec(){
   return {exp:0,con:0,high:0,shad:0,white:0,black:0,
           temp:0,tint:0,sat:0,vib:0,hsl,
           wsh:{h:210,s:0,l:0}, wmid:{h:0,s:0,l:0}, whi:{h:40,s:0,l:0},
-          wblend:50, wbal:0};
+          wblend:50, wbal:0,
+          /* 色板模式：on=開關、blend=融合%、palOv=用家改過嘅 暗/中/亮 色（null=自動） */
+          palOn:0, palBlend:70, palOv:{sh:null,mid:null,hi:null}};
+}
+/* 舊檔／舊 preset 嘅 sec 可能缺新欄位（例如 palOn 係 v6 先加）——
+   載入嗰陣一定要補齊，否則 slider 會攞到 undefined 變 NaN */
+function normSec(s){
+  const d=newSec();
+  if(!s||typeof s!=='object') return d;
+  for(const k in d){ if(s[k]!==undefined) d[k]=s[k]; }
+  d.hsl={}; for(const b of HSLB){ d.hsl[b.id]=Object.assign({h:0,s:0,l:0}, (s.hsl||{})[b.id]); }
+  ['wsh','wmid','whi'].forEach(k=>{ d[k]=Object.assign(d[k], s[k]||{}); });
+  d.palOv=Object.assign({sh:null,mid:null,hi:null}, s.palOv||{});
+  d.palOn=d.palOn?1:0;
+  d.palBlend=clamp(+d.palBlend||0,0,100);
+  return d;
 }
 let HUE_LUT=null;
 function getHueLUT(){
@@ -888,14 +929,55 @@ function applySec(L,a,b,s,p){
   return [clamp(L,0,100),a,b];
 }
 
-/* 一條龍：追色 + 二次創作 */
-function gradeRGB(r,g,b,grade,opt,sec,plan){
+/* ============================================================
+   4b. 色板模式（參考圖抽代表色 → 沿亮度軸注入目標圖冇嘅色）
+   ============================================================ */
+/* stops: [{L,a,b}] 按 L 升序 → 101 格 ab LUT（線性插值，兩端 hold）。
+   呢個係「色板移植」嘅核心：目標圖每粒 pixel 按自己嘅 L 喺參考色板嘅
+   亮度軸上攞一個目標色，灰色都可以被推向參考圖嘅簽名色。 */
+function buildPalLut(stops){
+  if(!stops||!stops.length) return null;
+  const ss=stops.slice().sort((x,y)=>x.L-y.L);
+  const lutA=new Float32Array(101), lutB=new Float32Array(101);
+  for(let i=0;i<=100;i++){
+    let a,b;
+    if(i<=ss[0].L){ a=ss[0].a; b=ss[0].b; }
+    else if(i>=ss[ss.length-1].L){ a=ss[ss.length-1].a; b=ss[ss.length-1].b; }
+    else{
+      for(let k=0;k<ss.length-1;k++){
+        const s0=ss[k], s1=ss[k+1];
+        if(i>=s0.L&&i<=s1.L){
+          const t=s1.L>s0.L? (i-s0.L)/(s1.L-s0.L) : 0;
+          a=s0.a+(s1.a-s0.a)*t; b=s0.b+(s1.b-s0.b)*t; break;
+        }
+      }
+    }
+    lutA[i]=a; lutB[i]=b;
+  }
+  return {lutA,lutB};
+}
+/* 將 pixel 嘅 ab 推向色板目標色。L 唔郁 —— 光影結構係 vendor 嘅，
+   我哋只借參考圖嘅「色」。膚色保護照舊生效（推到六成半就收）。 */
+function applyPal(L,a,b,pal,skinProtect){
+  const bi=L<0?0:(L>100?100:Math.round(L));
+  let w=pal.blend;
+  if(skinProtect) w*=1-0.65*skinness(L,a,b);
+  if(w<=0) return [L,a,b];
+  let na=a+(pal.lutA[bi]-a)*w, nb=b+(pal.lutB[bi]-b)*w;
+  const cm=Math.hypot(na,nb);
+  if(cm>MAX_CHROMA){ na*=MAX_CHROMA/cm; nb*=MAX_CHROMA/cm; }
+  return [L,na,nb];
+}
+
+/* 一條龍：追色 + 色板 + 二次創作 */
+function gradeRGB(r,g,b,grade,opt,sec,plan,pal){
   const lab=rgbToLab(Math.round(r),Math.round(g),Math.round(b));
   let q=applyPixel(lab[0],lab[1],lab[2],grade,opt);
+  if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProtect);
   if(plan&&plan.active) q=applySec(q[0],q[1],q[2],sec,plan);
   return labToRgb(q[0],q[1],q[2]);
 }
-function imageDataFrom(lab,grade,opt,sec,plan){
+function imageDataFrom(lab,grade,opt,sec,plan,pal){
   const n=lab.n, out=new ImageData(lab.w,lab.h), o=out.data;
   /* 原圖鎖定：唔理 LOOK / 微調，直接吐 vendor 圖 */
   if(typeof S!=='undefined' && S.locked){
@@ -908,6 +990,7 @@ function imageDataFrom(lab,grade,opt,sec,plan){
   const useSec = plan&&plan.active;
   for(let i=0;i<n;i++){
     let q=applyPixel(lab.L[i],lab.a[i],lab.b[i],grade,opt);
+    if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProtect);
     if(useSec) q=applySec(q[0],q[1],q[2],sec,plan);
     const c=labToRgb(q[0],q[1],q[2]), p=i*4;
     o[p]=c[0]; o[p+1]=c[1]; o[p+2]=c[2]; o[p+3]=255;
@@ -997,6 +1080,13 @@ function secSummary(s){
     const z=s[w.id];
     if(z.s>0.5||z.l) out.push('分區調色 '+w.name+'：色相 '+z.h+'° 強度 '+z.s+' 明度'+fmt1(z.l));
   }
+  if(s.palOn){
+    let t='色板模式：融合 '+Math.round(s.palBlend)+'%';
+    const ov=s.palOv||{}, nm={sh:'暗',mid:'中',hi:'亮'};
+    const usd=['sh','mid','hi'].filter(k=>ov[k]);
+    if(usd.length) t+=' · 手改 '+usd.map(k=>nm[k]).join('/');
+    out.push(t);
+  }
   return out;
 }
 
@@ -1044,7 +1134,9 @@ const S={
   zoom:0, panning:false,                       /* zoom: 0 = 適應視窗 */
   dockFold:{shots:false,presets:true,refs:false},  /* 內建 LOOK 預設收起（用家話唔用） */
   /* Undo / Redo / 原圖鎖定 */
-  hist:[], fut:[], histCap:30, locked:false
+  hist:[], fut:[], histCap:30, locked:false,
+  /* 色板模式：palSel 係 UI 揀緊邊個位（唔入 snapshot），palPlan 係 render 時嘅快取 */
+  palSel:'mid', palPlan:null
 };
 const cv=$('cv'), ctx=cv.getContext('2d');
 
@@ -1074,6 +1166,143 @@ function statsOf(i){
   return makePseudoRef(S.vendorAn,PRESETS[0]);
 }
 function gradeFor(i){ return buildGrade(S.vendorAn, statsOf(i), opt().useBands, $('tone').checked); }
+
+/* ============================================================
+   7b. 色板模式（UI 層）
+   ============================================================ */
+/* k-means（farthest-point 初始化，完全 deterministic，方便數值測試）抽代表色。
+   回傳 [{L,a,b,n}] 按 L 升序，太細嘅群（<2%）掉走。 */
+function extractPalette(img,k){
+  k=k||6;
+  const id=drawTo(img,120,120), lab=labOf(id), n=lab.n;
+  const step=Math.max(1,Math.floor(n/4000));
+  const idx=[]; for(let i=0;i<n;i+=step) idx.push(i);
+  const m=idx.length; if(!m) return [];
+  const cents=[{L:lab.L[idx[0]],a:lab.a[idx[0]],b:lab.b[idx[0]]}];
+  const dist=new Float64Array(m).fill(Infinity);
+  while(cents.length<k){
+    let bi=0,bd=-1;
+    const c=cents[cents.length-1];
+    for(let j=0;j<m;j++){
+      const i=idx[j];
+      const dL=lab.L[i]-c.L, da=lab.a[i]-c.a, db=lab.b[i]-c.b;
+      const d=dL*dL+da*da+db*db;
+      if(d<dist[j]) dist[j]=d;
+      if(dist[j]>bd){ bd=dist[j]; bi=j; }
+    }
+    if(bd<=0) break;
+    cents.push({L:lab.L[idx[bi]],a:lab.a[idx[bi]],b:lab.b[idx[bi]]});
+  }
+  const K=cents.length, cnt=new Float64Array(K);
+  for(let it=0;it<12;it++){
+    const sL=new Float64Array(K), sa=new Float64Array(K), sb=new Float64Array(K);
+    cnt.fill(0);
+    for(let j=0;j<m;j++){
+      const i=idx[j]; let bk=0,bd=Infinity;
+      for(let q=0;q<K;q++){
+        const dL=lab.L[i]-cents[q].L, da=lab.a[i]-cents[q].a, db=lab.b[i]-cents[q].b;
+        const d=dL*dL+da*da+db*db;
+        if(d<bd){ bd=d; bk=q; }
+      }
+      cnt[bk]++; sL[bk]+=lab.L[i]; sa[bk]+=lab.a[i]; sb[bk]+=lab.b[i];
+    }
+    for(let q=0;q<K;q++) if(cnt[q]>0){
+      cents[q]={L:sL[q]/cnt[q],a:sa[q]/cnt[q],b:sb[q]/cnt[q]};
+    }
+  }
+  const out=[];
+  for(let q=0;q<K;q++) if(cnt[q]>=m*0.02) out.push({L:cents[q].L,a:cents[q].a,b:cents[q].b,n:cnt[q]});
+  out.sort((x,y)=>x.L-y.L);
+  return out;
+}
+/* 內建 preset 冇真圖，由 spec 推 3 粒簽名色（暗/中/亮）。
+   例如 teal 嘅 dA/dB 本身就係「暗推青、亮推橙」，抽返出嚟啱啱好。 */
+function pseudoPalette(p){
+  if(!S.vendorAn) return null;
+  const pr=makePseudoRef(S.vendorAn,p);
+  return [0,1,2].map(k=>({L:BCTR[k], a:pr.bandStats[k].a, b:pr.bandStats[k].b, n:pr.bandStats[k].n}));
+}
+function paletteForItem(it){
+  if(!it) return null;
+  if(it.kind==='image'){
+    if(!it.palette) it.palette=extractPalette(it.img,6);
+    return it.palette&&it.palette.length? it.palette : null;
+  }
+  if(it.kind==='custom'){
+    const p=PRESETS.find(x=>x.id===it.baseId); if(p) return pseudoPalette(p);
+    const r=S.refs.find(x=>x.name===it.baseName); if(r) return paletteForItem(r);
+    return pseudoPalette(PRESETS[0]);
+  }
+  if(it.kind==='preset') return pseudoPalette(it.spec);
+  return null;
+}
+/* 有效 stops：自動色板 + 用家 暗/中/亮 覆蓋 */
+function palStopsFor(idx){
+  const pal=paletteForItem(allItems()[idx]);
+  if(!pal||!pal.length) return null;
+  const stops=pal.map(c=>({L:c.L,a:c.a,b:c.b})).sort((x,y)=>x.L-y.L);
+  const ov=S.sec.palOv||{};
+  const mid=Math.floor(stops.length/2);
+  if(ov.sh)  stops[0]=ov.sh;
+  if(ov.mid) stops[mid]=ov.mid;
+  if(ov.hi)  stops[stops.length-1]=ov.hi;
+  return stops;
+}
+function buildPalPlan(idx){
+  if(!S.sec.palOn) return null;
+  const stops=palStopsFor(idx);
+  if(!stops) return null;
+  const lut=buildPalLut(stops);
+  return {lutA:lut.lutA, lutB:lut.lutB, blend:clamp((S.sec.palBlend||0)/100,0,1)};
+}
+const labCss=(L,a,b)=>'rgb('+labToRgb(L,a,b).join(',')+')';
+function togglePalMode(){
+  pushHistNow(S.sec.palOn?'用返忠實模式':'開色板模式');
+  S.sec.palOn=S.sec.palOn?0:1;
+  S.pvKey++; S.pvCache.clear();
+  refreshPalUI(); updateGroupDots(); scheduleRender();
+  toast(S.sec.palOn?'色板模式：參考圖嘅色會注入嚟（P 切換）':'用返忠實模式');
+}
+function refreshPalUI(){
+  const seg=$('palseg'); if(!seg) return;
+  const on=!!S.sec.palOn;
+  seg.querySelectorAll('button').forEach(b=>{
+    b.classList.toggle('on',(+b.dataset.m===1)===on);
+  });
+  const sw=$('palsw'); sw.innerHTML='';
+  const idx=S.active;
+  const pal=(S.vendorImg&&idx>=0)?paletteForItem(allItems()[idx]):null;
+  const stops=(S.vendorImg&&idx>=0)?palStopsFor(idx):null;
+  if(pal){
+    pal.forEach(c=>{
+      const b=document.createElement('button');
+      b.type='button'; b.className='psw'; b.style.background=labCss(c.L,c.a,c.b);
+      b.title='L'+c.L.toFixed(0)+' · 撳去取代「'+({sh:'暗',mid:'中',hi:'亮'})[S.palSel]+'」位';
+      b.onclick=()=>{
+        pushHistNow('色板改色');
+        S.sec.palOv[S.palSel]={L:c.L,a:c.a,b:c.b};
+        S.pvKey++; S.pvCache.clear();
+        refreshPalUI(); updateGroupDots(); scheduleRender();
+      };
+      sw.appendChild(b);
+    });
+  }else{
+    sw.innerHTML='<span class="palnone">'+(S.vendorImg?'呢個 LOOK 冇色板':'先入來稿')+'</span>';
+  }
+  /* 暗/中/亮 三個位：顯示「而家實際用緊」嘅色（手改 > 自動） */
+  document.querySelectorAll('#palstops .pchip').forEach(ch=>{
+    const key=ch.dataset.s, ov=(S.sec.palOv||{})[key];
+    let col=null;
+    if(ov) col=ov;
+    else if(stops){
+      const p=key==='sh'? stops[0] : key==='hi'? stops[stops.length-1] : stops[Math.floor(stops.length/2)];
+      col=p;
+    }
+    ch.querySelector('i').style.background=col? labCss(col.L,col.a,col.b) : 'transparent';
+    ch.classList.toggle('sel', S.palSel===key);
+    ch.classList.toggle('cus', !!ov);
+  });
+}
 
 /* ---------- 影像工具 ---------- */
 function fitSize(img,mw,mh){
@@ -1402,6 +1631,41 @@ function buildLeftPanel(){
   g1.body.appendChild(optWrap);
   g1.secKeys=['chromaStr','toneStr'];
 
+  /* --- 色板模式（新）：借參考圖嘅「色」，唔止佢嘅平均值 --- */
+  const g1b=mkGroup(box,'palette','色板模式 PALETTE',false);
+  const pseg=document.createElement('div'); pseg.className='palseg'; pseg.id='palseg';
+  [['0','忠實'],['1','色板']].forEach(([m,lb])=>{
+    const b=document.createElement('button'); b.type='button'; b.dataset.m=m; b.textContent=lb;
+    b.onclick=togglePalMode;
+    pseg.appendChild(b);
+  });
+  g1b.body.appendChild(pseg);
+  const psw=document.createElement('div'); psw.className='palsw'; psw.id='palsw';
+  g1b.body.appendChild(psw);
+  const pst=document.createElement('div'); pst.className='palstops'; pst.id='palstops';
+  [['sh','暗'],['mid','中'],['hi','亮']].forEach(([key,lb])=>{
+    const ch=document.createElement('button'); ch.type='button'; ch.className='pchip'; ch.dataset.s=key;
+    ch.innerHTML='<i></i>'+lb;
+    ch.title='撳：揀呢個位，再撳上面色票換色 · 雙擊：還原自動';
+    ch.onclick=()=>{ S.palSel=key; refreshPalUI(); };
+    ch.ondblclick=e=>{
+      e.stopPropagation();
+      if(!S.sec.palOv[key]) return;
+      pushHistNow('色板還原自動');
+      S.sec.palOv[key]=null;
+      S.pvKey++; S.pvCache.clear();
+      refreshPalUI(); updateGroupDots(); scheduleRender();
+    };
+    pst.appendChild(ch);
+  });
+  g1b.body.appendChild(pst);
+  const phint=document.createElement('div'); phint.className='palhint';
+  phint.textContent='撳「暗/中/亮」揀位，再撳色票換色 · 雙擊位還原自動 · P 鍵切換';
+  g1b.body.appendChild(phint);
+  makeSlider(g1b.body,'palBlend',{label:'融合',min:0,max:100,def:70,value:S.sec.palBlend,unit:'%',
+    onInput:v=>{S.sec.palBlend=v;},onCommit:()=>{secChanged();refreshPalUI();secCommitted();}});
+  g1b.secKeys=null;
+
   /* --- 光暗 --- */
   const g2=mkGroup(box,'tone','光暗 TONE',false);
   ['exp','con','high','shad','white','black'].forEach(k=>{
@@ -1530,6 +1794,11 @@ function updateGroupDots(){
       for(const w of WHEELS){ const z=S.sec[w.id]; if(z.s>0.5||z.l) n++; }
       if(S.sec.wblend!==50) n++;
       if(S.sec.wbal!==0) n++;
+    }else if(g.dataset.g==='palette'){
+      if(S.sec.palOn) n++;
+      if(S.sec.palOn && S.sec.palBlend!==70) n++;
+      const ov=S.sec.palOv||{};
+      ['sh','mid','hi'].forEach(k=>{ if(ov[k]) n++; });
     }else if(g.dataset.g==='match'){
       if(S.chromaStr!==70) n++;
       if(S.toneStr!==45) n++;
@@ -1782,10 +2051,11 @@ function applyShotState(st){
   S.chromaStr=st.chromaStr; S.toneStr=st.toneStr;
   if(SLIDERS.chromaStr) SLIDERS.chromaStr.set(st.chromaStr);
   if(SLIDERS.toneStr)   SLIDERS.toneStr.set(st.toneStr);
-  S.sec=JSON.parse(JSON.stringify(st.sec));
+  S.sec=normSec(JSON.parse(JSON.stringify(st.sec)));
   syncSecSliders();
   S.active=Math.min(Math.max(0,st.active|0), Math.max(0,itemCount()-1));
   updateGroupDots(); refreshHueBar(); buildHslSliders(currentHslHost());
+  if(typeof refreshPalUI==='function') refreshPalUI();
   applyingHist=false;
 }
 function defaultShotState(){
@@ -1920,11 +2190,12 @@ function addRef(img,name){
    Lightroom 咁推一樣爆），但用家一定要睇到，否則會以為自己張圖仲有層次、
    照抄個數俾供應商。淨係喺全解 render（拖桿放手嗰下）先計，
    用 quick lab + stride 抽樣，所以唔會拖慢拖桿。 */
-function flatWarn(lab,g,opt,sec,plan){
+function flatWarn(lab,g,opt,sec,plan,pal){
   const n=lab.n, stride=Math.max(1,Math.floor(n/20000));
   const hist=new Int32Array(256); let cnt=0;
   for(let i=0;i<n;i+=stride){
     let q=applyPixel(lab.L[i],lab.a[i],lab.b[i],g,opt);
+    if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProtect);
     if(plan&&plan.active) q=applySec(q[0],q[1],q[2],sec,plan);
     let b=Math.round(q[0]); if(b<0)b=0; else if(b>255)b=255;
     hist[b]++; cnt++;
@@ -1935,10 +2206,10 @@ function flatWarn(lab,g,opt,sec,plan){
   return {flat:near/cnt*100, topL:top};
 }
 const FLAT_WARN=35;                 /* 高過呢個 % 就彈警告 */
-function updateFlatWarn(lab,g,opt,sec,plan){
+function updateFlatWarn(lab,g,opt,sec,plan,pal){
   const el=$('warnflat'); if(!el) return;
   if(S.mode==='grid'){ el.hidden=true; return; }
-  const fw=flatWarn(lab,g,opt,sec,plan);
+  const fw=flatWarn(lab,g,opt,sec,plan,pal);
   S.flat=fw.flat;
   if(fw.flat>FLAT_WARN){
     el.hidden=false;
@@ -1954,12 +2225,13 @@ function render(quick){
   const g=gradeFor(idx);
   S.lastGrade=g;
   S.secPlan=buildSecPlan(S.sec);
+  S.palPlan=buildPalPlan(idx);
   const lab = quick ? S.vendorLabQuick : S.vendorLabFull;
   const o=opt();
-  S.outCanvas = idToCanvas(imageDataFrom(lab,g,o,S.sec,S.secPlan));
+  S.outCanvas = idToCanvas(imageDataFrom(lab,g,o,S.sec,S.secPlan,S.palPlan));
   paint();
   updateDirection(idx,g);
-  if(!quick) updateFlatWarn(S.vendorLabQuick,g,o,S.sec,S.secPlan);
+  if(!quick) updateFlatWarn(S.vendorLabQuick,g,o,S.sec,S.secPlan,S.palPlan);
   $('cstat').textContent=(quick?'預覽':'全解')+' · '+(performance.now()-t0).toFixed(0)+'ms';
 }
 function drawFit(c2d,img,x,y,w,h){
@@ -2255,6 +2527,7 @@ function setActive(i){
   if(it&&it.kind==='custom') applyCustom(it);
   S.active=i;
   renderPresets(); renderRefs();
+  refreshPalUI();
   if(S.mode==='grid') renderGrid(); else render(false);
 }
 
@@ -2280,10 +2553,11 @@ function applyCustom(cu){
   S.chromaStr=cu.chromaStr; S.toneStr=cu.toneStr;
   if(SLIDERS.chromaStr) SLIDERS.chromaStr.set(cu.chromaStr);
   if(SLIDERS.toneStr) SLIDERS.toneStr.set(cu.toneStr);
-  S.sec=JSON.parse(JSON.stringify(cu.sec));
+  S.sec=normSec(JSON.parse(JSON.stringify(cu.sec)));
   syncSecSliders();
   S.pvKey++; S.pvCache.clear();
   updateGroupDots(); drawAllWheels(); refreshHueBar(); buildHslSliders(currentHslHost());
+  if(typeof refreshPalUI==='function') refreshPalUI();
   applyingHist=false;
 }
 function currentHslHost(){
@@ -2299,11 +2573,49 @@ function syncSecSliders(){
   });
   if(SLIDERS.wblend) SLIDERS.wblend.set(S.sec.wblend);
   if(SLIDERS.wbal) SLIDERS.wbal.set(S.sec.wbal);
+  if(SLIDERS.palBlend) SLIDERS.palBlend.set(S.sec.palBlend);
   for(const b of HSLB){
     const c=S.sec.hsl[b.id];
     ['h','s','l'].forEach(kk=>{ const sl=SLIDERS['hsl_'+b.id+'_'+kk]; if(sl) sl.set(c[kk]); });
   }
 }
+/* ---------- 自訂 LOOK 持久化（localStorage + JSON 匯出/匯入） ----------
+   用家有 5 部機：本機記住做日常，JSON 檔做跨機搬運。
+   留意：LOOK 入面嘅 baseName 係參考圖名，第部機冇嗰張圖會自動 fallback
+   （statsOf 搵唔到就用中性還原），唔會死。 */
+const CUSTKEY='ld.customs.v1';
+function persistCustoms(){
+  try{ localStorage.setItem(CUSTKEY,JSON.stringify(S.customs)); }catch(_){}
+}
+function validCustom(c){
+  return c && typeof c==='object' && c.kind==='custom' && typeof c.name==='string'
+      && c.sec && typeof c.sec==='object';
+}
+function loadCustoms(){
+  let arr=null;
+  try{ arr=JSON.parse(localStorage.getItem(CUSTKEY)||'null'); }catch(_){}
+  if(!Array.isArray(arr)) return;
+  S.customs=arr.filter(validCustom).map(c=>Object.assign({},c,{sec:normSec(c.sec)}));
+}
+function exportCustomsJSON(){
+  return JSON.stringify({app:'look-direction', v:6, exported:new Date().toISOString(),
+                         customs:S.customs}, null, 2);
+}
+function importCustomsJSON(text){
+  const d=JSON.parse(text);            /* 壞 JSON 直接 throw，caller catch */
+  const arr=d&&d.customs;
+  if(!Array.isArray(arr)) throw new Error('唔係 LOOK 檔');
+  const ok=arr.filter(validCustom);
+  let n=0;
+  for(const c of ok){
+    let nm=c.name;
+    while(S.customs.some(x=>x.name===nm)) nm+=' 2';   /* 撞名自動改名 */
+    S.customs.push(Object.assign({},c,{name:nm,sec:normSec(c.sec)}));
+    n++;
+  }
+  return n;
+}
+
 function saveCustom(){
   if(!S.vendorImg||S.active<0){ toast('未揀 look'); return; }
   const snap=currentSnapshot();
@@ -2318,6 +2630,7 @@ function removeCustom(i){
   if(i<0||i>=S.customs.length) return;
   const nm=S.customs[i].name;
   S.customs.splice(i,1);
+  persistCustoms();
   const max=itemCount();
   if(S.active>=max) S.active=Math.max(0,max-1);
   renderPresets();
@@ -2343,7 +2656,7 @@ function previewCanvas(i){
   if(S.pvCache.has(key)) return S.pvCache.get(key);
   const lab=S.vendorLabQuick;
   const w=340, h=Math.max(1,Math.round(w*lab.h/lab.w));
-  const id=imageDataFrom(lab,gradeFor(i),opt(),S.sec,S.secPlan||buildSecPlan(S.sec));
+  const id=imageDataFrom(lab,gradeFor(i),opt(),S.sec,S.secPlan||buildSecPlan(S.sec),buildPalPlan(i));
   const c=idToCanvas(id);
   const o=document.createElement('canvas'); o.width=w; o.height=h;
   const ox=o.getContext('2d'); ox.imageSmoothingQuality='high';
@@ -2411,7 +2724,7 @@ function renderGrid(){
   (function step(){
     if(S.mode!=='grid' || k>=items.length) return;
     const i=k++;
-    const c=idToCanvas(imageDataFrom(S.vendorLabQuick,gradeFor(i),opt(),S.sec,S.secPlan));
+    const c=idToCanvas(imageDataFrom(S.vendorLabQuick,gradeFor(i),opt(),S.sec,S.secPlan,buildPalPlan(i)));
     const cell=box.children[i];
     const cc=cell? cell.querySelector('canvas') : null;
     if(cc) cc.getContext('2d').drawImage(c,0,0,cc.width,cc.height);
@@ -2436,7 +2749,7 @@ function exportFull(){
   const s=Math.min(2600/img.width, 2600/img.height, 1);
   const w=Math.round(img.width*s), h=Math.round(img.height*s);
   const lab=labOf(drawTo(img,w,h));
-  return idToCanvas(imageDataFrom(lab,S.lastGrade,opt(),S.sec,buildSecPlan(S.sec)));
+  return idToCanvas(imageDataFrom(lab,S.lastGrade,opt(),S.sec,buildSecPlan(S.sec),buildPalPlan(S.active)));
 }
 $('b-png').onclick=()=>{
   if(!S.vendorImg||!S.lastGrade) return;
@@ -2450,14 +2763,14 @@ $('b-cube').onclick=()=>{
   if(!S.lastGrade) return;
   /* 一定要即場計：S.secPlan 係上一次 render 嘅快照，用家啱啱拖完條桿
      但 render 仲喺 rAF 排緊隊嗰陣會攞到舊嘢，出嚟嘅 LUT 會漏咗手動微調。 */
-  const o=opt(), N=33, sp=buildSecPlan(S.sec);
+  const o=opt(), N=33, sp=buildSecPlan(S.sec), pp=buildPalPlan(S.active);
   const L=['# Generated by Look Direction v3',
            '# ref: '+(allItems()[S.active]||{name:'-'}).name+
            ' | chroma '+S.chromaStr+'% tone '+S.toneStr+'%'+
            (sp.active?' | +secondary':''),
            'TITLE "LookDirection"','LUT_3D_SIZE '+N,''];
   for(let bi=0;bi<N;bi++)for(let gi=0;gi<N;gi++)for(let ri=0;ri<N;ri++){
-    const q=gradeRGB(ri/(N-1)*255, gi/(N-1)*255, bi/(N-1)*255, S.lastGrade, o, S.sec, sp);
+    const q=gradeRGB(ri/(N-1)*255, gi/(N-1)*255, bi/(N-1)*255, S.lastGrade, o, S.sec, sp, pp);
     L.push((q[0]/255).toFixed(6)+' '+(q[1]/255).toFixed(6)+' '+(q[2]/255).toFixed(6));
   }
   const a=document.createElement('a');
@@ -2533,9 +2846,35 @@ $('b-reset').onclick=()=>{
   syncSecSliders();
   S.pvKey++; S.pvCache.clear();
   updateGroupDots(); drawAllWheels(); refreshHueBar(); buildHslSliders(currentHslHost());
+  refreshPalUI();
   renderPresets(); render(false);
   applyingHist=false;
   toast('微調全部歸零');
+};
+$('b-lookexp').onclick=()=>{
+  if(!S.customs.length){ toast('未有自訂 LOOK'); return; }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([exportCustomsJSON()],{type:'application/json'}));
+  a.download='look-direction-looks.json'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+  toast('匯出咗 '+S.customs.length+' 個 LOOK');
+};
+$('b-lookimp').onclick=()=>{
+  const inp=document.createElement('input');
+  inp.type='file'; inp.accept='.json,application/json';
+  inp.onchange=()=>{
+    const f=inp.files[0]; if(!f) return;
+    const rd=new FileReader();
+    rd.onload=()=>{
+      try{
+        const n=importCustomsJSON(String(rd.result));
+        persistCustoms(); renderPresets();
+        toast(n? '匯入咗 '+n+' 個 LOOK' : '檔案入面冇有效 LOOK');
+      }catch(err){ toast('匯入失敗：'+err.message); }
+    };
+    rd.readAsText(f);
+  };
+  inp.click();
 };
 $('b-sheet').onclick=()=>{
   if(!S.outCanvas || S.active<0){ toast('未揀 look'); return; }
@@ -2820,6 +3159,8 @@ window.addEventListener('keydown',e=>{
     setMode(order[(order.indexOf(S.mode)+1)%4]); e.preventDefault();
   }else if(e.key==='b'||e.key==='B'){
     S.flip=!S.flip; paint(); e.preventDefault();
+  }else if(e.key==='p'||e.key==='P'){
+    togglePalMode(); e.preventDefault();
   }else if((e.key==='Delete'||e.key==='Backspace') && S.active>=PRESETS.length){
     const i=S.active-PRESETS.length;
     if(i<S.refs.length) removeRef(i); else removeCustom(i-S.refs.length);
@@ -2840,6 +3181,7 @@ function toast(msg){
 
 /* ---------- init ---------- */
 try{ const s=localStorage.getItem('ld.tile'); if(s) S.tileSize=s; }catch(_){}
+loadCustoms();          /* 上次的自訂 LOOK 还原，一定要喺第一次 renderPresets 之前 */
 mkSizeBtns($('szA')); mkSizeBtns($('szB')); mkSizeBtns($('szS'));
 applyTileSize();
 applyDockFold();
