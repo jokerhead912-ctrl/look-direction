@@ -565,7 +565,7 @@ textarea{
       <div class="hd" data-page-node-id="OlraOQsSplLVTRqyVbLQN2">
         <button class="foldbtn" type="button" data-row="shots" aria-expanded="true" aria-label="摺疊來稿">▾</button>
         <b>來稿 SHOTS</b>
-        <span class="sub" id="shotcount" data-page-node-id="hxnYJUlaEBFAqaQrfQGFdn">0 張 · 逐張撳 · 每張記住自己套設定</span>
+        <span class="sub" id="shotcount" data-page-node-id="hxnYJUlaEBFAqaQrfQGFdn">0 張 · 逐張撳 · 每張記住自己套設定 · ⌘V/Ctrl+V 跟滑鼠落位</span>
         <span class="hspacer" data-page-node-id="xJ7xKIZnAp7s00uIV0GTzE"></span>
         <button class="minib" id="b-addshot2" type="button">＋ 加入來稿</button>
         <div class="szbtns" id="szS" data-page-node-id="k3KZEbPb98SycochFprhXZ"></div>
@@ -2389,8 +2389,8 @@ function renderShots(){
   });
   const n=S.shots.length;
   $('shotcount').textContent = n
-    ? n+' 張 · 撳就跳過去 · 每張記住自己套設定（而家第 '+(S.shotIdx+1)+' 張）'
-    : '拖幾多張都得 · 逐張撳 · 每張記住自己套設定';
+    ? n+' 張 · 撳就跳過去 · 每張記住自己套設定（而家第 '+(S.shotIdx+1)+' 張）· ⌘V/Ctrl+V 跟滑鼠落位'
+    : '拖幾多張都得 · 逐張撳 · 每張記住自己套設定 · ⌘V/Ctrl+V 跟滑鼠落位';
 }
 function addRef(img,name){
   S.refs.push({kind:'image',
@@ -3475,7 +3475,17 @@ window.addEventListener('drop',e=>{
 });
 /* 貼上：未入過圖就當來稿，之後當參考（⌘V／Ctrl+V 多數係由瀏覽器抄參考圖返嚟）。
    Windows 實測：QQ／微信 cap 圖、Explorer 抄檔，clipboardData.items 嘅 type
-   成日係空字串 —— 唔好再信 type，kind==='file' 就交畀 handleFile 試 load。 */
+   成日係空字串 —— 唔好再信 type，kind==='file' 就交畀 handleFile 試 load。
+   v9b：目標跟滑鼠 —— 游標喺「來稿」嗰排上面 → 入 shot；喺「REFERENCE」
+   嗰排上面 → 入參考；其他位置沿用舊規則（第一張當來稿、之後當參考）。
+   解決「想貼第二張來稿但走咗落參考圖」。 */
+let pasteZone=null;
+document.addEventListener('pointermove',e=>{
+  const t=e.target;
+  if(!t||!t.closest) return;
+  if(t.closest('#row-shots'))     pasteZone='shot';
+  else if(t.closest('#row-refs')) pasteZone='ref';
+},true);
 window.addEventListener('paste',e=>{
   const cd=e.clipboardData; if(!cd) return;
   let f=null;
@@ -3488,7 +3498,7 @@ window.addEventListener('paste',e=>{
   if(!f && cd.files && cd.files.length) f=cd.files[0];
   if(!f) return;   /* 純文字貼上（例如貼入備註框）唔好截 */
   e.preventDefault();
-  handleFile(f, S.shots.length? 'ref':'shot');
+  handleFile(f, pasteZone || (S.shots.length? 'ref':'shot'));
 });
 /* 鍵盤 */
 window.addEventListener('keydown',e=>{
