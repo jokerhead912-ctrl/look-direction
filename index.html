@@ -496,7 +496,7 @@ textarea{
         <div class="empty" id="empty" data-page-node-id="uVWQSRGIKXzsTzrfhoOb0o">
           <div class="big" data-page-node-id="gyGjLJ4c8nFpUwwV3Ln0g9">拖啲供應商嘅圖入嚟</div>
           拖幾多張都得 —— 會入落下面「來稿」嗰條，逐張撳就得<br data-page-node-id="MvEcICZWQWyLLy0lchfmlm">
-          參考圖拖落 REFERENCE 嗰條 · 或者直接撳內建 look 即刻試
+          參考圖拖落 REFERENCE 嗰條 · Pinterest 張圖可以直接拖入嚟 · 或者撳內建 look 即刻試
         </div>
         <div class="gridbox" id="gridbox" hidden data-page-node-id="qFy0MQHx7xnDkiWlKnA1ne"></div>
         <div class="badge-l" id="badgeL" hidden data-page-node-id="3izU7t24COyUh97WOgmGay">原圖 BEFORE</div>
@@ -2206,6 +2206,98 @@ function addRef(img,name){
   toast('加咗「'+S.refs[S.refs.length-1].name+'」');
 }
 
+/* ---------- 由網址加參考圖（Pinterest 直接拖入） ----------
+   做法跟足 Krafted v7.0.18–23 嘅實戰版本（喺佢度跑咗幾個月冇崩過）：
+   1) drop event 入面同步抄出 dataTransfer 三樣 payload，setTimeout(0) 先處理 ——
+      唔係咁做嘅話，Pinterest 拖幾次就會 wedge 死 Chrome 嘅 DnD state machine
+      （之後全 browser 開唔到新 drag，要重開 Chrome）。
+   2) candidate 優先：text/html 入面個 <img>（srcset 揀 ≤1600w 最大嗰格 ——
+      唔好貪 originals，幾 MB 一張拖幾張會 OOM 殺埋 Pinterest 個 tab），
+      然後 img src，再掃 background-image url(...)；uri-list 多數係 pin 頁
+      網址，排最後。
+   3) 逐個 candidate 試：direct fetch（對方有 CORS 就得）→ images.weserv.nl
+      代理（i.pinimg.com 冇 CORS header，一定要呢步）。
+   4) 全部衰就明確 toast 教 cap 圖 ⌘V，唔好靜靜雞死。 */
+function pickSrcset(ss){
+  let bestLe=null,bestLeW=-1,bestGt=null,bestGtW=Infinity,largest=null,largestW=-1;
+  String(ss||'').split(',').forEach(part=>{
+    const bits=part.trim().split(/\s+/); if(!bits[0]) return;
+    const w=(bits[1]&&/w$/i.test(bits[1]))? parseInt(bits[1],10):0;
+    if(w>largestW){ largestW=w; largest=bits[0]; }
+    if(w>0&&w<=1600&&w>bestLeW){ bestLeW=w; bestLe=bits[0]; }
+    if(w>1600&&w<bestGtW){ bestGtW=w; bestGt=bits[0]; }
+  });
+  return bestLe||bestGt||largest;
+}
+function collectDropCandidates(html,uri,plain){
+  const out=[];
+  const push=u=>{
+    if(!u||typeof u!=='string') return;
+    u=u.trim().replace(/&amp;/g,'&');
+    if(u&&out.indexOf(u)<0) out.push(u);
+  };
+  if(html){
+    const tagM=html.match(/<img[^>]*>/i);
+    if(tagM){
+      const tag=tagM[0];
+      const ssM=tag.match(/srcset\s*=\s*["']([^"']+)["']/i);
+      if(ssM){ const p=pickSrcset(ssM[1]); if(p) push(p); }
+      const srcM=tag.match(/\ssrc\s*=\s*["']([^"']+)["']/i);
+      if(srcM) push(srcM[1]);
+    }
+    /* Pinterest 大圖 view 拖出嚟有時係 DIV background-image，冇 <img> */
+    const urlRe=/url\(\s*["']?([^"')]+)["']?\s*\)/g;
+    let um; while((um=urlRe.exec(html))!==null){ if(/^https?:\/\//i.test(um[1])) push(um[1]); }
+  }
+  if(uri){
+    const lines=uri.split(/\r?\n/).map(s=>s.trim()).filter(s=>s&&s[0]!=='#');
+    if(lines.length) push(lines[0]);
+  }
+  if(!out.length&&plain&&/^https?:\/\//i.test(plain.trim())) push(plain.trim());
+  return out;
+}
+function nameFromUrl(u){
+  const m=(u||'').match(/\/([^/?#]+)\.(?:jpg|jpeg|png|webp)(?:[?#]|$)/i);
+  if(!m) return 'web ref';
+  try{ return decodeURIComponent(m[1]).slice(0,40); }catch(_){ return m[1].slice(0,40); }
+}
+async function fetchImageBlob(url){
+  /* 第一注：直出（有啲 CDN 真係有 CORS） */
+  try{
+    const r=await fetch(url,{mode:'cors'});
+    if(r.ok){ const b=await r.blob(); if(b.type.indexOf('image/')===0) return b; }
+  }catch(_){}
+  /* 第二注：weserv 圖片代理（自帶 ACAO:*，Krafted 實測 pinimg 得） */
+  const stripped=url.replace(/^https?:\/\//i,'');
+  const r2=await fetch('https://images.weserv.nl/?url='+encodeURIComponent(stripped));
+  if(!r2.ok) throw new Error('proxy '+r2.status);
+  const b2=await r2.blob();
+  if(b2.type.indexOf('image/')!==0) throw new Error('not image');
+  return b2;
+}
+async function addRefFromUrls(cands){
+  toast('入緊參考圖…');
+  for(const u of cands){
+    try{
+      if(/^data:image\//i.test(u)){          /* Office 拖出嚟有時直接係 data URL */
+        const im=new Image();
+        im.onload=()=>addRef(im,'web ref');
+        im.onerror=()=>toast('解唔到拖入嘅圖');
+        im.src=u; return;
+      }
+      if(!/^https?:\/\//i.test(u)) continue;  /* file:// 之類瀏覽器實擋，跳過 */
+      const blob=await fetchImageBlob(u);
+      const obj=URL.createObjectURL(blob);
+      const im=new Image();
+      im.onload=()=>{ addRef(im,nameFromUrl(u)); URL.revokeObjectURL(obj); };
+      im.onerror=()=>{ toast('讀唔到呢張圖'); URL.revokeObjectURL(obj); };
+      im.src=obj;
+      return;
+    }catch(_){ /* 試下一個 candidate */ }
+  }
+  toast('拖入失敗：對方網站擋咗 · 試吓 cap 圖之後 ⌘V 貼上');
+}
+
 /* ============================================================
    11. 渲染
    ============================================================ */
@@ -3144,11 +3236,29 @@ window.addEventListener('dragover',e=>e.preventDefault());
 window.addEventListener('dragleave',e=>{ e.preventDefault(); if(--dragDepth<=0){ dragDepth=0; veil.classList.remove('show'); } });
 window.addEventListener('drop',e=>{
   e.preventDefault(); dragDepth=0; veil.classList.remove('show');
-  const fs=e.dataTransfer? e.dataTransfer.files : null;
-  if(!fs) return;
+  const dt=e.dataTransfer; if(!dt) return;
+  const fs=dt.files;
   /* 拖落 REFERENCE 嗰條 = 參考；其他位 = 加落來稿庫 */
   const onRefs = !!(e.target && e.target.closest && e.target.closest('#row-refs'));
-  Array.prototype.forEach.call(fs,f=>handleFile(f, onRefs?'ref':'shot'));
+  if(fs && fs.length){
+    Array.prototype.forEach.call(fs,f=>handleFile(f, onRefs?'ref':'shot'));
+    return;
+  }
+  /* 由網頁拖入（Pinterest 等）：冇 file，得 html / url —— 一律當參考圖。
+     重要：payload 要同步抄出嚟，處理擺 setTimeout(0) —— 唔係會 wedge 死
+     Chrome 嘅 DnD state machine（Krafted v7.0.23 實戰教訓）。 */
+  let h='',u='',p='';
+  if(dt.getData){
+    try{ h=dt.getData('text/html')||''; }catch(_){}
+    try{ u=dt.getData('text/uri-list')||''; }catch(_){}
+    try{ p=dt.getData('text/plain')||''; }catch(_){}
+  }
+  const cands=collectDropCandidates(h,u,p);
+  if(!cands.length){
+    if(h||u||p) toast('拖入嘅嘢搵唔到圖 · 直接拖張圖（唔好拖條 link 文字）');
+    return;
+  }
+  setTimeout(()=>{ addRefFromUrls(cands); },0);
 });
 /* 貼上：未入過圖就當來稿，之後當參考（⌘V 多數係由瀏覽器抄參考圖返嚟） */
 window.addEventListener('paste',e=>{
