@@ -156,6 +156,31 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:12px 0}
 /* 未注入方向嗰陣，牆上嘅嘢唔會改圖 —— 調暗 + 提示（牆本身仍可撳，撳就開） */
 .grp[data-g="palette"] .grp-bd.dim .palwall{opacity:.5}
 .grp[data-g="palette"] .grp-bd.dim .sl{opacity:.35;pointer-events:none}
+/* ---------- 傳統色板 view（v9 加返，同方向牆切換） ---------- */
+.palseg{display:flex;gap:4px;margin-bottom:8px}
+.palseg button{
+  flex:1;padding:5px 0;border-radius:6px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--tx2);font-size:14px;cursor:pointer;
+}
+.palseg button.on{background:var(--acc-soft);border-color:var(--acc);color:var(--tx);font-weight:600}
+.palsw{display:flex;gap:4px;margin-bottom:8px;min-height:26px;align-items:center}
+.palsw .psw{
+  flex:1;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,.14);
+  cursor:pointer;padding:0;transition:transform .12s;
+}
+.palsw .psw:hover{transform:scale(1.08);border-color:#fff}
+.palnone{font-size:12.5px;color:var(--tx3)}
+.palstops{display:flex;gap:4px;margin-bottom:6px}
+.pchip{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:5px;
+  padding:4px 0;border-radius:6px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--tx2);font-size:13px;cursor:pointer;
+}
+.pchip i{width:12px;height:12px;border-radius:3px;border:1px solid rgba(255,255,255,.18);display:inline-block}
+.pchip.sel{border-color:var(--acc);color:var(--tx);background:var(--acc-soft)}
+.pchip.cus::after{content:'';width:5px;height:5px;border-radius:50%;background:var(--acc)}
+/* 忠實模式下色票同位都唔會改圖 —— 調暗兼鎖住（seg 掣保持可撳，畀用戶開返） */
+.grp[data-g="palette"] .grp-bd.dim .palsw,.grp[data-g="palette"] .grp-bd.dim .palstops{opacity:.35;pointer-events:none}
 
 /* ---------- 分區調色輪 ---------- */
 .wheels{display:flex;gap:5px;margin-bottom:6px}
@@ -1158,9 +1183,12 @@ const S={
   dockFold:{shots:false,presets:true,refs:false},  /* 內建 LOOK 預設收起（用家話唔用） */
   /* Undo / Redo / 原圖鎖定 */
   hist:[], fut:[], histCap:30, locked:false,
-  /* 方向注入：palPlan 係 render 時嘅快取（v8b 起冇咗 palSel，highlight 由 sec 推） */
-  palPlan:null
+  /* 方向注入：palPlan 係 render 時嘅快取；palView = 牆／傳統色板切換（v9 加返）；
+     palSel 係色板 view 揀緊邊個位（暗/中/亮）—— 兩個都係 UI state，唔入 snapshot */
+  palPlan:null, palView:'wall', palSel:'mid'
 };
+/* 記住用家上次的 view 選擇（牆定色板） */
+try{ const _pv=localStorage.getItem('ld.palview'); if(_pv==='sw'||_pv==='wall') S.palView=_pv; }catch(_){}
 const cv=$('cv'), ctx=cv.getContext('2d');
 
 const opt=()=>({
@@ -1301,7 +1329,9 @@ const DIRSIG=[
 function palSigFromSec(){
   if(!S.sec.palOn) return null;
   const ov=S.sec.palOv||{};
-  if(!(ov.sh&&ov.mid&&ov.hi)) return 'ref';
+  const any=!!(ov.sh||ov.mid||ov.hi);
+  /* 三點未齊：全 null = 參考圖自動色板；有單點手改（傳統色板玩法）= 自訂 */
+  if(!(ov.sh&&ov.mid&&ov.hi)) return any? 'cus' : 'ref';
   for(const d of DIRSIG){
     if(!d.stops) continue;
     const s=d.stops;
@@ -1360,10 +1390,11 @@ function paintPalTile(c,d){
 function renderPalWall(){
   const wall=$('palwall'); if(!wall) return;
   const cur=palSigFromSec();
+  const painting=S.palView!=='sw';   /* 色板 view 嗰陣牆收埋咗，淨 update highlight 唔好嘥力畫 */
   DIRSIG.forEach((d,i)=>{
     const t=wall.children[i]; if(!t) return;
     t.classList.toggle('on',cur===d.id);
-    const c=t.querySelector('canvas'); if(c) paintPalTile(c,d);
+    if(painting){ const c=t.querySelector('canvas'); if(c) paintPalTile(c,d); }
   });
 }
 let palWallT=null;
@@ -1376,25 +1407,85 @@ function togglePalMode(){
   S.sec.palOn=S.sec.palOn?0:1;
   S.pvKey++; S.pvCache.clear();
   refreshPalUI(); updateGroupDots(); scheduleRender();
-  toast(S.sec.palOn?'方向注入開咗（撳牆上任何一格換方向）':'方向注入閂咗');
+  toast(S.sec.palOn
+    ? (S.palView==='sw'?'色板模式：參考圖嘅色會注入嚟（P 切換）':'方向注入開咗（撳牆上任何一格換方向）')
+    : '注入閂咗 · 用返忠實模式');
+}
+/* 傳統色板 view：重建色票行 + 暗/中/亮 位（v6 玩法，v9 加返） */
+function refreshPalSw(){
+  const sw=$('palsw'); if(!sw) return;
+  const seg=$('palseg');
+  if(seg) seg.querySelectorAll('button').forEach(b=>{
+    b.classList.toggle('on',(+b.dataset.m===1)===!!S.sec.palOn);
+  });
+  sw.innerHTML='';
+  const idx=S.active;
+  const pal=(S.vendorImg&&idx>=0)?paletteForItem(allItems()[idx]):null;
+  const stops=(S.vendorImg&&idx>=0)?palStopsFor(idx):null;
+  const NM={sh:'暗',mid:'中',hi:'亮'};
+  if(pal){
+    pal.forEach(c=>{
+      const b=document.createElement('button');
+      b.type='button'; b.className='psw'; b.style.background=labCss(c.L,c.a,c.b);
+      b.title='L'+c.L.toFixed(0)+' · 撳去取代「'+NM[S.palSel]+'」位';
+      b.onclick=()=>{
+        pushHistNow('色板改色');
+        S.sec.palOv[S.palSel]={L:c.L,a:c.a,b:c.b};
+        S.pvKey++; S.pvCache.clear();
+        refreshPalUI(); updateGroupDots(); scheduleRender();
+        toast('【'+NM[S.palSel]+'】位已換色 ✓');
+      };
+      sw.appendChild(b);
+    });
+  }else{
+    sw.innerHTML='<span class="palnone">'+(S.vendorImg?'呢個 LOOK 冇色板':'先入來稿')+'</span>';
+  }
+  /* 暗/中/亮 三個位：顯示「而家實際用緊」嘅色（手改 > 自動） */
+  document.querySelectorAll('#palstops .pchip').forEach(ch=>{
+    const key=ch.dataset.s, ov=(S.sec.palOv||{})[key];
+    let col=null;
+    if(ov) col=ov;
+    else if(stops){
+      const p=key==='sh'? stops[0] : key==='hi'? stops[stops.length-1] : stops[Math.floor(stops.length/2)];
+      col=p;
+    }
+    ch.querySelector('i').style.background=col? labCss(col.L,col.a,col.b) : 'transparent';
+    ch.classList.toggle('sel', S.palSel===key);
+    ch.classList.toggle('cus', !!ov);
+  });
 }
 function refreshPalUI(){
   const wall=$('palwall'); if(!wall) return;
+  const wallview=S.palView!=='sw';
+  /* view 切換：牆盒 vs 色板盒，切換掣著燈 */
+  const pv=$('palview');
+  if(pv) pv.querySelectorAll('button').forEach(b=>b.classList.toggle('on',(b.dataset.v==='sw')!==wallview));
+  const wb=$('palwallbox'), sb=$('palswbox');
+  if(wb) wb.style.display=wallview?'':'none';
+  if(sb) sb.style.display=wallview?'none':'';
   const on=!!S.sec.palOn;
   const bd=wall.closest('.grp-bd');
   if(bd) bd.classList.toggle('dim',!on);
   const cur=palSigFromSec();
   const ph=$('palhint');
-  if(ph){
-    if(!on) ph.innerHTML='未注入方向 —— <b>撳一格</b>即刻用你真圖試（P 鍵切換）';
-    else{
-      const d=DIRSIG.find(x=>x.id===cur);
-      ph.innerHTML='注入緊<b>【'+(d?d.name:'自訂三點')+'】</b> · 再撳同一格關 · 融合桿調強弱';
+  if(wallview){
+    if(ph){
+      if(!on) ph.innerHTML='未注入方向 —— <b>撳一格</b>即刻用你真圖試（P 鍵切換）';
+      else{
+        const d=DIRSIG.find(x=>x.id===cur);
+        ph.innerHTML='注入緊<b>【'+(d?d.name:'自訂')+'】</b> · 再撳同一格關 · 融合桿調強弱';
+      }
     }
+    /* highlight 即刻 update（唔等 debounce），像素重畫先 debounce（拖桿唔會卡） */
+    DIRSIG.forEach((d,i)=>{ const t=wall.children[i]; if(t) t.classList.toggle('on',cur===d.id); });
+    schedulePalWall();
+  }else{
+    if(ph){
+      if(!on) ph.innerHTML='色板模式<b>未開</b> —— 撳上面【色板】或 P 鍵，開咗先會改到圖';
+      else ph.innerHTML='而家揀緊<b>【'+({sh:'暗',mid:'中',hi:'亮'})[S.palSel]+'】</b>位 · 撳上面色票即換 · 雙擲位還原自動';
+    }
+    refreshPalSw();
   }
-  /* highlight 即刻 update（唔等 debounce），像素重畫先 debounce（拖桿唔會卡） */
-  DIRSIG.forEach((d,i)=>{ const t=wall.children[i]; if(t) t.classList.toggle('on',cur===d.id); });
-  schedulePalWall();
 }
 
 /* ---------- 影像工具 ---------- */
@@ -1727,8 +1818,19 @@ function buildLeftPanel(){
   g1.body.appendChild(optWrap);
   g1.secKeys=['chromaStr','toneStr'];
 
-  /* --- 方向預覽牆（v8b）：7 格全部用你真圖即場渲染，撳就注入 --- */
+  /* --- 方向注入（v9）：方向牆 + 傳統色板，頂部切換；融合桿同 P 鍵共用 --- */
   const g1b=mkGroup(box,'palette','方向預覽 DIRECTIONS',false);
+  /* view 切換掣：方向牆（實圖預覽）／色板（v6 傳統色票） */
+  const vseg=document.createElement('div'); vseg.className='palseg'; vseg.id='palview';
+  [['wall','方向牆'],['sw','色板']].forEach(([v,lb])=>{
+    const b=document.createElement('button'); b.type='button'; b.dataset.v=v; b.textContent=lb;
+    b.onclick=()=>{ S.palView=v; try{ localStorage.setItem('ld.palview',v); }catch(_){} refreshPalUI(); };
+    vseg.appendChild(b);
+  });
+  g1b.body.appendChild(vseg);
+
+  /* 牆 view：7 格全部用你真圖即場渲染，撳就注入 */
+  const wallbox=document.createElement('div'); wallbox.id='palwallbox';
   const wall=document.createElement('div'); wall.className='palwall'; wall.id='palwall';
   DIRSIG.forEach(d=>{
     const t=document.createElement('button'); t.type='button'; t.className='ptile'; t.dataset.d=d.id;
@@ -1739,7 +1841,39 @@ function buildLeftPanel(){
     t.onclick=()=>applyPalDir(d);
     wall.appendChild(t);
   });
-  g1b.body.appendChild(wall);
+  wallbox.appendChild(wall);
+  g1b.body.appendChild(wallbox);
+
+  /* 色板 view（v6 傳統版）：忠實/色板 seg + 色票行 + 暗/中/亮 位 */
+  const swbox=document.createElement('div'); swbox.id='palswbox'; swbox.style.display='none';
+  const pseg=document.createElement('div'); pseg.className='palseg'; pseg.id='palseg';
+  [['0','忠實'],['1','色板']].forEach(([m,lb])=>{
+    const b=document.createElement('button'); b.type='button'; b.dataset.m=m; b.textContent=lb;
+    b.onclick=togglePalMode;
+    pseg.appendChild(b);
+  });
+  swbox.appendChild(pseg);
+  const psw=document.createElement('div'); psw.className='palsw'; psw.id='palsw';
+  swbox.appendChild(psw);
+  const pst=document.createElement('div'); pst.className='palstops'; pst.id='palstops';
+  [['sh','暗'],['mid','中'],['hi','亮']].forEach(([key,lb])=>{
+    const ch=document.createElement('button'); ch.type='button'; ch.className='pchip'; ch.dataset.s=key;
+    ch.innerHTML='<i></i>'+lb;
+    ch.title='撳：揀呢個位，再撳上面色票換色 · 雙擊：還原自動';
+    ch.onclick=()=>{ S.palSel=key; refreshPalUI(); };
+    ch.ondblclick=e=>{
+      e.stopPropagation();
+      if(!S.sec.palOv[key]) return;
+      pushHistNow('色板還原自動');
+      S.sec.palOv[key]=null;
+      S.pvKey++; S.pvCache.clear();
+      refreshPalUI(); updateGroupDots(); scheduleRender();
+    };
+    pst.appendChild(ch);
+  });
+  swbox.appendChild(pst);
+  g1b.body.appendChild(swbox);
+
   const phint=document.createElement('div'); phint.className='palhint'; phint.id='palhint';
   g1b.body.appendChild(phint);
   makeSlider(g1b.body,'palBlend',{label:'融合',min:0,max:100,def:70,value:S.sec.palBlend,unit:'%',
@@ -2071,7 +2205,10 @@ function wireHueRing(canvas){
    而家：拖入／撳 ＋ = 加落來稿庫（可以一次過拖十張）；
    參考圖有自己一條 REFERENCE，拖落去或者撳佢個 ＋ 先會當參考。 */
 function handleFile(file,where){
-  if(!file || !file.type.startsWith('image/')) return;
+  if(!file) return;
+  /* 有 type 又明確唔係圖先擋。type 空字串（Windows 實測：QQ／微信 cap 圖、
+     Explorer 抄檔）照試 —— load 唔到 im.onerror 會 toast 話用戶知 */
+  if(file.type && !file.type.startsWith('image/')) return;
   const url=URL.createObjectURL(file);
   const im=new Image();
   im.onload=()=>{
@@ -3336,16 +3473,22 @@ window.addEventListener('drop',e=>{
   }
   setTimeout(()=>{ addRefFromUrls(cands); },0);
 });
-/* 貼上：未入過圖就當來稿，之後當參考（⌘V 多數係由瀏覽器抄參考圖返嚟） */
+/* 貼上：未入過圖就當來稿，之後當參考（⌘V／Ctrl+V 多數係由瀏覽器抄參考圖返嚟）。
+   Windows 實測：QQ／微信 cap 圖、Explorer 抄檔，clipboardData.items 嘅 type
+   成日係空字串 —— 唔好再信 type，kind==='file' 就交畀 handleFile 試 load。 */
 window.addEventListener('paste',e=>{
-  const items=e.clipboardData? e.clipboardData.items : null; if(!items) return;
-  for(const it of items){
-    if(it.type.indexOf('image/')===0){
-      const f=it.getAsFile();
-      if(f){ handleFile(f, S.shots.length? 'ref':'shot'); e.preventDefault(); }
-      break;
+  const cd=e.clipboardData; if(!cd) return;
+  let f=null;
+  if(cd.items){
+    for(const it of cd.items){
+      if(it.kind!=='file') continue;
+      const g=it.getAsFile(); if(g){ f=g; break; }
     }
   }
+  if(!f && cd.files && cd.files.length) f=cd.files[0];
+  if(!f) return;   /* 純文字貼上（例如貼入備註框）唔好截 */
+  e.preventDefault();
+  handleFile(f, S.shots.length? 'ref':'shot');
 });
 /* 鍵盤 */
 window.addEventListener('keydown',e=>{
