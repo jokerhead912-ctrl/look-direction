@@ -136,33 +136,25 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:12px 0}
 .huering .hlg{font-size:11px;color:var(--tx3)}
 .huering .hlg b{color:var(--acc);font-weight:500}
 .hslbox{border-left:2px solid var(--line);padding-left:8px;margin-left:2px}
-/* ---------- 色板模式 ---------- */
-.palseg{display:flex;gap:4px;margin-bottom:8px}
-.palseg button{
-  flex:1;padding:5px 0;border-radius:6px;border:1px solid var(--line);
-  background:var(--panel2);color:var(--tx2);font-size:14px;cursor:pointer;
+/* ---------- 方向預覽牆（v8b，取代色票行） ---------- */
+.palwall{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
+.ptile{
+  position:relative;padding:0;border-radius:6px;border:1.5px solid var(--line);
+  background:var(--panel2);cursor:pointer;overflow:hidden;
+  transition:border-color .12s,transform .12s;
 }
-.palseg button.on{background:var(--acc-soft);border-color:var(--acc);color:var(--tx);font-weight:600}
-.palsw{display:flex;gap:4px;margin-bottom:8px;min-height:26px;align-items:center}
-.palsw .psw{
-  flex:1;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,.14);
-  cursor:pointer;padding:0;transition:transform .12s;
+.ptile:hover{transform:scale(1.04);border-color:var(--line2)}
+.ptile canvas{display:block;width:100%;height:auto}
+.ptile span{
+  position:absolute;left:0;right:0;bottom:0;padding:2px 0 3px;
+  font-size:11px;color:#fff;text-align:center;pointer-events:none;
+  background:linear-gradient(transparent,rgba(0,0,0,.75));
 }
-.palsw .psw:hover{transform:scale(1.08);border-color:#fff}
-.palnone{font-size:12.5px;color:var(--tx3)}
-.palstops{display:flex;gap:4px;margin-bottom:6px}
-.pchip{
-  flex:1;display:flex;align-items:center;justify-content:center;gap:5px;
-  padding:4px 0;border-radius:6px;border:1px solid var(--line);
-  background:var(--panel2);color:var(--tx2);font-size:13px;cursor:pointer;
-}
-.pchip i{width:12px;height:12px;border-radius:3px;border:1px solid rgba(255,255,255,.18);display:inline-block}
-.pchip.sel{border-color:var(--acc);color:var(--tx);background:var(--acc-soft)}
-.pchip.cus::after{content:'';width:5px;height:5px;border-radius:50%;background:var(--acc)}
+.ptile.on{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-soft)}
 .palhint{font-size:12px;color:var(--tx3);margin-bottom:8px;line-height:1.5}
 .palhint b{color:var(--acc);font-weight:600}
-/* 忠實模式下，色板嘢唔會改圖 —— 調暗 + 提示，等用戶知點解「冇反應」 */
-.grp[data-g="palette"] .grp-bd.dim .palsw,.grp[data-g="palette"] .grp-bd.dim .palstops,
+/* 未注入方向嗰陣，牆上嘅嘢唔會改圖 —— 調暗 + 提示（牆本身仍可撳，撳就開） */
+.grp[data-g="palette"] .grp-bd.dim .palwall{opacity:.5}
 .grp[data-g="palette"] .grp-bd.dim .sl{opacity:.35;pointer-events:none}
 
 /* ---------- 分區調色輪 ---------- */
@@ -1000,10 +992,12 @@ function gradeRGB(r,g,b,grade,opt,sec,plan,pal){
   if(plan&&plan.active) q=applySec(q[0],q[1],q[2],sec,plan);
   return labToRgb(q[0],q[1],q[2]);
 }
-function imageDataFrom(lab,grade,opt,sec,plan,pal){
+function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
   const n=lab.n, out=new ImageData(lab.w,lab.h), o=out.data;
-  /* 原圖鎖定：唔理 LOOK / 微調，直接吐 vendor 圖 */
-  if(typeof S!=='undefined' && S.locked){
+  /* 原圖鎖定：唔理 LOOK / 微調，直接吐 vendor 圖。
+     bare=true 嘅 caller（preset/方向牆 thumbnail）唔受鎖定影響 ——
+     佢哋嘅工作正正係預覽「調咗會係點」。 */
+  if(!bare && typeof S!=='undefined' && S.locked){
     for(let i=0;i<n;i++){
       const c=labToRgb(lab.L[i],lab.a[i],lab.b[i]), p=i*4;
       o[p]=c[0]; o[p+1]=c[1]; o[p+2]=c[2]; o[p+3]=255;
@@ -1164,8 +1158,8 @@ const S={
   dockFold:{shots:false,presets:true,refs:false},  /* 內建 LOOK 預設收起（用家話唔用） */
   /* Undo / Redo / 原圖鎖定 */
   hist:[], fut:[], histCap:30, locked:false,
-  /* 色板模式：palSel 係 UI 揀緊邊個位（唔入 snapshot），palPlan 係 render 時嘅快取 */
-  palSel:'mid', palPlan:null
+  /* 方向注入：palPlan 係 render 時嘅快取（v8b 起冇咗 palSel，highlight 由 sec 推） */
+  palPlan:null
 };
 const cv=$('cv'), ctx=cv.getContext('2d');
 
@@ -1266,12 +1260,14 @@ function paletteForItem(it){
   if(it.kind==='preset') return pseudoPalette(it.spec);
   return null;
 }
-/* 有效 stops：自動色板 + 用家 暗/中/亮 覆蓋 */
+/* 有效 stops：三點全手改（或方向牆注入）→ 直接用三點；
+   否則用自動色板 + 用家 暗/中/亮 覆蓋（v6 行為） */
 function palStopsFor(idx){
+  const ov=S.sec.palOv||{};
+  if(ov.sh&&ov.mid&&ov.hi) return [ov.sh,ov.mid,ov.hi].slice().sort((x,y)=>x.L-y.L);
   const pal=paletteForItem(allItems()[idx]);
   if(!pal||!pal.length) return null;
   const stops=pal.map(c=>({L:c.L,a:c.a,b:c.b})).sort((x,y)=>x.L-y.L);
-  const ov=S.sec.palOv||{};
   const mid=Math.floor(stops.length/2);
   if(ov.sh)  stops[0]=ov.sh;
   if(ov.mid) stops[mid]=ov.mid;
@@ -1286,62 +1282,119 @@ function buildPalPlan(idx){
   return {lutA:lut.lutA, lutB:lut.lutB, blend:clamp((S.sec.palBlend||0)/100,0,1)};
 }
 const labCss=(L,a,b)=>'rgb('+labToRgb(L,a,b).join(',')+')';
+
+/* ---------- 方向預覽牆（v8b，取代色票行） ----------
+   用家用字：「色板意義不大，想直接將幅相轉做其他方向去睇」。
+   7 格全部用你真圖即場渲染：第一格「參考圖」= v6 嘅自動抽色注入；
+   之後 6 格係固定方向。撳一格 = 注入；再撳同一格 = 關。融合桿同 P 鍵照舊。 */
+const DIRSIG=[
+ {id:'ref',  name:'參考圖', stops:null},
+ {id:'teal', name:'青橙',   stops:[{L:25,a:-8,b:-14},{L:55,a:-2,b:-4},{L:85,a:4,b:12}]},
+ {id:'cool', name:'冷藍',   stops:[{L:25,a:-4,b:-16},{L:55,a:-4,b:-10},{L:85,a:-2,b:-6}]},
+ {id:'warm', name:'暖金',   stops:[{L:25,a:4,b:10}, {L:55,a:6,b:14},{L:85,a:8,b:16}]},
+ {id:'neon', name:'品紅',   stops:[{L:25,a:14,b:-8},{L:55,a:16,b:-2},{L:85,a:8,b:6}]},
+ {id:'green',name:'墨綠',   stops:[{L:25,a:-10,b:6},{L:55,a:-12,b:8},{L:85,a:-4,b:4}]},
+ {id:'grey', name:'低飽和', stops:[{L:25,a:0,b:0},  {L:55,a:0,b:0}, {L:85,a:0,b:0}]}
+];
+/* 而家注入緊邊個方向 —— 由 sec 推返出嚟，唔使另外記 state，
+   所以 undo／切來稿／載入自訂 LOOK 之後 highlight 都一定啱 */
+function palSigFromSec(){
+  if(!S.sec.palOn) return null;
+  const ov=S.sec.palOv||{};
+  if(!(ov.sh&&ov.mid&&ov.hi)) return 'ref';
+  for(const d of DIRSIG){
+    if(!d.stops) continue;
+    const s=d.stops;
+    if(ov.sh.L===s[0].L&&ov.sh.a===s[0].a&&ov.sh.b===s[0].b&&
+       ov.mid.L===s[1].L&&ov.mid.a===s[1].a&&ov.mid.b===s[1].b&&
+       ov.hi.L===s[2].L&&ov.hi.a===s[2].a&&ov.hi.b===s[2].b) return d.id;
+  }
+  return 'cus';
+}
+function applyPalDir(d){
+  if(S.sec.palOn&&palSigFromSec()===d.id){
+    pushHistNow('關方向注入');
+    S.sec.palOn=0;
+  }else{
+    pushHistNow('方向：'+d.name);
+    S.sec.palOn=1;
+    if(d.stops) S.sec.palOv={sh:Object.assign({},d.stops[0]),mid:Object.assign({},d.stops[1]),hi:Object.assign({},d.stops[2])};
+    else        S.sec.palOv={sh:null,mid:null,hi:null};   /* 參考圖格：自動抽色 */
+  }
+  S.pvKey++; S.pvCache.clear();
+  refreshPalUI(); updateGroupDots(); scheduleRender();
+}
+/* 牆上某一格嘅 palette plan（唔跟 S.sec.palOv —— 每格畫自己嘅方向） */
+function palPlanForTile(d){
+  let stops;
+  if(d.stops) stops=d.stops;
+  else{
+    const pal=(S.vendorImg&&S.active>=0)?paletteForItem(allItems()[S.active]):null;
+    if(!pal||!pal.length) return null;
+    stops=pal.map(c=>({L:c.L,a:c.a,b:c.b}));
+  }
+  const lut=buildPalLut(stops);
+  return {lutA:lut.lutA, lutB:lut.lutB, blend:clamp((S.sec.palBlend||0)/100,0,1)};
+}
+function paintPalTile(c,d){
+  const x=c.getContext('2d');
+  if(S.vendorImg&&S.active>=0){
+    const cov=imgToCanvasCover(S.vendorImg,c.width,c.height);
+    const cid=cov.getContext('2d').getImageData(0,0,c.width,c.height);
+    const out=imageDataFrom(labOf(cid),gradeFor(S.active),opt(),S.sec,
+      (typeof buildSecPlan==='function'?buildSecPlan(S.sec):null),palPlanForTile(d),true);
+    x.putImageData(out,0,0);
+    return;
+  }
+  /* 未入來稿：方向格畫三點漸變，參考圖格留灰 */
+  if(d.stops){
+    const g=x.createLinearGradient(0,0,c.width,0);
+    g.addColorStop(0,labCss(d.stops[0].L,d.stops[0].a,d.stops[0].b));
+    g.addColorStop(0.5,labCss(d.stops[1].L,d.stops[1].a,d.stops[1].b));
+    g.addColorStop(1,labCss(d.stops[2].L,d.stops[2].a,d.stops[2].b));
+    x.fillStyle=g; x.fillRect(0,0,c.width,c.height);
+  }else{
+    x.fillStyle='#2a2a2a'; x.fillRect(0,0,c.width,c.height);
+  }
+}
+function renderPalWall(){
+  const wall=$('palwall'); if(!wall) return;
+  const cur=palSigFromSec();
+  DIRSIG.forEach((d,i)=>{
+    const t=wall.children[i]; if(!t) return;
+    t.classList.toggle('on',cur===d.id);
+    const c=t.querySelector('canvas'); if(c) paintPalTile(c,d);
+  });
+}
+let palWallT=null;
+function schedulePalWall(){
+  if(palWallT) clearTimeout(palWallT);
+  palWallT=setTimeout(renderPalWall,120);
+}
 function togglePalMode(){
-  pushHistNow(S.sec.palOn?'用返忠實模式':'開色板模式');
+  pushHistNow(S.sec.palOn?'關方向注入':'開方向注入');
   S.sec.palOn=S.sec.palOn?0:1;
   S.pvKey++; S.pvCache.clear();
   refreshPalUI(); updateGroupDots(); scheduleRender();
-  toast(S.sec.palOn?'色板模式：參考圖嘅色會注入嚟（P 切換）':'用返忠實模式');
+  toast(S.sec.palOn?'方向注入開咗（撳牆上任何一格換方向）':'方向注入閂咗');
 }
 function refreshPalUI(){
-  const seg=$('palseg'); if(!seg) return;
+  const wall=$('palwall'); if(!wall) return;
   const on=!!S.sec.palOn;
-  seg.querySelectorAll('button').forEach(b=>{
-    b.classList.toggle('on',(+b.dataset.m===1)===on);
-  });
-  /* 動態提示：冇開模式就講明「唔會改圖」（用戶曾以為掣壞咗）；
-     開咗就話佢知而家揀緊邊個位。忠實模式下色票/位/融合調暗兼鎖住。 */
-  const bd=seg.closest('.grp-bd');
+  const bd=wall.closest('.grp-bd');
   if(bd) bd.classList.toggle('dim',!on);
+  const cur=palSigFromSec();
   const ph=$('palhint');
   if(ph){
-    if(!on) ph.innerHTML='色板模式<b>未開</b> —— 撳上面【色板】或 P 鍵，開咗先會改到圖';
-    else ph.innerHTML='而家揀緊<b>【'+({sh:'暗',mid:'中',hi:'亮'})[S.palSel]+'】</b>位 · 撳上面色票即換 · 雙擲位還原自動';
-  }
-  const sw=$('palsw'); sw.innerHTML='';
-  const idx=S.active;
-  const pal=(S.vendorImg&&idx>=0)?paletteForItem(allItems()[idx]):null;
-  const stops=(S.vendorImg&&idx>=0)?palStopsFor(idx):null;
-  if(pal){
-    pal.forEach(c=>{
-      const b=document.createElement('button');
-      b.type='button'; b.className='psw'; b.style.background=labCss(c.L,c.a,c.b);
-      b.title='L'+c.L.toFixed(0)+' · 撳去取代「'+({sh:'暗',mid:'中',hi:'亮'})[S.palSel]+'」位';
-      b.onclick=()=>{
-        pushHistNow('色板改色');
-        S.sec.palOv[S.palSel]={L:c.L,a:c.a,b:c.b};
-        S.pvKey++; S.pvCache.clear();
-        refreshPalUI(); updateGroupDots(); scheduleRender();
-        toast('【'+({sh:'暗',mid:'中',hi:'亮'})[S.palSel]+'】位已換色 ✓');
-      };
-      sw.appendChild(b);
-    });
-  }else{
-    sw.innerHTML='<span class="palnone">'+(S.vendorImg?'呢個 LOOK 冇色板':'先入來稿')+'</span>';
-  }
-  /* 暗/中/亮 三個位：顯示「而家實際用緊」嘅色（手改 > 自動） */
-  document.querySelectorAll('#palstops .pchip').forEach(ch=>{
-    const key=ch.dataset.s, ov=(S.sec.palOv||{})[key];
-    let col=null;
-    if(ov) col=ov;
-    else if(stops){
-      const p=key==='sh'? stops[0] : key==='hi'? stops[stops.length-1] : stops[Math.floor(stops.length/2)];
-      col=p;
+    if(!on) ph.innerHTML='未注入方向 —— <b>撳一格</b>即刻用你真圖試（P 鍵切換）';
+    else{
+      const d=DIRSIG.find(x=>x.id===cur);
+      ph.innerHTML='注入緊<b>【'+(d?d.name:'自訂三點')+'】</b> · 再撳同一格關 · 融合桿調強弱';
     }
-    ch.querySelector('i').style.background=col? labCss(col.L,col.a,col.b) : 'transparent';
-    ch.classList.toggle('sel', S.palSel===key);
-    ch.classList.toggle('cus', !!ov);
-  });
+  }
+  /* highlight 即刻 update（唔等 debounce），像素重畫先 debounce（拖桿唔會卡） */
+  DIRSIG.forEach((d,i)=>{ const t=wall.children[i]; if(t) t.classList.toggle('on',cur===d.id); });
+  schedulePalWall();
 }
 
 /* ---------- 影像工具 ---------- */
@@ -1630,7 +1683,7 @@ const SECDEF=[
   {k:'sat',  label:'飽和度',    min:-100,max:100,def:0},
   {k:'vib',  label:'自然飽和',  min:-100,max:100,def:0}
 ];
-function secChanged(){ S.pvKey++; S.pvCache.clear(); scheduleRender(); updateGroupDots(); }
+function secChanged(){ S.pvKey++; S.pvCache.clear(); scheduleRender(); updateGroupDots(); schedulePalWall(); }
 function secCommitted(){ renderPresets(); }
 
 function buildLeftPanel(){
@@ -1674,39 +1727,25 @@ function buildLeftPanel(){
   g1.body.appendChild(optWrap);
   g1.secKeys=['chromaStr','toneStr'];
 
-  /* --- 色板模式（新）：借參考圖嘅「色」，唔止佢嘅平均值 --- */
-  const g1b=mkGroup(box,'palette','色板模式 PALETTE',false);
-  const pseg=document.createElement('div'); pseg.className='palseg'; pseg.id='palseg';
-  [['0','忠實'],['1','色板']].forEach(([m,lb])=>{
-    const b=document.createElement('button'); b.type='button'; b.dataset.m=m; b.textContent=lb;
-    b.onclick=togglePalMode;
-    pseg.appendChild(b);
+  /* --- 方向預覽牆（v8b）：7 格全部用你真圖即場渲染，撳就注入 --- */
+  const g1b=mkGroup(box,'palette','方向預覽 DIRECTIONS',false);
+  const wall=document.createElement('div'); wall.className='palwall'; wall.id='palwall';
+  DIRSIG.forEach(d=>{
+    const t=document.createElement('button'); t.type='button'; t.className='ptile'; t.dataset.d=d.id;
+    t.title='撳：注入「'+d.name+'」 · 再撳同一格：關';
+    const c=document.createElement('canvas'); c.width=132; c.height=74;
+    t.appendChild(c);
+    const lb=document.createElement('span'); lb.textContent=d.name; t.appendChild(lb);
+    t.onclick=()=>applyPalDir(d);
+    wall.appendChild(t);
   });
-  g1b.body.appendChild(pseg);
-  const psw=document.createElement('div'); psw.className='palsw'; psw.id='palsw';
-  g1b.body.appendChild(psw);
-  const pst=document.createElement('div'); pst.className='palstops'; pst.id='palstops';
-  [['sh','暗'],['mid','中'],['hi','亮']].forEach(([key,lb])=>{
-    const ch=document.createElement('button'); ch.type='button'; ch.className='pchip'; ch.dataset.s=key;
-    ch.innerHTML='<i></i>'+lb;
-    ch.title='撳：揀呢個位，再撳上面色票換色 · 雙擊：還原自動';
-    ch.onclick=()=>{ S.palSel=key; refreshPalUI(); };
-    ch.ondblclick=e=>{
-      e.stopPropagation();
-      if(!S.sec.palOv[key]) return;
-      pushHistNow('色板還原自動');
-      S.sec.palOv[key]=null;
-      S.pvKey++; S.pvCache.clear();
-      refreshPalUI(); updateGroupDots(); scheduleRender();
-    };
-    pst.appendChild(ch);
-  });
-  g1b.body.appendChild(pst);
+  g1b.body.appendChild(wall);
   const phint=document.createElement('div'); phint.className='palhint'; phint.id='palhint';
   g1b.body.appendChild(phint);
   makeSlider(g1b.body,'palBlend',{label:'融合',min:0,max:100,def:70,value:S.sec.palBlend,unit:'%',
     onInput:v=>{S.sec.palBlend=v;},onCommit:()=>{secChanged();refreshPalUI();secCommitted();}});
   g1b.secKeys=null;
+  refreshPalUI();
 
   /* --- 光暗 --- */
   const g2=mkGroup(box,'tone','光暗 TONE',false);
@@ -2601,6 +2640,17 @@ function renderPresets(){
 function mkLabel(txt){ const d=document.createElement('div'); d.className='lb'; d.textContent=txt; return d; }
 function mkNo(n){ const d=document.createElement('div'); d.className='no'; d.textContent=n; return d; }
 function drawPresetThumb(c,p){
+  /* v8b：有來稿就用真圖渲染（用家：想直接睇到落喺自己張圖嘅效果先好揀），
+     冇來稿先畫舊嘅合成漸變。 */
+  if(S.vendorImg&&S.vendorAn){
+    const cov=imgToCanvasCover(S.vendorImg,c.width,c.height);
+    const cid=cov.getContext('2d').getImageData(0,0,c.width,c.height);
+    const g=buildGrade(S.vendorAn,makePseudoRef(S.vendorAn,p),[true,true,true],$('tone').checked);
+    const o={strength:S.chromaStr/100,toneStrength:S.toneStr/100,
+             useBands:[true,true,true],skinProtect:false,protect:opt().protect};
+    c.getContext('2d').putImageData(imageDataFrom(labOf(cid),g,o,null,null,null,true),0,0);
+    return;
+  }
   const tmp=document.createElement('canvas'); tmp.width=c.width; tmp.height=c.height;
   const tx=tmp.getContext('2d',{willReadFrequently:true});
   const grd=tx.createLinearGradient(0,0,0,c.height);
