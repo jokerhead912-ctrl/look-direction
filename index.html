@@ -163,6 +163,15 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:12px 0}
   background:var(--panel2);color:var(--tx2);font-size:14px;cursor:pointer;
 }
 .palseg button.on{background:var(--acc-soft);border-color:var(--acc);color:var(--tx);font-weight:600}
+/* 導出欄：檔名輸入 + 揀位置 */
+.expf{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.expf .expl{display:flex;align-items:center;gap:5px;color:var(--tx2);font-size:14px;white-space:nowrap}
+.fname{
+  width:140px;padding:4px 7px;border-radius:6px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--tx);font-size:14px;font-family:inherit;
+}
+.fname:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-soft)}
+.dirpath{color:var(--tx3);font-size:13px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .palsw{display:flex;gap:4px;margin-bottom:8px;min-height:26px;align-items:center}
 .palsw .psw{
   flex:1;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,.14);
@@ -536,6 +545,11 @@ textarea{
         <button class="b icon" id="b-lookimp" type="button" title="匯入自訂 LOOK（.json）" data-page-node-id="ld-lookimp">⇧</button>
         <span class="hspacer" data-page-node-id="uBdSYA5hky1u18JsPaIKgX"></span>
         <button class="b" id="b-side2" type="button" data-page-node-id="1yg5mGj7rWMrQiXdAT4YFA">抄對比圖</button>
+        <span class="expf" id="expf">
+          <label class="expl">檔名<input id="expname" class="fname" value="look-direction" spellcheck="false"></label>
+          <button class="b" id="b-dir" type="button" title="揀保存資料夾（Chrome/Edge 支援；Safari/Firefox 唔支援，會用檔名落 Downloads）">揀位置</button>
+          <span id="dirpath" class="dirpath"></span>
+        </span>
         <button class="b" id="b-png" type="button" data-page-node-id="79q8uJo45DdUunU74M23hw">匯出 PNG</button>
         <button class="b" id="b-cube" type="button" data-page-node-id="5GL9xJdwHvImEsUplrOLKw">.cube LUT</button>
         <button class="b pri" id="b-sheet" type="button" data-page-node-id="i22PEnogLuXPzLtbF4AlmF">出方向紙</button>
@@ -1185,10 +1199,12 @@ const S={
   hist:[], fut:[], histCap:30, locked:false,
   /* 方向注入：palPlan 係 render 時嘅快取；palView = 牆／傳統色板切換（v9 加返）；
      palSel 係色板 view 揀緊邊個位（暗/中/亮）—— 兩個都係 UI state，唔入 snapshot */
-  palPlan:null, palView:'wall', palSel:'mid'
+  palPlan:null, palView:'wall', palSel:'mid', palWallMode:'color'
 };
 /* 記住用家上次的 view 選擇（牆定色板） */
 try{ const _pv=localStorage.getItem('ld.palview'); if(_pv==='sw'||_pv==='wall') S.palView=_pv; }catch(_){}
+/* 記住方向牆嘅子模式（顏色方向 / 變數） */
+try{ const _wm=localStorage.getItem('ld.palwall'); if(_wm==='color'||_wm==='var') S.palWallMode=_wm; }catch(_){}
 const cv=$('cv'), ctx=cv.getContext('2d');
 
 const opt=()=>({
@@ -1324,6 +1340,44 @@ const DIRSIG=[
  {id:'green',name:'墨綠',   stops:[{L:25,a:-10,b:6},{L:55,a:-12,b:8},{L:85,a:-4,b:4}]},
  {id:'grey', name:'低飽和', stops:[{L:25,a:0,b:0},  {L:55,a:0,b:0}, {L:85,a:0,b:0}]}
 ];
+/* ---------- 忠實變數（v10）----------
+   用家實測：「忠實」匹配效果最好，但以佢做基準想快試幾個方向。
+   9 格 = 忠實（基準）+ 四軸 ±（曝光/對比/色溫/飽和），全部用你真圖即場渲染。
+   撳一格 = 開方向注入（忠實自動色板）+ 將四軸設做嗰格嘅值（其餘三軸歸零，
+   方便 A/B 互切，唔會愈疊愈多）。撳【忠實】格 = 四軸歸零返基準。 */
+const VARSIG=[
+ {id:'base',name:'忠實',   d:{}},
+ {id:'expP',name:'曝光+',  d:{exp:+20}},
+ {id:'expM',name:'曝光−',  d:{exp:-20}},
+ {id:'conP',name:'對比+',  d:{con:+20}},
+ {id:'conM',name:'對比−',  d:{con:-20}},
+ {id:'warm',name:'暖少少', d:{temp:+25}},
+ {id:'cool',name:'冷少少', d:{temp:-25}},
+ {id:'satP',name:'飽和+',  d:{sat:+20}},
+ {id:'satM',name:'飽和−',  d:{sat:-20}}
+];
+const VARAX=['exp','con','temp','sat'];
+/* 而家邊格變數緊 —— 同 palSigFromSec 一樣由 sec 推，undo/切 shot 都啱 */
+function varSigFromSec(){
+  if(!S.sec.palOn) return null;
+  if(palSigFromSec()!=='ref') return null;   /* 變數嘅基準係「忠實」自動色板 */
+  for(const v of VARSIG){
+    let ok=true;
+    for(const k of VARAX){ if((S.sec[k]||0)!==(v.d[k]||0)){ ok=false; break; } }
+    if(ok) return v.id;
+  }
+  return null;
+}
+function applyVar(v){
+  pushHistNow('變數：'+v.name);
+  S.sec.palOn=1;
+  S.sec.palOv={sh:null,mid:null,hi:null};
+  VARAX.forEach(k=>{ S.sec[k]=v.d[k]||0; });
+  syncSecSliders();
+  secChanged();          /* 入面包 pvKey++/cache clear/render/dots/schedulePalWall */
+  refreshPalUI(); secCommitted();
+  toast(v.id==='base' ? '返咗忠實基準（四軸歸零）' : '忠實 + '+v.name+' · 撳【忠實】格歸零');
+}
 /* 而家注入緊邊個方向 —— 由 sec 推返出嚟，唔使另外記 state，
    所以 undo／切來稿／載入自訂 LOOK 之後 highlight 都一定啱 */
 function palSigFromSec(){
@@ -1387,14 +1441,52 @@ function paintPalTile(c,d){
     x.fillStyle='#2a2a2a'; x.fillRect(0,0,c.width,c.height);
   }
 }
+/* 重建方向牆格（顏色方向 / 變數 兩套都係 ptile，只係 onclick 同 highlight 來源唔同） */
+function buildWallTiles(){
+  const wall=$('palwall'); if(!wall) return;
+  wall.innerHTML='';
+  const isVar=S.palWallMode==='var';
+  const set=isVar?VARSIG:DIRSIG;
+  set.forEach(d=>{
+    const t=document.createElement('button'); t.type='button'; t.className='ptile';
+    t.dataset.d=d.id; t.dataset.kind=S.palWallMode;
+    t.title=isVar
+      ? ('撳：忠實 + '+d.name+'　·　撳【忠實】格歸零')
+      : ('撳：注入「'+d.name+'」　·　再撳同一格：關');
+    const c=document.createElement('canvas'); c.width=132; c.height=74;
+    t.appendChild(c);
+    const lb=document.createElement('span'); lb.textContent=d.name; t.appendChild(lb);
+    t.onclick=()=> isVar? applyVar(d) : applyPalDir(d);
+    wall.appendChild(t);
+  });
+  const wm=$('palwmode'); if(wm) wm.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.v===S.palWallMode));
+}
+/* 變數格：以「忠實」自動色板做基準，再疊埋呢格嘅四軸 ±（exp/con/temp/sat） */
+function paintVarTile(c,v){
+  const x=c.getContext('2d');
+  if(S.vendorImg&&S.active>=0){
+    const cov=imgToCanvasCover(S.vendorImg,c.width,c.height);
+    const cid=cov.getContext('2d').getImageData(0,0,c.width,c.height);
+    const ts=Object.assign({},S.sec,{palOn:1,palOv:{sh:null,mid:null,hi:null},palBlend:S.sec.palBlend||70});
+    VARAX.forEach(k=>{ ts[k]=v.d[k]||0; });
+    const out=imageDataFrom(labOf(cid),gradeFor(S.active),opt(),ts,
+      (typeof buildSecPlan==='function'?buildSecPlan(ts):null),
+      (typeof buildPalPlan==='function'?buildPalPlan(S.active):null),true);
+    x.putImageData(out,0,0);
+    return;
+  }
+  x.fillStyle='#2a2a2a'; x.fillRect(0,0,c.width,c.height);
+}
 function renderPalWall(){
   const wall=$('palwall'); if(!wall) return;
-  const cur=palSigFromSec();
+  const isVar=S.palWallMode==='var';
+  const cur=isVar?varSigFromSec():palSigFromSec();
   const painting=S.palView!=='sw';   /* 色板 view 嗰陣牆收埋咗，淨 update highlight 唔好嘥力畫 */
-  DIRSIG.forEach((d,i)=>{
+  const set=isVar?VARSIG:DIRSIG;
+  set.forEach((d,i)=>{
     const t=wall.children[i]; if(!t) return;
     t.classList.toggle('on',cur===d.id);
-    if(painting){ const c=t.querySelector('canvas'); if(c) paintPalTile(c,d); }
+    if(painting){ const c=t.querySelector('canvas'); if(c) (isVar?paintVarTile(c,d):paintPalTile(c,d)); }
   });
 }
 let palWallT=null;
@@ -1466,18 +1558,23 @@ function refreshPalUI(){
   const on=!!S.sec.palOn;
   const bd=wall.closest('.grp-bd');
   if(bd) bd.classList.toggle('dim',!on);
-  const cur=palSigFromSec();
+  const isVar=S.palWallMode==='var';
+  const cur=isVar?varSigFromSec():palSigFromSec();
   const ph=$('palhint');
   if(wallview){
     if(ph){
       if(!on) ph.innerHTML='未注入方向 —— <b>撳一格</b>即刻用你真圖試（P 鍵切換）';
-      else{
+      else if(isVar){
+        const v=VARSIG.find(x=>x.id===cur);
+        ph.innerHTML='忠實基準'+(cur==='base'?'（四軸歸零）':' + <b>'+v.name+'</b>')+'　·　撳【忠實】格歸零';
+      }else{
         const d=DIRSIG.find(x=>x.id===cur);
         ph.innerHTML='注入緊<b>【'+(d?d.name:'自訂')+'】</b> · 再撳同一格關 · 融合桿調強弱';
       }
     }
     /* highlight 即刻 update（唔等 debounce），像素重畫先 debounce（拖桿唔會卡） */
-    DIRSIG.forEach((d,i)=>{ const t=wall.children[i]; if(t) t.classList.toggle('on',cur===d.id); });
+    const set=isVar?VARSIG:DIRSIG;
+    set.forEach((d,i)=>{ const t=wall.children[i]; if(t) t.classList.toggle('on',cur===d.id); });
     schedulePalWall();
   }else{
     if(ph){
@@ -1829,20 +1926,24 @@ function buildLeftPanel(){
   });
   g1b.body.appendChild(vseg);
 
-  /* 牆 view：7 格全部用你真圖即場渲染，撳就注入 */
+  /* 牆 view：顏色方向 / 變數 兩種，全部用你真圖即場渲染，撳就注入 */
   const wallbox=document.createElement('div'); wallbox.id='palwallbox';
-  const wall=document.createElement('div'); wall.className='palwall'; wall.id='palwall';
-  DIRSIG.forEach(d=>{
-    const t=document.createElement('button'); t.type='button'; t.className='ptile'; t.dataset.d=d.id;
-    t.title='撳：注入「'+d.name+'」 · 再撳同一格：關';
-    const c=document.createElement('canvas'); c.width=132; c.height=74;
-    t.appendChild(c);
-    const lb=document.createElement('span'); lb.textContent=d.name; t.appendChild(lb);
-    t.onclick=()=>applyPalDir(d);
-    wall.appendChild(t);
+  /* 子切換掣：顏色方向（6 色 + 忠實）/ 變數（忠實基準 + 四軸 ±） */
+  const wmseg=document.createElement('div'); wmseg.className='palseg'; wmseg.id='palwmode';
+  [['color','顏色'],['var','變數']].forEach(([v,lb])=>{
+    const b=document.createElement('button'); b.type='button'; b.dataset.v=v; b.textContent=lb;
+    b.onclick=()=>{
+      if(S.palWallMode===v) return;
+      S.palWallMode=v; try{ localStorage.setItem('ld.palwall',v); }catch(_){}
+      buildWallTiles(); refreshPalUI(); schedulePalWall();
+    };
+    wmseg.appendChild(b);
   });
+  wallbox.appendChild(wmseg);
+  const wall=document.createElement('div'); wall.className='palwall'; wall.id='palwall';
   wallbox.appendChild(wall);
   g1b.body.appendChild(wallbox);
+  buildWallTiles();
 
   /* 色板 view（v6 傳統版）：忠實/色板 seg + 色票行 + 暗/中/亮 位 */
   const swbox=document.createElement('div'); swbox.id='palswbox'; swbox.style.display='none';
@@ -3091,6 +3192,38 @@ function download(canvas,name,mime){
     setTimeout(()=>URL.revokeObjectURL(a.href),3000);
   },mime||'image/png');
 }
+/* 導出檔名：用家喺工具列輸入（可改名）；預設 look-direction */
+function expName(){
+  const v=($('expname')&&$('expname').value||'').trim();
+  return v? v.replace(/[\\/:*?"<>|]/g,'_') : 'look-direction';
+}
+/* 揀咗資料夾就寫入嗰度（File System Access API，Chrome/Edge）；冇揀就用 download 落 Downloads */
+let exportDirHandle=null;
+async function saveBlob(name,blob){
+  if(exportDirHandle&&exportDirHandle.getFileHandle){
+    try{
+      const fh=await exportDirHandle.getFileHandle(name,{create:true});
+      const w=await fh.createWritable(); await w.write(blob); await w.close();
+      return true;
+    }catch(_){ /* 權限/唔批就跌返 download */ }
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+  return false;
+}
+$('b-dir').onclick=async()=>{
+  if(!window.showDirectoryPicker){
+    toast('呢個瀏覽器唔支援揀資料夾（用 Chrome / Edge 就得）· 改用檔名落 Downloads');
+    return;
+  }
+  try{
+    exportDirHandle=await window.showDirectoryPicker();
+    const p=exportDirHandle.name;
+    if($('dirpath')) $('dirpath').textContent='落 '+p;
+    toast('已選資料夾：'+p+' · 之後匯出直接寫入');
+  }catch(_){ /* 用戶取消，唔使理 */ }
+};
 /* 全解匯出：用原圖真正尺寸（上限 2600） */
 function exportFull(){
   const img=S.vendorImg;
@@ -3101,10 +3234,13 @@ function exportFull(){
 }
 $('b-png').onclick=()=>{
   if(!S.vendorImg||!S.lastGrade) return;
+  const nm=expName()+'.png';
   toast('出緊全解 PNG…');
-  setTimeout(()=>{
-    download(exportFull(),'look-direction.png');
-    toast('匯出咗 look-direction.png');
+  setTimeout(async()=>{
+    const c=exportFull();
+    const blob=await new Promise(r=>c.toBlob(r,'image/png'));
+    const ok=await saveBlob(nm,blob);
+    toast('匯出咗 '+nm+(ok&&exportDirHandle?(' · 落 '+exportDirHandle.name):''));
   },20);
 };
 $('b-cube').onclick=()=>{
@@ -3121,11 +3257,9 @@ $('b-cube').onclick=()=>{
     const q=gradeRGB(ri/(N-1)*255, gi/(N-1)*255, bi/(N-1)*255, S.lastGrade, o, S.sec, sp, pp);
     L.push((q[0]/255).toFixed(6)+' '+(q[1]/255).toFixed(6)+' '+(q[2]/255).toFixed(6));
   }
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([L.join('\n')],{type:'text/plain'}));
-  a.download='look-direction.cube'; a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),3000);
-  toast('匯出咗 .cube（已包埋二次調整）');
+  const nm=expName()+'.cube';
+  saveBlob(nm,new Blob([L.join('\n')],{type:'text/plain'}));
+  toast('匯出咗 '+nm+(exportDirHandle?(' · 落 '+exportDirHandle.name):'（已包埋二次調整）'));
 };
 /* 圓角矩形（canvas 冇內建，自己寫） */
 function rr(x,px,py,w,h,r){
