@@ -85,10 +85,14 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:12px 0}
 .sl-nm{font-size:14px;color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sl-vl{
   font-variant-numeric:tabular-nums;color:var(--tx3);font-size:12.5px;background:var(--panel2);
-  padding:0 5px;border-radius:4px;min-width:46px;text-align:right;cursor:ew-resize;
-  flex:0 0 auto;user-select:none;font-family:ui-monospace,Menlo,monospace;
+  padding:0 5px;border-radius:4px;min-width:46px;text-align:right;cursor:text;
+  flex:0 0 auto;font-family:ui-monospace,Menlo,monospace;
+  border:0;outline:none;width:56px;
 }
+.sl-vl:hover{background:var(--panel3);color:var(--tx2)}
+.sl-vl:focus{background:var(--panel3);color:var(--tx);box-shadow:0 0 0 1px var(--acc)}
 .sl.mod .sl-vl{color:var(--acc);background:var(--acc-soft)}
+.sl.mod .sl-vl:focus{color:var(--tx)}
 .sl.mod .sl-nm{color:var(--tx)}
 .sl-tr{position:relative;height:18px;cursor:pointer;touch-action:none}
 .sl-tr::before{content:'';position:absolute;left:0;right:0;top:7px;height:4px;background:var(--panel3);border-radius:3px}
@@ -296,6 +300,14 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:12px 0}
 }
 body.locked .left,body.locked .dock{opacity:.42;transition:opacity .15s}
 body.locked .rowbtns{opacity:1}
+/* A/B 對比 badge：左上顯示而家睇緊 A（原圖）定 B（LOOK） */
+.abbadge{
+  position:absolute;left:10px;top:10px;z-index:6;pointer-events:none;
+  font-size:14px;font-weight:600;font-family:ui-monospace,Menlo,monospace;
+  background:var(--acc);color:#1a1a2e;padding:3px 12px;border-radius:16px;
+  white-space:nowrap;box-shadow:0 2px 12px var(--acc-glow);
+}
+.abbadge.b{background:rgba(10,12,16,.82);color:var(--acc);box-shadow:none}
 .badge-l,.badge-r{
   position:absolute;top:10px;font-size:12px;font-family:ui-monospace,Menlo,monospace;
   background:rgba(10,12,16,.8);color:var(--tx2);padding:2px 7px;border-radius:4px;pointer-events:none;
@@ -526,6 +538,7 @@ textarea{
           參考圖拖落 REFERENCE 嗰條 · Pinterest 張圖可以直接拖入嚟 · 或者撳內建 look 即刻試
         </div>
         <div class="gridbox" id="gridbox" hidden data-page-node-id="qFy0MQHx7xnDkiWlKnA1ne"></div>
+        <div class="abbadge" id="abbadge" hidden>A · 原圖</div>
         <div class="badge-l" id="badgeL" hidden data-page-node-id="3izU7t24COyUh97WOgmGay">原圖 BEFORE</div>
         <div class="badge-r" id="badgeR" hidden data-page-node-id="YIfqeZaNCD3P4qbZovfUnt">調色後 AFTER</div>
         <div class="holdpill" id="holdpill" hidden data-page-node-id="eonXM5eBfXjmu9DWvDxhte">撳實睇原圖</div>
@@ -538,6 +551,7 @@ textarea{
       <div class="rowbtns" data-page-node-id="ROpmx3NJJE9Xjy1uyf4piR">
         <button class="b icon" id="b-undo" type="button" title="退回 (⌘Z)" disabled data-page-node-id="ld-undo">↶</button>
         <button class="b icon" id="b-redo" type="button" title="重做 (⌘⇧Z)" disabled data-page-node-id="ld-redo">↷</button>
+        <button class="b" id="b-ab" type="button" title="A/B 一鍵對比：原圖 ↔ LOOK（\ 鍵）">A/B</button>
         <button class="b" id="b-lock" type="button" title="暫停調色、鎖定顯示原圖 (Shift+Z)" data-page-node-id="ld-lock">◧ 原圖</button>
         <button class="b" id="b-save" type="button" data-page-node-id="eI0dWWyOEV9AIQhTGwZnrP">存為 LOOK</button>
         <button class="b" id="b-reset" type="button" title="全部微調歸零" data-page-node-id="VcjBtPCccjdOA5IY3aYef8">↺ 微調</button>
@@ -552,6 +566,7 @@ textarea{
         </span>
         <button class="b" id="b-png" type="button" data-page-node-id="79q8uJo45DdUunU74M23hw">匯出 PNG</button>
         <button class="b" id="b-cube" type="button" data-page-node-id="5GL9xJdwHvImEsUplrOLKw">.cube LUT</button>
+        <button class="b pri" id="b-expall" type="button" title="一次過出齊 .cube + PNG + 方向紙，同一個檔名，寫入揀咗嘅資料夾">導出全套</button>
         <button class="b pri" id="b-sheet" type="button" data-page-node-id="i22PEnogLuXPzLtbF4AlmF">出方向紙</button>
       </div>
     </div>
@@ -863,6 +878,19 @@ function protectL(L){
   let t=L/100; if(t<-0.25)t=-0.25; else if(t>1.25)t=1.25;
   return (0.06+0.88*softClip(t))*100;
 }
+/* ---------- 曝光：線性光乘算（v11）----------
+   舊版直接喺 L 平面平移：exp+100 會將純黑 L=0 抬到 L=30（灰晒、奶晒），
+   同時高光俾 SK=0.86 肩位壓到淨返 6L 空間（65→92、100→98），
+   成幅圖對比崩塌變平變灰 —— 呢個就係用家報「曝光 no good」嘅根因。
+   正確做法係攝影式曝光：喺線性光（相對亮度 Y）上做乘算，
+   黑位乘幾多都係 0（自然留住），中位照推。 */
+const EXP_STOPS=1.5;          /* 滑桿 ±100 → ±1.5 級光圈（中位約 +27L，同舊版手感接近） */
+function LtoY(L){ const l=clamp(L,0,100); return l>8 ? Math.pow((l+16)/116,3) : l/903.3; }
+function YtoL(Y){ const y=Y>0?Y:0; return y>0.008856 ? 116*Math.pow(y,1/3)-16 : 903.3*y; }
+function expL(L,exp){
+  if(!exp) return L;
+  return YtoL(LtoY(L)*Math.pow(2, exp/100*EXP_STOPS));
+}
 /* 偏移預算：每組掣都有自己嘅「最多推幾多」上限。
    ±cap 之內原樣通過，超出嘅部分只收 keep 倍 —— 咁樣單一掣位仍然
    全力發力，但曝光+陰影+黑位+高光+白位 五個一齊推到盡都唔會
@@ -910,11 +938,11 @@ function buildSecPlan(s){
 function applySec(L,a,b,s,p){
   let dL=0;                       /* HSL／調色輪嘅亮度偏移集中喺收尾時一次過落 */
   if(p.tone){
-    let x=L/100;
-    /* 曝光 ±100 → ±30L（約 3 級光圈）。原本 0.50 太猛，+60 已經爆三分一白位。
-       五個 tone 掣先夾埋成一個總偏移 d，再過 budget() —— 否則逐個疊加，
-       高光位會一次食晒 exp+high+white 三份，直接爆。 */
-    let d = s.exp/100*0.30;
+    /* 曝光：線性光乘算（攝影式），黑位留住；expL 可能 >100，靠收尾 shoulder 收 */
+    let x=expL(L,s.exp)/100;
+    /* 其餘 tone 掣先夾埋成一個總偏移 d，再過 budget() —— 否則逐個疊加，
+       高光位會一次食晒 high+white 兩份，直接爆。 */
+    let d = 0;
     if(s.shad)  d += s.shad/100 *0.30*(1-smoothstep(0.02,0.45,x));
     if(s.black) d += s.black/100*0.26*(1-smoothstep(0.00,0.30,x));
     if(s.high)  d += s.high/100 *0.30*smoothstep(0.55,0.98,x);
@@ -1652,7 +1680,9 @@ function makeSlider(host,key,cfg){
       throw e;
     }
   };
-  el.innerHTML='<div class="sl-hd"><span class="sl-nm"></span><span class="sl-vl"></span></div>'+
+  /* v11：值位改做 input —— 可以撳入去打精確數值（Enter 套用 / Esc 取消 / 離開自動套用） */
+  el.innerHTML='<div class="sl-hd"><span class="sl-nm"></span>'+
+               '<input class="sl-vl" type="text" inputmode="decimal" spellcheck="false" autocomplete="off"></div>'+
                '<div class="sl-tr"><div class="sl-fl"></div><div class="sl-kn"></div></div>';
   el.querySelector('.sl-nm').textContent=cfg.label;
   const vl=el.querySelector('.sl-vl'), tr=el.querySelector('.sl-tr'),
@@ -1674,9 +1704,27 @@ function makeSlider(host,key,cfg){
       else    { fl.style.left=(t*100)+'%'; fl.style.width=((z-t)*100)+'%'; }
     }else{ fl.style.left='0%'; fl.style.width=(t*100)+'%'; }
     kn.style.left=(t*100)+'%';
-    vl.textContent=fmt(v);
+    /* 用家撳入去打字嗰陣唔好覆寫佢緊打嘅嘢 */
+    if(document.activeElement!==vl) vl.value=fmt(v);
     el.classList.toggle('mod', Math.abs(v-def)>1e-9);
   }
+  /* 直接打數值：Enter / 離開輸入框 套用；Esc 放棄。
+     用 set(n)（非 live）→ 會 trigger onCommit，undo 記低呢次改動。 */
+  function commitTyped(){
+    const raw=String(vl.value==null?'':vl.value);
+    const n=parseFloat(raw.replace(/[^0-9.\-]/g,''));
+    if(!isFinite(n)){ vl.value=fmt(v); return; }   /* 打咗廢嘢 → 還原顯示，唔改值 */
+    set(n);
+    vl.value=fmt(v);
+  }
+  vl.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){ e.preventDefault(); commitTyped(); vl.blur(); }
+    else if(e.key==='Escape'){ e.preventDefault(); vl.value=fmt(v); vl.blur(); }
+    e.stopPropagation();     /* 打字唔好 trigger 全局快捷鍵（例如 P 開方向） */
+  });
+  vl.addEventListener('blur',commitTyped);
+  vl.addEventListener('focus',()=>{ vl.select(); });
+  vl.addEventListener('pointerdown',e=>e.stopPropagation());   /* 撳輸入框唔好當拖桿 */
   /* mode:
        true    = silent：淨係改值，乜都唔好 trigger（syncSecSliders 用）
        'live'  = 拖緊／滾緊：即刻出「預覽」render，但唔 trigger onCommit
@@ -1852,8 +1900,39 @@ function toggleLock(){
   }
   document.body.classList.toggle('locked',S.locked);
   const lp=$('lockpill'); if(lp) lp.hidden=!S.locked;
+  updateABBadge();
   scheduleRender();
   toast(S.locked?'原圖鎖定中 · 調色暫停（再撳 ◧ 或 Shift+Z 解除）':'解除鎖定 · 調色返嚟喇');
+}
+/* ---------- A/B 一鍵對比（v11）----------
+   同一個 S.locked state，但掣面寫明而家睇緊 A 定 B，畫面左上角加 badge。
+   同「◧ 原圖」唔同嘅係：呢個掣定位係「嚟回 A/B 對片」而唔係「鎖住唔調色」。 */
+function updateABBadge(){
+  const ab=$('abbadge'), b=$('b-ab');
+  if(ab){
+    ab.hidden=!S.vendorImg;
+    ab.textContent = S.locked? 'A · 原圖' : 'B · LOOK';
+    ab.classList.toggle('b',!S.locked);
+  }
+  if(b){
+    b.classList.toggle('pri',!!S.locked);
+    b.textContent = S.locked? 'A 原圖' : 'B LOOK';
+  }
+}
+function toggleAB(){
+  if(!S.vendorImg){ toast('先入來稿 · A/B 對比要張圖先得'); return; }
+  S.locked=S.locked?0:1;
+  const b=$('b-lock');
+  if(b){
+    b.classList.toggle('pri',S.locked);
+    b.textContent=S.locked?'🔒 原圖':'◧ 原圖';
+  }
+  document.body.classList.toggle('locked',S.locked);
+  const lp=$('lockpill'); if(lp) lp.hidden=!S.locked;
+  updateABBadge();
+  S.pvKey++; S.pvCache.clear();
+  scheduleRender();
+  toast(S.locked?'A · 原圖（再撳返 B）':'B · LOOK（再撳睇 A）');
 }
 
 /* ============================================================
@@ -2646,6 +2725,7 @@ function render(quick){
   paint();
   updateDirection(idx,g);
   if(!quick) updateFlatWarn(S.vendorLabQuick,g,o,S.sec,S.secPlan,S.palPlan);
+  updateABBadge();   /* v11：A/B badge 要跟住有冇圖 + locked 狀態 */
   $('cstat').textContent=(quick?'預覽':'全解')+' · '+(performance.now()-t0).toFixed(0)+'ms';
 }
 function drawFit(c2d,img,x,y,w,h){
@@ -3243,10 +3323,11 @@ $('b-png').onclick=()=>{
     toast('匯出咗 '+nm+(ok&&exportDirHandle?(' · 落 '+exportDirHandle.name):''));
   },20);
 };
-$('b-cube').onclick=()=>{
-  if(!S.lastGrade) return;
-  /* 一定要即場計：S.secPlan 係上一次 render 嘅快照，用家啱啱拖完條桿
-     但 render 仲喺 rAF 排緊隊嗰陣會攞到舊嘢，出嚟嘅 LUT 會漏咗手動微調。 */
+/* .cube 內文（b-cube 同「導出全套」共用）
+   一定要即場計：S.secPlan 係上一次 render 嘅快照，用家啱啱拖完條桿
+   但 render 仲喺 rAF 排緊隊嗰陣會攞到舊嘢，出嚟嘅 LUT 會漏咗手動微調。 */
+function makeCubeText(){
+  if(!S.lastGrade) return null;
   const o=opt(), N=33, sp=buildSecPlan(S.sec), pp=buildPalPlan(S.active);
   const L=['# Generated by Look Direction v3',
            '# ref: '+(allItems()[S.active]||{name:'-'}).name+
@@ -3257,8 +3338,13 @@ $('b-cube').onclick=()=>{
     const q=gradeRGB(ri/(N-1)*255, gi/(N-1)*255, bi/(N-1)*255, S.lastGrade, o, S.sec, sp, pp);
     L.push((q[0]/255).toFixed(6)+' '+(q[1]/255).toFixed(6)+' '+(q[2]/255).toFixed(6));
   }
+  return L.join('\n');
+}
+$('b-cube').onclick=()=>{
+  const txt=makeCubeText();
+  if(txt===null){ toast('未揀 look'); return; }
   const nm=expName()+'.cube';
-  saveBlob(nm,new Blob([L.join('\n')],{type:'text/plain'}));
+  saveBlob(nm,new Blob([txt],{type:'text/plain'}));
   toast('匯出咗 '+nm+(exportDirHandle?(' · 落 '+exportDirHandle.name):'（已包埋二次調整）'));
 };
 /* 圓角矩形（canvas 冇內建，自己寫） */
@@ -3321,6 +3407,7 @@ $('b-save').onclick=saveCustom;
 $('b-undo').onclick=undo;
 $('b-redo').onclick=redo;
 $('b-lock').onclick=toggleLock;
+$('b-ab').onclick=toggleAB;
 $('b-reset').onclick=()=>{
   pushHistNow('↺ 微調歸零');
   applyingHist=true;
@@ -3358,9 +3445,10 @@ $('b-lookimp').onclick=()=>{
   };
   inp.click();
 };
-$('b-sheet').onclick=()=>{
-  if(!S.outCanvas || S.active<0){ toast('未揀 look'); return; }
-  const it=allItems()[S.active]; if(!it) return;
+/* 方向紙：抽成純函數（b-sheet 同「導出全套」共用），返 canvas 或 null */
+function buildSheetCanvas(){
+  if(!S.outCanvas || S.active<0) return null;
+  const it=allItems()[S.active]; if(!it) return null;
   const W=1700, PAD=46, H0=3400;
   const c=document.createElement('canvas'); c.width=W; c.height=H0;
   const x=c.getContext('2d');
@@ -3433,6 +3521,39 @@ $('b-sheet').onclick=()=>{
   });
   y += bh+36;
 
+  /* ---- 具體數值（v11）：供應商照住做就得，唔使估 ---- */
+  const nums=[];
+  const sgn2=v=>(v>0?'+':'')+(Math.abs(v)>=10? v.toFixed(0) : v.toFixed(1));
+  const st=S.sec.exp/100*EXP_STOPS;
+  if(Math.abs(S.sec.exp)>0.5) nums.push('曝光 '+sgn2(st)+' 級光圈');
+  if(Math.abs(S.sec.con)>0.5) nums.push('對比 '+sgn2(S.sec.con));
+  if(Math.abs(S.sec.high)>0.5) nums.push('高光 '+sgn2(S.sec.high));
+  if(Math.abs(S.sec.shad)>0.5) nums.push('陰影 '+sgn2(S.sec.shad));
+  if(Math.abs(S.sec.white)>0.5) nums.push('白位 '+sgn2(S.sec.white));
+  if(Math.abs(S.sec.black)>0.5) nums.push('黑位 '+sgn2(S.sec.black));
+  if(Math.abs(S.sec.temp)>0.5) nums.push('色溫 b '+sgn2(S.sec.temp));
+  if(Math.abs(S.sec.tint)>0.5) nums.push('色調 a '+sgn2(S.sec.tint));
+  if(Math.abs(S.sec.sat)>0.5) nums.push('飽和 '+sgn2(S.sec.sat));
+  if(Math.abs(S.sec.vib)>0.5) nums.push('自然飽和 '+sgn2(S.sec.vib));
+  if(nums.length){
+    x.fillStyle='#e9ecf2'; x.font=F(15,600);
+    x.fillText('具體數值（照做）', PAD, y+14);
+    y += 34;
+    let cx=PAD, cy=y, lh=0;
+    for(const n of nums){
+      x.font=F(13,500);
+      const tw=x.measureText(n).width+22, th=28;
+      if(cx+tw>W-PAD){ cx=PAD; cy+=th+8; }
+      rr(x,cx,cy,tw,th,14);
+      x.fillStyle='#1b2029'; x.fill();
+      x.strokeStyle='#2f3644'; x.lineWidth=1; x.stroke();
+      x.fillStyle='#ccd3de'; x.font=F(13,500);
+      x.fillText(n, cx+11, cy+19);
+      cx += tw+8; lh=cy+th;
+    }
+    y = lh+26;
+  }
+
   /* ---- 方向分項（用結構化卡片，唔係倒啲 plain text 落去） ---- */
   x.fillStyle='#e9ecf2'; x.font=F(19,600);
   x.fillText('方向（分項）', PAD, y+20); y+=48;
@@ -3467,8 +3588,43 @@ $('b-sheet').onclick=()=>{
   const ox=out.getContext('2d');
   ox.fillStyle='#0f1115'; ox.fillRect(0,0,out.width,out.height);
   ox.drawImage(c,0,0);
-  download(out,'look-direction-sheet.png');
-  toast('出咗方向紙');
+  return out;
+}
+/* 方向紙落檔（單張 / 全套共用） */
+async function saveSheet(name){
+  const out=buildSheetCanvas();
+  if(!out){ toast('未揀 look'); return null; }   /* null = 出唔到（唔係寫入結果） */
+  const blob=await new Promise(r=>out.toBlob(r,'image/png'));
+  return await saveBlob(name,blob);
+}
+$('b-sheet').onclick=async()=>{
+  const nm=expName()+'-sheet.png';
+  const ok=await saveSheet(nm);
+  if(ok!==null) toast('出咗方向紙 '+nm+(ok&&exportDirHandle?(' · 落 '+exportDirHandle.name):''));
+};
+/* 導出全套：.cube + 全解 PNG + 方向紙，同一個檔名，一次過寫入揀咗嘅資料夾 */
+$('b-expall').onclick=async()=>{
+  if(!S.vendorImg||!S.lastGrade){ toast('未有來稿 / 未揀 look'); return; }
+  const base=expName();
+  const done=[], skipped=[];
+  toast('出緊全套（.cube + PNG + 方向紙）…');
+  /* 1) .cube */
+  const txt=makeCubeText();
+  if(txt!==null){ await saveBlob(base+'.cube',new Blob([txt],{type:'text/plain'})); done.push(base+'.cube'); }
+  else skipped.push('.cube');
+  /* 2) 全解 PNG */
+  try{
+    const pc=exportFull();
+    const pb=await new Promise(r=>pc.toBlob(r,'image/png'));
+    await saveBlob(base+'.png',pb); done.push(base+'.png');
+  }catch(_){ skipped.push('PNG'); }
+  /* 3) 方向紙 */
+  const sh=await saveSheet(base+'-sheet.png');
+  if(sh!==null) done.push(base+'-sheet.png'); else skipped.push('方向紙');
+  const where=exportDirHandle? (' · 落 '+exportDirHandle.name) : '（Downloads）';
+  toast(done.length
+    ? ('出齊 '+done.length+' 個檔：'+done.join('、')+where)
+    : ('一樣都出唔到：'+skipped.join('、')));
 };
 function wrapText(x,text,maxw){
   const out=[]; let cur='';
@@ -3656,6 +3812,7 @@ window.addEventListener('keydown',e=>{
     spaceDown=true; return;
   }
   if(!S.vendorImg) return;
+  if(e.key==='\\'){ toggleAB(); e.preventDefault(); return; }   /* \ = A/B 一鍵對比 */
   if(e.key==='0'){ setZoom(0); e.preventDefault(); return; }
   if(e.key==='-'||e.key==='_'){ zoomStep(-1); e.preventDefault(); return; }
   if(e.key==='='||e.key==='+'){ zoomStep(1); e.preventDefault(); return; }
