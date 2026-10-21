@@ -792,7 +792,7 @@ function applyPixel(L,a,b,g,opt){
   }
   const da=interpBand(L,g.dA), db=interpBand(L,g.dB), sc=interpBand(L,g.sC);
   let w=1;
-  if(opt.skinProtect) w = 1 - 0.8*skinMask(L,a,b);
+  if(opt.skinProt) w = 1 - opt.skinProt*skinMask(L,a,b);
   const scEff = 1 + st*(sc-1)*w;
   let na=a*scEff + da*st*w, nb=b*scEff + db*st*w;
   const cm=Math.hypot(na,nb);
@@ -1043,18 +1043,26 @@ function buildPalLut(stops){
    連人面都被導演 grade 推走。改法：mask 核心（真·皮膚）完全唔跟色板，
    邊緣羽化過渡 —— 環境照變、人面保返原色。窗口放寬到接得 pale／低飽和膚：
    L 25–88、a 3–30（峰 9–18）、b 3–36（峰 10–22）。 */
-const SKIN_LEAK=0.08;   /* 核心留 8% 洩漏，令面同環境唔會完全脫節 */
+/* 2026-10-21 再改（導演實測 shot_17：「冇效」）：舊版淨保到面核心，
+   面嘅暗位／邊位／半調一樣被推走 —— 肉眼就係「個面變咗色」。
+   改用 hue 式：a-b 平面嘅角度喺膚色扇區內就保（暗部、高光位同 hue 一樣，
+   所以成個面連陰影都保到），再用 chroma／L 做上下限，擋開純黑純白同霓虹。
+   扇區 18°–72°（洋紅紅→黃），邊位軟過渡；chroma 4–46；L 14–96。 */
 function skinMask(L,a,b){
-  return cl01((L-25)/12)*(1-cl01((L-88)/10))
-       * cl01((a-3)/6) *(1-cl01((a-30)/12))
-       * cl01((b-3)/7) *(1-cl01((b-36)/14));
+  const c=Math.hypot(a,b);
+  if(c<3) return 0;
+  let h=Math.atan2(b,a)*180/Math.PI; if(h<0) h+=360;   /* 0=洋紅紅, 90=黃 */
+  const hm=cl01((h-18)/12)*(1-cl01((h-72)/20));        /* 膚色扇區 */
+  const cm=cl01((c-3)/5) *(1-cl01((c-44)/18));         /* 太灰／太艷唔當膚 */
+  const lm=cl01((L-14)/10)*(1-cl01((L-96)/6));         /* 死黑／爆白唔當膚 */
+  return hm*cm*lm;
 }
 /* 將 pixel 嘅 ab 推向色板目標色。L 唔郁 —— 光影結構係 vendor 嘅，
    我哋只借參考圖嘅「色」。膚色 mask 核心（1-m）近乎完全擋住推力。 */
-function applyPal(L,a,b,pal,skinProtect){
+function applyPal(L,a,b,pal,skinProt){
   const bi=L<0?0:(L>100?100:Math.round(L));
   let w=pal.blend;
-  if(skinProtect) w*=1-(1-SKIN_LEAK)*skinMask(L,a,b);
+  if(skinProt) w*=1-skinProt*skinMask(L,a,b);
   if(w<=0) return [L,a,b];
   let na=a+(pal.lutA[bi]-a)*w, nb=b+(pal.lutB[bi]-b)*w;
   const cm=Math.hypot(na,nb);
@@ -1066,7 +1074,7 @@ function applyPal(L,a,b,pal,skinProtect){
 function gradeRGB(r,g,b,grade,opt,sec,plan,pal){
   const lab=rgbToLab(Math.round(r),Math.round(g),Math.round(b));
   let q=applyPixel(lab[0],lab[1],lab[2],grade,opt);
-  if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProtect);
+  if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProt);
   if(plan&&plan.active) q=applySec(q[0],q[1],q[2],sec,plan);
   return labToRgb(q[0],q[1],q[2]);
 }
@@ -1086,7 +1094,7 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
   const prot = !!opt.protect;
   for(let i=0;i<n;i++){
     let q=applyPixel(lab.L[i],lab.a[i],lab.b[i],grade,opt);
-    if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProtect);
+    if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProt);
     if(useSec) q=applySec(q[0],q[1],q[2],sec,plan);
     if(prot) q[0]=protectL(q[0]);
     const c=labToRgb(q[0],q[1],q[2]), p=i*4;
@@ -1238,7 +1246,8 @@ const S={
   hist:[], fut:[], histCap:30, locked:false,
   /* 方向注入：palPlan 係 render 時嘅快取；palView = 牆／傳統色板切換（v9 加返）；
      palSel 係色板 view 揀緊邊個位（暗/中/亮）—— 兩個都係 UI state，唔入 snapshot */
-  palPlan:null, palView:'wall', palSel:'mid', palWallMode:'color', dirQ:''
+  palPlan:null, palView:'wall', palSel:'mid', palWallMode:'color', dirQ:'',
+  skinProt:85                              /* 膚色保護力度 %（0=唔保，100=全保） */
 };
 /* 記住用家上次的 view 選擇（牆定色板） */
 try{ const _pv=localStorage.getItem('ld.palview'); if(_pv==='sw'||_pv==='wall') S.palView=_pv; }catch(_){}
@@ -1251,6 +1260,7 @@ const opt=()=>({
   toneStrength:S.toneStr/100,
   useBands:[$('b0').checked,$('b1').checked,$('b2').checked],
   skinProtect:$('skin').checked,
+  skinProt:($('skin')&&$('skin').checked)?(S.skinProt/100):0,
   protect:!!($('protect')&&$('protect').checked)   /* 保層次：唔准死黑爆光 */
 });
 const allItems=()=>[].concat(
@@ -2225,6 +2235,10 @@ function buildLeftPanel(){
   g1b.body.appendChild(phint);
   makeSlider(g1b.body,'palBlend',{label:'融合',min:0,max:100,def:70,value:S.sec.palBlend,unit:'%',
     onInput:v=>{S.sec.palBlend=v;},onCommit:()=>{secChanged();refreshPalUI();secCommitted();}});
+  /* 膚保力度：0=成張圖跟 grade（舊行為），100=膚色扇區完全唔跟。
+     配合【保護膚色】checkbox 用 —— checkbox 關就當 0。 */
+  makeSlider(g1b.body,'skinProt',{label:'膚保',min:0,max:100,def:85,value:S.skinProt,unit:'%',
+    onInput:v=>{S.skinProt=v;},onCommit:()=>{S.pvKey++;S.pvCache.clear();scheduleRender();}});
   g1b.secKeys=null;
   refreshPalUI();
 
@@ -2854,7 +2868,7 @@ function flatWarn(lab,g,opt,sec,plan,pal){
   const hist=new Int32Array(256); let cnt=0;
   for(let i=0;i<n;i+=stride){
     let q=applyPixel(lab.L[i],lab.a[i],lab.b[i],g,opt);
-    if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProtect);
+    if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProt);
     if(plan&&plan.active) q=applySec(q[0],q[1],q[2],sec,plan);
     if(opt.protect) q[0]=protectL(q[0]);
     let b=Math.round(q[0]); if(b<0)b=0; else if(b>255)b=255;
@@ -3132,7 +3146,7 @@ function drawPresetThumb(c,p){
     const cid=cov.getContext('2d').getImageData(0,0,c.width,c.height);
     const g=buildGrade(S.vendorAn,makePseudoRef(S.vendorAn,p),[true,true,true],$('tone').checked);
     const o={strength:S.chromaStr/100,toneStrength:S.toneStr/100,
-             useBands:[true,true,true],skinProtect:false,protect:opt().protect};
+             useBands:[true,true,true],skinProtect:false,skinProt:0,protect:opt().protect};
     c.getContext('2d').putImageData(imageDataFrom(labOf(cid),g,o,null,null,null,true),0,0);
     return;
   }
@@ -3149,7 +3163,7 @@ function drawPresetThumb(c,p){
     const id=tx.getImageData(0,0,c.width,c.height), d=id.data;
     for(let i=0;i<id.width*id.height;i++){
       const q=i*4;
-      const o=gradeRGB(d[q],d[q+1],d[q+2],g,{strength:1,toneStrength:S.toneStr/100,useBands:[true,true,true],skinProtect:false},null,null);
+      const o=gradeRGB(d[q],d[q+1],d[q+2],g,{strength:1,toneStrength:S.toneStr/100,useBands:[true,true,true],skinProtect:false,skinProt:0},null,null);
       d[q]=o[0]; d[q+1]=o[1]; d[q+2]=o[2];
     }
     tx.putImageData(id,0,0);
