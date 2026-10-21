@@ -140,8 +140,9 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:12px 0}
 .huering .hlg{font-size:11px;color:var(--tx3)}
 .huering .hlg b{color:var(--acc);font-weight:500}
 .hslbox{border-left:2px solid var(--line);padding-left:8px;margin-left:2px}
-/* ---------- 方向預覽牆（v8b，取代色票行） ---------- */
 .palwall{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
+.palwall.dirgrid{max-height:360px;overflow-y:auto;padding-right:2px}
+.dirsearch{width:100%;margin:0 0 6px;padding:5px 8px;font-size:12px;border-radius:6px;background:#1e1e1e;border:1px solid #3a3a3a;color:#e8e8e8;box-sizing:border-box}
 .ptile{
   position:relative;padding:0;border-radius:6px;border:1.5px solid var(--line);
   background:var(--panel2);cursor:pointer;overflow:hidden;
@@ -1227,12 +1228,12 @@ const S={
   hist:[], fut:[], histCap:30, locked:false,
   /* 方向注入：palPlan 係 render 時嘅快取；palView = 牆／傳統色板切換（v9 加返）；
      palSel 係色板 view 揀緊邊個位（暗/中/亮）—— 兩個都係 UI state，唔入 snapshot */
-  palPlan:null, palView:'wall', palSel:'mid', palWallMode:'color'
+  palPlan:null, palView:'wall', palSel:'mid', palWallMode:'color', dirQ:''
 };
 /* 記住用家上次的 view 選擇（牆定色板） */
 try{ const _pv=localStorage.getItem('ld.palview'); if(_pv==='sw'||_pv==='wall') S.palView=_pv; }catch(_){}
 /* 記住方向牆嘅子模式（顏色方向 / 變數） */
-try{ const _wm=localStorage.getItem('ld.palwall'); if(_wm==='color'||_wm==='var') S.palWallMode=_wm; }catch(_){}
+try{ const _wm=localStorage.getItem('ld.palwall'); if(_wm==='color'||_wm==='var'||_wm==='dir') S.palWallMode=_wm; }catch(_){}
 const cv=$('cv'), ctx=cv.getContext('2d');
 
 const opt=()=>({
@@ -1355,6 +1356,144 @@ function buildPalPlan(idx){
 }
 const labCss=(L,a,b)=>'rgb('+labToRgb(L,a,b).join(',')+')';
 
+/* hex → 三點 LAB stops（暗 25 / 中 55 / 亮 85）；a,b 收喺 ±26 免過火 */
+function hexRgb(h){ h=h.replace('#',''); if(h.length===3) h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; }
+const _dsCache=new Map();
+function dirStops(d){
+  if(_dsCache.has(d.id)) return _dsCache.get(d.id);
+  const lab=d.hx.map(h=>{ const c=hexRgb(h), L=rgbToLab(c[0],c[1],c[2]);
+    return {L:L[0], a:clamp(L[1],-26,26), b:clamp(L[2],-26,26)}; }).sort((x,y)=>x.L-y.L);
+  if(!lab.length) return null;
+  const pick=t=>lab[Math.min(lab.length-1,Math.round((lab.length-1)*t))];
+  const st=[{L:25,a:pick(0).a,b:pick(0).b},{L:55,a:pick(.5).a,b:pick(.5).b},{L:85,a:pick(1).a,b:pick(1).b}];
+  _dsCache.set(d.id,st); return st;
+}
+/* 搜導演：名（中／英）／地區／id／風格字都中 */
+function dirList(){
+  const q=(S.dirQ||'').trim().toLowerCase();
+  if(!q) return DIRECTOR_LOOKS;
+  return DIRECTOR_LOOKS.filter(d=>(d.zh+d.en+d.rg+d.id+d.sg).toLowerCase().indexOf(q)>=0);
+}
+function dirOv(d){ const st=dirStops(d);
+  return {sh:Object.assign({},st[0]),mid:Object.assign({},st[1]),hi:Object.assign({},st[2])}; }
+function applyDirLook(d){
+  if(S.sec.palOn&&palSigFromSec()===d.id){
+    pushHistNow('關導演注入'); S.sec.palOn=0;
+  }else{
+    pushHistNow('導演：'+d.zh); S.sec.palOn=1; S.sec.palOv=dirOv(d);
+  }
+  S.pvKey++; S.pvCache.clear();
+  refreshPalUI(); updateGroupDots(); scheduleRender();
+  toast(S.sec.palOn ? d.zh+'（'+d.en+'）色彩已注入' : '關咗導演注入');
+}
+/* 導演格：用你真圖即場渲染嗰位導演嘅 palette */
+function paintDirTile(c,d){
+  const x=c.getContext('2d');
+  if(S.vendorImg&&S.active>=0){
+    const cov=imgToCanvasCover(S.vendorImg,c.width,c.height);
+    const cid=cov.getContext('2d').getImageData(0,0,c.width,c.height);
+    const st=dirStops(d), lut=buildPalLut([st[0],st[1],st[2]]);
+    const plan={lutA:lut.lutA,lutB:lut.lutB,blend:clamp((S.sec.palBlend||70)/100,0,1)};
+    const ts=Object.assign({},S.sec,{palOn:1,palOv:dirOv(d)});
+    const out=imageDataFrom(labOf(cid),gradeFor(S.active),opt(),ts,
+      (typeof buildSecPlan==='function'?buildSecPlan(ts):null),plan,true);
+    x.putImageData(out,0,0);
+    return;
+  }
+  /* 未入來稿：畫嗰位導演嘅 palette 漸變（方便純瀏覽） */
+  const st0=dirStops(d);
+  if(st0){
+    const g=x.createLinearGradient(0,0,c.width,0);
+    g.addColorStop(0,labCss(st0[0].L,st0[0].a,st0[0].b));
+    g.addColorStop(0.5,labCss(st0[1].L,st0[1].a,st0[1].b));
+    g.addColorStop(1,labCss(st0[2].L,st0[2].a,st0[2].b));
+    x.fillStyle=g; x.fillRect(0,0,c.width,c.height);
+  }else{
+    x.fillStyle='#2a2a2a'; x.fillRect(0,0,c.width,c.height);
+  }
+}
+
+/* ---------- 導演色彩（director-color-style skill 注入） ----------
+   74 張卡：華語 18 / 亞洲 16 / 歐美 30 / 攝影師 10。
+   hx 係嗰位導演嘅 palette hex，駁落 dirStops() 轉做 暗/中/亮 三點 LAB 注入。*/
+const DIRECTOR_LOOKS=[
+  {id:'d:ang-lee',zh:'李安',en:'Ang Lee',rg:'TW',hx:['#3E6B52','#D9A94E','#E3CBAE','#7C93A8','#16283F','#E08A3C'],sg:'克制的寫實主義，色溫跟隨情感但永不喧賓奪主'},
+  {id:'d:ann-hui',zh:'許鞍華',en:'Ann Hui',rg:'HK',hx:['#D3C7AE','#6F8496','#CFAA5E','#9A5A4E','#918C84','#121316'],sg:'素淨寫實，色不奪人：城市是灰的，人是暖的'},
+  {id:'d:bi-gan',zh:'畢贛',en:'Bi Gan',rg:'CN',hx:['#2E5546','#B23A63','#D2A63F','#3A5A78','#6B6A63','#0B0C0E'],sg:'記憶的濕度；綠與洋紅是夢與現實的交界'},
+  {id:'d:chen-kaige',zh:'陳凱歌',en:'Chen Kaige',rg:'CN',hx:['#8E1B1B','#C89B3C','#5C2020','#4A5A6B','#EDE3D2','#101010'],sg:'京劇舞台化濃艷，紅金是身份與命運，時代段落褪成灰藍'},
+  {id:'d:cheng-er',zh:'程耳',en:'Cheng Er',rg:'CN',hx:['#A8863F','#8B2A2A','#3E5148','#E3E1DA','#0D0E10','#5B6A76'],sg:'民國的克制優雅，對稱構圖配低飽和，暴力發生在畫面正中'},
+  {id:'d:diao-yinan',zh:'刁亦男',en:'Diao Yinan',rg:'CN',hx:['#DCE4E8','#121417','#C7436B','#5E7E92','#D9722C','#4A3529'],sg:'中國 neon-noir；雪是白紙，血與霓虹寫上去'},
+  {id:'d:edward-yang',zh:'楊德昌',en:'Edward Yang',rg:'TW',hx:['#8B8C86','#9FB4C2','#D4B04A','#9C2626','#E6E4DC','#121417'],sg:'冷靜現代主義，玻璃與反光是疏離；紅只在暴力一刻出現'},
+  {id:'d:hou-hsiao-hsien',zh:'侯孝賢',en:'Hou Hsiao-hsien',rg:'TW',hx:['#8A7355','#5A7A52','#D8C9A8','#3A5A78','#8C3A2E','#6E6A62'],sg:'褪色照片式長鏡，綠與褐是鄉愁'},
+  {id:'d:jia-zhangke',zh:'賈樟柯',en:'Jia Zhangke',rg:'CN',hx:['#6F7A6A','#B9A97E','#8A857A','#A02E3C','#3E5878','#14161A'],sg:'社會主義廢墟的褪色調，色彩是時代的銹'},
+  {id:'d:jiang-wen',zh:'姜文',en:'Jiang Wen',rg:'CN',hx:['#E0B23C','#4F6338','#A81E22','#5A4534','#F2EFE6','#94161B'],sg:'過曝的回憶陽光，民國的華麗舞台暴力'},
+  {id:'d:johnnie-to',zh:'杜琪峰',en:'Johnnie To',rg:'HK',hx:['#1B3A5C','#D6A93F','#0F1013','#8E1B1B','#D9DEE2','#2E8C8C'],sg:'冷靜群像幾何；藍是宿命，黃是江湖義氣'},
+  {id:'d:lou-ye',zh:'婁燁',en:'Lou Ye',rg:'CN',hx:['#3E5C4E','#A32E62','#C9A175','#8A7A55','#8E2020','#0E0F11'],sg:'雨夜手持的焦慮，色彩跟著身體走、混濁不清'},
+  {id:'d:pema-tseden',zh:'萬瑪才旦',en:'Pema Tseden',rg:'CN',hx:['#B39A62','#9E2B2B','#E6E4DC','#4A7A96','#7A2436','#101112'],sg:'高原遼闊與傳統沉重；黑白與彩色分隔現代與傳統'},
+  {id:'d:stanley-kwan',zh:'關錦鵬',en:'Stanley Kwan',rg:'HK',hx:['#A02B40','#2F4A3C','#C4A055','#6B3B5E','#E4DCCB','#101113'],sg:'女性視角的濃艷與哀愁，紅綠對撞係慾望與束縛'},
+  {id:'d:tsai-ming-liang',zh:'蔡明亮',en:'Tsai Ming-liang',rg:'TW',hx:['#4A5D4E','#5A8A94','#C9A34B','#8C8880','#0C0D0D','#8F2E34'],sg:'潮濕與停滯；水是慾望的載體，綠是發霉的都市'},
+  {id:'d:tsui-hark',zh:'徐克',en:'Tsui Hark',rg:'HK',hx:['#2E6B55','#B3312A','#C79A3A','#1E3A6B','#6E3A7A','#0D0E10'],sg:'青綠煙霧係武俠的呼吸，金紅係廟堂，妖氣紫'},
+  {id:'d:wong-kar-wai',zh:'王家衛',en:'Wong Kar-wai',rg:'HK',hx:['#B0174F','#0E8C8C','#E0A83C','#7A2E2E','#2E4034','#C9852B'],sg:'霓虹洋紅＋昏黃鎢絲，色彩係情緒語法；杜可風故意用錯色'},
+  {id:'d:zhang-yimou',zh:'張藝謀',en:'Zhang Yimou',rg:'CN',hx:['#A8121A','#C1272D','#D4A017','#C8A15A','#14110F','#E8E2D4'],sg:'大色塊濃郁設色，一個段落一個主色，色彩係敘事修辭唔係'},
+  {id:'d:apichatpong',zh:'阿彼察邦·韋拉斯花古',en:'Apichatpong Weerasethakul',rg:'TH',hx:['#2E5C42','#7E9E5E','#B8A06E','#5E9EC4','#0C0E0C','#C48E5E'],sg:'熱帶綠與光的呼吸；黑暗中螢光是靈魂'},
+  {id:'d:bong-joon-ho',zh:'奉俊昊',en:'Bong Joon-ho',rg:'KR',hx:['#C9CBC6','#D6B25E','#3E5A46','#8E2B2B','#4E6478','#14161A'],sg:'階級用色溫與高度分隔：上層冷白玻璃，下層暖黃潮濕'},
+  {id:'d:hamaguchi',zh:'濱口龍介',en:'Ryusuke Hamaguchi',rg:'JP',hx:['#2C3E44','#6E8288','#D8CDB6','#A83E3E','#3E4E3A','#101315'],sg:'冷靜克制，夜景的低飽和藍綠與車內儀表光'},
+  {id:'d:hong-sang-soo',zh:'洪常秀',en:'Hong Sang-soo',rg:'KR',hx:['#C6C3B8','#7E8578','#B8A47E','#4E5A62','#E0DCD0','#2A2C2E'],sg:'極簡低飽和＋突兀 zoom；色彩淡到近乎無，只有尷尬'},
+  {id:'d:kitano',zh:'北野武',en:'Takeshi Kitano',rg:'JP',hx:['#2E5E86','#7FA8C4','#B02A2A','#DCDACB','#1A1D20','#4E7A5E'],sg:'北野藍：冷藍海天＋暴力紅，靜止與突然的爆發'},
+  {id:'d:kore-eda',zh:'是枝裕和',en:'Hirokazu Kore-eda',rg:'JP',hx:['#D6CDB9','#7C9490','#E0B04A','#9E8A76','#5E7488','#EDE8DA'],sg:'日常自然光的溫柔，色彩淡到像不存在'},
+  {id:'d:kurosawa',zh:'黑澤明',en:'Akira Kurosawa',rg:'JP',hx:['#1A1A1A','#E8E2D2','#8A7247','#B03A2E','#3E5A6B','#5E6B4A'],sg:'黑白高反差＋雨＋土黃；天氣是情緒，色彩（彩色期）是階'},
+  {id:'d:lee-chang-dong',zh:'李滄東',en:'Lee Chang-dong',rg:'KR',hx:['#B27A46','#5E6E52','#8E3A2E','#7E8A94','#E2DACC','#16181B'],sg:'暮色的曖昧；霧、逆光、燒不盡的暗紅'},
+  {id:'d:miyazaki',zh:'宮崎駿',en:'Hayao Miyazaki',rg:'JP',hx:['#6BA368','#4E92C4','#F2E9C9','#7A5230','#C4544E','#3C5A46'],sg:'手繪綠藍天空與厚雲，光是畫出來的不是打出來的'},
+  {id:'d:mizoguchi',zh:'溝口健二',en:'Kenji Mizoguchi',rg:'JP',hx:['#2A2A28','#9A9A94','#D8D3C6','#6B6A5E','#8A7055'],sg:'長鏡單場一鏡，黑白灰階如水墨捲軸'},
+  {id:'d:ozu',zh:'小津安二郎',en:'Yasujiro Ozu',rg:'JP',hx:['#7E8A8C','#C2B394','#B23A34','#DCD5C4','#3A4042','#8E8055'],sg:'tatami 低機位、褪藍褐、紅色物件是畫面唯一的標'},
+  {id:'d:park-chan-wook',zh:'朴贊郁',en:'Park Chan-wook',rg:'KR',hx:['#8E1B2A','#2E5C46','#C9A44E','#5E3A6E','#DCD6C6','#0E1013'],sg:'濃艷紅綠＋嚴格對稱，華麗底下是暴力'},
+  {id:'d:satoshi-kon',zh:'今敏',en:'Satoshi Kon',rg:'JP',hx:['#B02A3E','#3E6E9E','#D9C25E','#E6E0D4','#6B3A5E','#121417'],sg:'現實與夢境用色溫交錯；紅是入侵，藍是清醒'},
+  {id:'d:satyajit-ray',zh:'薩蒂亞吉特·雷伊',en:'Satyajit Ray',rg:'IN',hx:['#1E1E1C','#8E8A80','#DED8C8','#6E6A58','#A89C7E'],sg:'黑白的人道主義；季風的灰階與素淨白'},
+  {id:'d:shinkai',zh:'新海誠',en:'Makoto Shinkai',rg:'JP',hx:['#C85E8A','#3E8FB8','#F5C86E','#7FC9E8','#2E3A52','#EDE7E2'],sg:'魔幻時刻洋紅青對撞＋光學耀斑，光本身就是主角'},
+  {id:'d:yuasa',zh:'湯淺政明',en:'Masaaki Yuasa',rg:'JP',hx:['#E8407A','#3EC8B8','#F2C14E','#7A4EC8','#2EE08A','#F5F0E6'],sg:'高飽和撞色＋形變，色彩跟著情緒即時變形'},
+  {id:'d:abbas-kiarostami',zh:'阿巴斯·基亞羅斯塔米',en:'Abbas Kiarostami',rg:'IR',hx:['#B8A06E','#7E8A5E','#D8CCB0','#8E6E4E','#6E8290','#24221E'],sg:'伊朗土黃綠＋車窗框景，色彩就是土地本身'},
+  {id:'d:alfonso-cuaron',zh:'阿方索·卡隆',en:'Alfonso Cuaron',rg:'MX',hx:['#DCD8CE','#6E7268','#8E8474','#3E5A6E','#B8A882','#141618'],sg:'黑白高寬容度＋長鏡；色彩（彩色期）是自然與記憶的灰綠'},
+  {id:'d:andrei-tarkovsky',zh:'安德烈·塔可夫斯基',en:'Andrei Tarkovsky',rg:'RU',hx:['#4E5A46','#8E7A4E','#6E7A6A','#C48A3E','#D8D0BC','#1E1E1A'],sg:'青綠褐的自然，水、火、鏽；彩色與黑白交替是記憶的呼吸'},
+  {id:'d:bernardo-bertolucci',zh:'貝納多·貝托魯奇',en:'Bernardo Bertolucci',rg:'IT',hx:['#C89A3E','#9E1B2A','#5E4A3E','#D8C8A0','#2E3A46','#12100E'],sg:'油畫金紅＋東方主義，宮廷是暖的、歷史是暗的'},
+  {id:'d:chloe-zhao',zh:'趙婷',en:'Chloe Zhao',rg:'CN/US',hx:['#C89A6E','#6E8AA4','#D8C4A0','#4E5A46','#E0B060','#1A1E22'],sg:'魔幻時刻自然光＋褐與天藍，紀實的詩意'},
+  {id:'d:christopher-nolan',zh:'克里斯托弗·諾蘭',en:'Christopher Nolan',rg:'UK',hx:['#6E7A82','#3E4A54','#C4B89C','#B85C2E','#D8D4CC','#111315'],sg:'冷灰藍現實＋IMAX 大畫幅；黑白段落是另一個時間軸'},
+  {id:'d:coen-brothers',zh:'柯恩兄弟',en:'Joel & Ethan Coen',rg:'US',hx:['#DCE4E8','#8E8470','#4E6478','#8E2B2B','#E0C88E','#16181A'],sg:'雪藍白／黃褐硬光；每一部一套嚴格色系'},
+  {id:'d:david-fincher',zh:'大衛·芬奇',en:'David Fincher',rg:'US',hx:['#2E3E3E','#C9A05E','#5C6A62','#8E2B2B','#B8B4A8','#0E1011'],sg:'低飽和青綠暗部＋琥珀高光，色彩永遠被控制喺柵欄後面'},
+  {id:'d:david-lynch',zh:'大衛·林奇',en:'David Lynch',rg:'US',hx:['#8E1B2E','#0A0A0C','#C8A44E','#2E4A4E','#D8C8B0','#5E2E5E'],sg:'紅絲絨＋暗部＋工業噪音；紅是入口，黑是底下'},
+  {id:'d:denis-villeneuve',zh:'丹尼斯·維倫紐瓦',en:'Denis Villeneuve',rg:'CA',hx:['#C87A32','#2E5E6E','#D8C88E','#4E4A44','#8E9EA4','#0E1113'],sg:'色彩是世界觀基建：一區一色，一個星球一套色'},
+  {id:'d:federico-fellini',zh:'費德里柯·費里尼',en:'Federico Fellini',rg:'IT',hx:['#C05A3E','#D8B060','#E0A0A8','#4E5A6E','#E8DCC0','#1A1614'],sg:'馬戲團暖紅金＋霧與粉，狂歡底下的孤獨'},
+  {id:'d:guillermo-del-toro',zh:'吉爾莫·德爾·托羅',en:'Guillermo del Toro',rg:'MX',hx:['#C89A3E','#2E6E6A','#8E1B2E','#4E3A52','#D8C6A8','#0E1214'],sg:'琥珀＋青綠＋血紅；有機潮濕的童話與怪物'},
+  {id:'d:ingmar-bergman',zh:'英瑪·褒曼',en:'Ingmar Bergman',rg:'SE',hx:['#E4E0D4','#2A2A2A','#8E1B1B','#7E7462','#5E5A52','#C4B89C'],sg:'黑白高反差＋血紅；臉是風景，紅是靈魂'},
+  {id:'d:jane-campion',zh:'簡·坎皮恩',en:'Jane Campion',rg:'NZ',hx:['#6E6A52','#4E6470','#7E8A6E','#2A2E32','#D8CDB8','#8E3A3E'],sg:'土地褐＋冷灰藍綠；自然即心理'},
+  {id:'d:lars-von-trier',zh:'拉斯·馮·提爾',en:'Lars von Trier',rg:'DK',hx:['#8E1B1B','#0C0E10','#6E6A5E','#D8D0C0','#B8A04E','#2E3E4E'],sg:'Dogme 手持粗粒子／表現主義紅與黑，風格永遠在極'},
+  {id:'d:luchino-visconti',zh:'盧奇諾·維斯康提',en:'Luchino Visconti',rg:'IT',hx:['#8E2B2B','#C4A45E','#5E4A42','#D8CCB4','#3E4E5E','#141214'],sg:'油畫暗金紅絲絨，貴族的衰敗用色溫寫'},
+  {id:'d:martin-scorsese',zh:'馬丁·斯科塞斯',en:'Martin Scorsese',rg:'US',hx:['#8E2B1E','#C9A44E','#D8503C','#3E4A6E','#D8CDB8','#101215'],sg:'暖紅金＋霓虹夜，實用光係唯一光源'},
+  {id:'d:michael-mann',zh:'米高·曼',en:'Michael Mann',rg:'US',hx:['#1E3A5E','#C8B060','#4E6470','#8E9EA4','#0A0E12','#D86A3E'],sg:'數碼夜景：藍黑都市、鈉燈黃、玻璃與金屬的冷'},
+  {id:'d:michelangelo-antonioni',zh:'米開朗基羅·安東尼奧尼',en:'Michelangelo Antonioni',rg:'IT',hx:['#B02A2A','#8E8A82','#5E6E52','#C4C0B4','#3E4A52','#1A1C1E'],sg:'現代主義色塊；紅是慾望，灰是疏離，建築是主角'},
+  {id:'d:nicolas-winding-refn',zh:'尼可拉斯·溫丁·雷弗恩',en:'Nicolas Winding Refn',rg:'DK',hx:['#E01B3E','#2E3EC8','#C05AC8','#0A0A0C','#F0E6D8','#E0A83E'],sg:'霓虹紅藍極致，一個畫面一種色，純粹的視覺暴力'},
+  {id:'d:paul-thomas-anderson',zh:'保羅·湯瑪斯·安德森',en:'Paul Thomas Anderson',rg:'US',hx:['#C89A4E','#8E3A2E','#4E5A4E','#D8C4A0','#3E4A5E','#141416'],sg:'70 年代琥珀金＋長鏡運動，色彩是時代的體溫'},
+  {id:'d:pawel-pawlikowski',zh:'帕維烏·帕夫利科夫斯基',en:'Pawel Pawlikowski',rg:'PL',hx:['#F0ECE2','#2A2A2A','#8E8A82','#B8B0A0','#5E5A54'],sg:'4:3 黑白，構圖極簡，光是唯一的色彩'},
+  {id:'d:quentin-tarantino',zh:'昆汀·塔倫蒂諾',en:'Quentin Tarantino',rg:'US',hx:['#B01B22','#E0B040','#C87A3E','#5E7A4E','#E8DCC4','#12100E'],sg:'高飽和暖色＋紅黃；41% 橙、2% teal 的復古'},
+  {id:'d:ridley-scott',zh:'雷利·史考特',en:'Ridley Scott',rg:'UK',hx:['#2E8C9E','#C86A2E','#4E5A5E','#8E7A3E','#0E1214','#D8C8A8'],sg:'煙霧中的光束＋霓虹青與橙，濕潤的空氣有重量'},
+  {id:'d:sean-baker',zh:'肖恩·貝克',en:'Sean Baker',rg:'US',hx:['#E0407E','#7E4EC8','#F2C14E','#3EC8C0','#E88A3E','#181418'],sg:'高飽和霓虹粉紫＋烈日街頭，底層的華麗'},
+  {id:'d:sergei-paradjanov',zh:'謝爾蓋·帕拉贊諾夫',en:'Sergei Parajanov',rg:'AM',hx:['#B01B2A','#2E6E5E','#C89A2E','#3E4E8E','#E0C8A0','#14100E'],sg:'平面寶石色，像會動的掛毯；色彩完全不寫實'},
+  {id:'d:stanley-kubrick',zh:'斯坦利·寇比力克',en:'Stanley Kubrick',rg:'US',hx:['#B01B1B','#DCD8CE','#2E4A6E','#C4A45E','#E06E2E','#0C0E10'],sg:'單點透視對稱、紅是危機、冷白是體制'},
+  {id:'d:terrence-malick',zh:'泰倫斯·馬力克',en:'Terrence Malick',rg:'US',hx:['#E0B45E','#7E9E5E','#DCCBAE','#5E5A3E','#8E9EA4','#2A2A24'],sg:'魔幻時刻的金色，光是神性；手持逆光＋自然元素'},
+  {id:'d:wes-anderson',zh:'韋斯·安德森',en:'Wes Anderson',rg:'US',hx:['#E8A0A8','#7EC8B8','#E0B060','#9CC0DC','#D4564E','#F0E6D2'],sg:'pastel 對撞＋嚴格對稱中心構圖，紅/粉/薄荷/'},
+  {id:'d:yorgos-lanthimos',zh:'尤格·藍西莫斯',en:'Yorgos Lanthimos',rg:'GR',hx:['#E8E4DC','#3E5E8E','#C43E5E','#E0A83E','#2E4A42','#14161A'],sg:'冷白廣角魚眼＋高飽和撞色，荒誕包喺消毒過嘅色裡'},
+  {id:'d:christopher-doyle',zh:'杜可風',en:'Christopher Doyle',rg:'AU/HK',hx:['#B0174F','#3FB37F','#E0A83C','#2D5C9E','#0A0A0C','#C9852B'],sg:'故意錯色溫、唔用測光錶；霓虹與鎢絲共舞'},
+  {id:'d:conrad-hall',zh:'康拉德·霍爾',en:'Conrad Hall',rg:'US',hx:['#2A2C30','#C8A87E','#7E8A8E','#E0D8C4','#0E1014'],sg:'暗部裡的光；低照度但灰階極靚'},
+  {id:'d:emmanuel-lubezki',zh:'艾曼奴·盧貝斯基',en:'Emmanuel Lubezki',rg:'MX',hx:['#D8B478','#5E6E52','#8E9EA4','#E8DCC4','#2A2C2E'],sg:'純自然光／單一光源，逆光與窗光的詩，色溫跟時間走'},
+  {id:'d:gordon-willis',zh:'哥頓·韋利斯',en:'Gordon Willis',rg:'US',hx:['#5E4A2E','#1A1614','#C8A46E','#8E7A5E','#E0D4BC'],sg:'The Prince of Darkness：頂光、'},
+  {id:'d:greig-fraser',zh:'格雷格·弗雷澤',en:'Greig Fraser',rg:'AU',hx:['#C88A46','#8E9EA4','#4A4A48','#D8C8A0','#14161A'],sg:'極低飽和的自然主義，用鏡頭與光譜做世界觀（紅外線 G'},
+  {id:'d:hoyte-van-hoytema',zh:'霍伊特·凡·霍特瑪',en:'Hoyte van Hoytema',rg:'NL',hx:['#D8D4CC','#6E7A82','#B85C2E','#4E565E','#111315'],sg:'大畫幅實拍，自然光＋黑白銀鹽；色彩來自實景唔係後期'},
+  {id:'d:rachel-morrison',zh:'瑞秋·莫里森',en:'Rachel Morrison',rg:'US',hx:['#D8A45E','#4E6E52','#8E7A62','#6E8AA4','#E8DCC8'],sg:'自然主義但有人味；陽光與皮膚的溫度'},
+  {id:'d:robbie-ryan',zh:'洛比·賴恩',en:'Robbie Ryan',rg:'IE',hx:['#E8E0CC','#C88A3E','#3E5E6E','#8E4E5E','#1C1E20'],sg:'粗糙溫暖的膠片感，即使喺最怪嘅世界都係手作質感'},
+  {id:'d:roger-deakins',zh:'羅渣·狄勤斯',en:'Roger Deakins',rg:'UK',hx:['#C87A32','#2E5E6E','#8E8474','#D8D0BC','#1A1E20'],sg:'色彩要自然唔好「設計」；極低 teal（3%），靠亮'},
+  {id:'d:vittorio-storaro',zh:'維托里奧·斯托拉羅',en:'Vittorio Storaro',rg:'IT',hx:['#C89A3E','#9E1B2A','#3E5E6E','#D86A2E','#E0D2B0','#14120E'],sg:'「用光書寫」：色光是敘事的語法，每場一種主色光'}
+];
+
 /* ---------- 方向預覽牆（v8b，取代色票行） ----------
    用家用字：「色板意義不大，想直接將幅相轉做其他方向去睇」。
    7 格全部用你真圖即場渲染：第一格「參考圖」= v6 嘅自動抽色注入；
@@ -1421,6 +1560,12 @@ function palSigFromSec(){
        ov.mid.L===s[1].L&&ov.mid.a===s[1].a&&ov.mid.b===s[1].b&&
        ov.hi.L===s[2].L&&ov.hi.a===s[2].a&&ov.hi.b===s[2].b) return d.id;
   }
+  for(const d of DIRECTOR_LOOKS){       /* 導演色彩格 —— 由 sec 推返邊位導演，undo／載入都啱 */
+    const s=dirStops(d); if(!s) continue;
+    if(ov.sh.L===s[0].L&&ov.sh.a===s[0].a&&ov.sh.b===s[0].b&&
+       ov.mid.L===s[1].L&&ov.mid.a===s[1].a&&ov.mid.b===s[1].b&&
+       ov.hi.L===s[2].L&&ov.hi.a===s[2].a&&ov.hi.b===s[2].b) return d.id;
+  }
   return 'cus';
 }
 function applyPalDir(d){
@@ -1473,20 +1618,24 @@ function paintPalTile(c,d){
 function buildWallTiles(){
   const wall=$('palwall'); if(!wall) return;
   wall.innerHTML='';
-  const isVar=S.palWallMode==='var';
-  const set=isVar?VARSIG:DIRSIG;
+  const isVar=S.palWallMode==='var', isDir=S.palWallMode==='dir';
+  wall.className='palwall'+(isDir?' dirgrid':'');
+  const set=isVar?VARSIG:(isDir?dirList():DIRSIG);
   set.forEach(d=>{
     const t=document.createElement('button'); t.type='button'; t.className='ptile';
     t.dataset.d=d.id; t.dataset.kind=S.palWallMode;
     t.title=isVar
       ? ('撳：忠實 + '+d.name+'　·　撳【忠實】格歸零')
-      : ('撳：注入「'+d.name+'」　·　再撳同一格：關');
+      : isDir
+        ? (d.en+' · '+d.zh+'　'+d.sg+'　·　撳：注入；再撳：關')
+        : ('撳：注入「'+d.name+'」　·　再撳同一格：關');
     const c=document.createElement('canvas'); c.width=132; c.height=74;
     t.appendChild(c);
-    const lb=document.createElement('span'); lb.textContent=d.name; t.appendChild(lb);
-    t.onclick=()=> isVar? applyVar(d) : applyPalDir(d);
+    const lb=document.createElement('span'); lb.textContent=isDir? d.zh : d.name; t.appendChild(lb);
+    t.onclick=()=> isVar? applyVar(d) : (isDir? applyDirLook(d) : applyPalDir(d));
     wall.appendChild(t);
   });
+  const ds=$('dirsearch'); if(ds) ds.style.display=isDir?'':'none';
   const wm=$('palwmode'); if(wm) wm.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.v===S.palWallMode));
 }
 /* 變數格：以「忠實」自動色板做基準，再疊埋呢格嘅四軸 ±（exp/con/temp/sat） */
@@ -1507,14 +1656,15 @@ function paintVarTile(c,v){
 }
 function renderPalWall(){
   const wall=$('palwall'); if(!wall) return;
-  const isVar=S.palWallMode==='var';
+  const isVar=S.palWallMode==='var', isDir=S.palWallMode==='dir';
   const cur=isVar?varSigFromSec():palSigFromSec();
   const painting=S.palView!=='sw';   /* 色板 view 嗰陣牆收埋咗，淨 update highlight 唔好嘥力畫 */
-  const set=isVar?VARSIG:DIRSIG;
+  const set=isVar?VARSIG:(isDir?dirList():DIRSIG);
   set.forEach((d,i)=>{
     const t=wall.children[i]; if(!t) return;
     t.classList.toggle('on',cur===d.id);
-    if(painting){ const c=t.querySelector('canvas'); if(c) (isVar?paintVarTile(c,d):paintPalTile(c,d)); }
+    if(painting){ const c=t.querySelector('canvas');
+      if(c) (isVar?paintVarTile(c,d):(isDir?paintDirTile(c,d):paintPalTile(c,d))); }
   });
 }
 let palWallT=null;
@@ -2009,7 +2159,7 @@ function buildLeftPanel(){
   const wallbox=document.createElement('div'); wallbox.id='palwallbox';
   /* 子切換掣：顏色方向（6 色 + 忠實）/ 變數（忠實基準 + 四軸 ±） */
   const wmseg=document.createElement('div'); wmseg.className='palseg'; wmseg.id='palwmode';
-  [['color','顏色'],['var','變數']].forEach(([v,lb])=>{
+  [['color','顏色'],['var','變數'],['dir','導演']].forEach(([v,lb])=>{
     const b=document.createElement('button'); b.type='button'; b.dataset.v=v; b.textContent=lb;
     b.onclick=()=>{
       if(S.palWallMode===v) return;
@@ -2019,6 +2169,13 @@ function buildLeftPanel(){
     wmseg.appendChild(b);
   });
   wallbox.appendChild(wmseg);
+  /* 導演模式：搜尋框（名／地區／風格字） */
+  const dsch=document.createElement('input'); dsch.id='dirsearch'; dsch.type='search';
+  dsch.className='dirsearch'; dsch.placeholder='搜導演：王家衛 / 霓虹 / HK / Fincher';
+  dsch.style.display=(S.palWallMode==='dir')?'':'none';
+  dsch.value=S.dirQ||'';
+  dsch.oninput=()=>{ S.dirQ=dsch.value; buildWallTiles(); schedulePalWall(); };
+  wallbox.appendChild(dsch);
   const wall=document.createElement('div'); wall.className='palwall'; wall.id='palwall';
   wallbox.appendChild(wall);
   g1b.body.appendChild(wallbox);
