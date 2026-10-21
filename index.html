@@ -792,7 +792,7 @@ function applyPixel(L,a,b,g,opt){
   }
   const da=interpBand(L,g.dA), db=interpBand(L,g.dB), sc=interpBand(L,g.sC);
   let w=1;
-  if(opt.skinProtect) w = 1 - 0.55*skinness(L,a,b);
+  if(opt.skinProtect) w = 1 - 0.8*skinMask(L,a,b);
   const scEff = 1 + st*(sc-1)*w;
   let na=a*scEff + da*st*w, nb=b*scEff + db*st*w;
   const cm=Math.hypot(na,nb);
@@ -1039,12 +1039,22 @@ function buildPalLut(stops){
   }
   return {lutA,lutB};
 }
+/* 膚色 mask（2026-10-21 導演實測 shot_17：舊 skinness 窗口窄＋只收 65% 推力，
+   連人面都被導演 grade 推走。改法：mask 核心（真·皮膚）完全唔跟色板，
+   邊緣羽化過渡 —— 環境照變、人面保返原色。窗口放寬到接得 pale／低飽和膚：
+   L 25–88、a 3–30（峰 9–18）、b 3–36（峰 10–22）。 */
+const SKIN_LEAK=0.08;   /* 核心留 8% 洩漏，令面同環境唔會完全脫節 */
+function skinMask(L,a,b){
+  return cl01((L-25)/12)*(1-cl01((L-88)/10))
+       * cl01((a-3)/6) *(1-cl01((a-30)/12))
+       * cl01((b-3)/7) *(1-cl01((b-36)/14));
+}
 /* 將 pixel 嘅 ab 推向色板目標色。L 唔郁 —— 光影結構係 vendor 嘅，
-   我哋只借參考圖嘅「色」。膚色保護照舊生效（推到六成半就收）。 */
+   我哋只借參考圖嘅「色」。膚色 mask 核心（1-m）近乎完全擋住推力。 */
 function applyPal(L,a,b,pal,skinProtect){
   const bi=L<0?0:(L>100?100:Math.round(L));
   let w=pal.blend;
-  if(skinProtect) w*=1-0.65*skinness(L,a,b);
+  if(skinProtect) w*=1-(1-SKIN_LEAK)*skinMask(L,a,b);
   if(w<=0) return [L,a,b];
   let na=a+(pal.lutA[bi]-a)*w, nb=b+(pal.lutB[bi]-b)*w;
   const cm=Math.hypot(na,nb);
