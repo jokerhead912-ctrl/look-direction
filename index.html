@@ -782,7 +782,7 @@ function skinness(L,a,b){
        * cl01((b-2)/8)  *(1-cl01((b-32)/12));
 }
 const MAX_CHROMA=58;
-function applyPixel(L,a,b,g,opt){
+function applyPixel(L,a,b,g,opt,mf){
   const st=opt.strength;
   const ts=opt.toneStrength!==undefined?opt.toneStrength:st;
   if(g.toneMap){
@@ -791,10 +791,10 @@ function applyPixel(L,a,b,g,opt){
     L = L<0?0:(L>100?100:L);
   }
   const da=interpBand(L,g.dA), db=interpBand(L,g.dB), sc=interpBand(L,g.sC);
-  let w=1;
-  if(opt.skinProt) w = 1 - opt.skinProt*skinMask(L,a,b);
-  const scEff = 1 + st*(sc-1)*w;
-  let na=a*scEff + da*st*w, nb=b*scEff + db*st*w;
+  const m=(opt.skinProt)?(mf!==undefined?mf:skinMask(L,a,b)):0;
+  let dx=a*st*(sc-1)+da*st, dy=b*st*(sc-1)+db*st;
+  if(m>0.02){ const sd=skinSafe(a,b,dx,dy,m,opt.skinProt); dx=sd[0]; dy=sd[1]; }
+  let na=a+dx, nb=b+dy;
   const cm=Math.hypot(na,nb);
   if(cm>MAX_CHROMA){ na*=MAX_CHROMA/cm; nb*=MAX_CHROMA/cm; }
   return [L,na,nb];
@@ -1052,19 +1052,86 @@ function skinMask(L,a,b){
   const c=Math.hypot(a,b);
   if(c<3) return 0;
   let h=Math.atan2(b,a)*180/Math.PI; if(h<0) h+=360;   /* 0=洋紅紅, 90=黃 */
-  const hm=cl01((h-18)/12)*(1-cl01((h-72)/20));        /* 膚色扇區 */
+  /* 高斯 hue 中心 42°、sigma 34° —— 軟落，唔係硬邊（硬邊 + 暗位雜訊 = 一撻撻斑） */
+  const hd=(h-42)/34; const hm=Math.exp(-hd*hd*0.5);
   const cm=cl01((c-3)/5) *(1-cl01((c-44)/18));         /* 太灰／太艷唔當膚 */
   const lm=cl01((L-14)/10)*(1-cl01((L-96)/6));         /* 死黑／爆白唔當膚 */
   return hm*cm*lm;
 }
+/* ============ 膚色保護 v3：極座標限制（skin line / memory colour）============
+   演進：
+   v1 mask 淨減推力 → 面照變色（導演：冇效）
+   v2 拆「平行/垂直」份 → 對「推向絕對目標色」嘅 LUT 會 overshoot 穿過零點，
+      chroma 由 11.4 塌到 2.9（面變灰），hue 喺近零 chroma 亂跳 → 更斑駁（實測 hueStd 16.5→34）
+   v3 極座標限制（穩陣，唔理推力有幾大）：
+      hue      ：按保護度線性凍結（lock=1 → 0° 轉幅）→ 唔會變綠
+      chroma   ：鉗喺原 chroma 嘅 0.80–1.25 倍 → 唔會塌到灰／爆到艷，仲會跟 grade 呼吸
+   等效 Baselight / Resolve 嘅 memory-colour 保護。 */
+const SKIN_HUE_FREEZE=1;      /* hue 凍結指數：1 = 全保時完全唔轉 hue */
+function skinSafe(a,b,dx,dy,m,prot){
+  const c0=Math.hypot(a,b);
+  if(c0<1e-3) return [dx,dy];
+  const na=a+dx, nb=b+dy;
+  const c1=Math.hypot(na,nb);
+  const h0=Math.atan2(b,a), h1=Math.atan2(nb,na);
+  let dh=h1-h0; while(dh>Math.PI) dh-=2*Math.PI; while(dh<-Math.PI) dh+=2*Math.PI;
+  /* mask 模糊後峰值會降（臉中間得 ~0.7），要增益返先鎖得實；
+     邊位照舊軟，所以唔會起硬邊。 */
+  const mb=m*1.45; const mE=mb>1?1:mb;
+  const lock=Math.min(1,prot*1.15*mE);              /* 1 = 完全保護 */
+  const dh2=dh*(1-lock*SKIN_HUE_FREEZE);            /* hue：凍 */
+  const cT=Math.min(c0*1.25,Math.max(c0*0.80,c1));  /* chroma：鉗 */
+  const c2=c1+(cT-c1)*lock;                         /* 按保護度混入 */
+  const h2=h0+dh2;
+  return [c2*Math.cos(h2)-a, c2*Math.sin(h2)-b];
+}
+/* mask 場：半解算 + box blur ×2 + 雙線性取樣。
+   目的：mask 喺空間上平滑，逐 pixel 嘅雜訊判定唔會再變成一撻撻斑。 */
+function buildSkinField(lab){
+  const W=Math.max(1,lab.w>>1), H=Math.max(1,lab.h>>1);
+  const m=new Float32Array(W*H);
+  for(let y=0;y<H;y++){
+    const sy=Math.min(lab.h-1,y<<1);
+    for(let x=0;x<W;x++){
+      const sx=Math.min(lab.w-1,x<<1), i=sy*lab.w+sx;
+      m[y*W+x]=skinMask(lab.L[i],lab.a[i],lab.b[i]);
+    }
+  }
+  boxBlur(m,W,H,2); boxBlur(m,W,H,2);
+  return {m,W,H};
+}
+function boxBlur(a,W,H,r){
+  const t=new Float32Array(W*H);
+  for(let y=0;y<H;y++){ const o=y*W;
+    for(let x=0;x<W;x++){ let s=0,n=0;
+      for(let k=-r;k<=r;k++){ const xx=x+k; if(xx<0||xx>=W) continue; s+=a[o+xx]; n++; }
+      t[o+x]=s/n; } }
+  for(let x=0;x<W;x++){
+    for(let y=0;y<H;y++){ let s=0,n=0;
+      for(let k=-r;k<=r;k++){ const yy=y+k; if(yy<0||yy>=H) continue; s+=t[yy*W+x]; n++; }
+      a[y*W+x]=s/n; } }
+}
+/* 由 mask 場雙線性取樣第 i 粒 pixel（i = y*w + x） */
+function sampleSkin(f,w,h,i){
+  const x=i%w, y=(i/w)|0;
+  const fx=Math.min(f.W-1,(x>>1)), fy=Math.min(f.H-1,(y>>1));
+  const fx2=Math.min(f.W-1,fx+1), fy2=Math.min(f.H-1,fy+1);
+  const tx=(x&1)?0.5:0, ty=(y&1)?0.5:0;
+  const v00=f.m[fy*f.W+fx], v10=f.m[fy*f.W+fx2], v01=f.m[fy2*f.W+fx], v11=f.m[fy2*f.W+fx2];
+  return (v00*(1-tx)+v10*tx)*(1-ty)+(v01*(1-tx)+v11*tx)*ty;
+}
 /* 將 pixel 嘅 ab 推向色板目標色。L 唔郁 —— 光影結構係 vendor 嘅，
    我哋只借參考圖嘅「色」。膚色 mask 核心（1-m）近乎完全擋住推力。 */
-function applyPal(L,a,b,pal,skinProt){
+function applyPal(L,a,b,pal,skinProt,mf){
   const bi=L<0?0:(L>100?100:Math.round(L));
-  let w=pal.blend;
-  if(skinProt) w*=1-skinProt*skinMask(L,a,b);
+  const w=pal.blend;
   if(w<=0) return [L,a,b];
-  let na=a+(pal.lutA[bi]-a)*w, nb=b+(pal.lutB[bi]-b)*w;
+  let dx=(pal.lutA[bi]-a)*w, dy=(pal.lutB[bi]-b)*w;
+  if(skinProt){
+    const m=(mf!==undefined?mf:skinMask(L,a,b));
+    if(m>0.02){ const sd=skinSafe(a,b,dx,dy,m,skinProt); dx=sd[0]; dy=sd[1]; }
+  }
+  let na=a+dx, nb=b+dy;
   const cm=Math.hypot(na,nb);
   if(cm>MAX_CHROMA){ na*=MAX_CHROMA/cm; nb*=MAX_CHROMA/cm; }
   return [L,na,nb];
@@ -1092,9 +1159,12 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
   }
   const useSec = plan&&plan.active;
   const prot = !!opt.protect;
+  /* 膚色 mask 場（整個 render 計一次，空間平滑 —— 消走逐 pixel 判定嘅斑點） */
+  const sm=(opt.skinProt&&(pal||grade))?buildSkinField(lab):null;
   for(let i=0;i<n;i++){
-    let q=applyPixel(lab.L[i],lab.a[i],lab.b[i],grade,opt);
-    if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProt);
+    const mf=sm?sampleSkin(sm,lab.w,lab.h,i):undefined;
+    let q=applyPixel(lab.L[i],lab.a[i],lab.b[i],grade,opt,mf);
+    if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProt,mf);
     if(useSec) q=applySec(q[0],q[1],q[2],sec,plan);
     if(prot) q[0]=protectL(q[0]);
     const c=labToRgb(q[0],q[1],q[2]), p=i*4;
@@ -1247,7 +1317,7 @@ const S={
   /* 方向注入：palPlan 係 render 時嘅快取；palView = 牆／傳統色板切換（v9 加返）；
      palSel 係色板 view 揀緊邊個位（暗/中/亮）—— 兩個都係 UI state，唔入 snapshot */
   palPlan:null, palView:'wall', palSel:'mid', palWallMode:'color', dirQ:'',
-  skinProt:85                              /* 膚色保護力度 %（0=唔保，100=全保） */
+  skinProt:100                             /* 膚色保護力度 %（0=唔保，100=全保） */
 };
 /* 記住用家上次的 view 選擇（牆定色板） */
 try{ const _pv=localStorage.getItem('ld.palview'); if(_pv==='sw'||_pv==='wall') S.palView=_pv; }catch(_){}
@@ -2237,7 +2307,7 @@ function buildLeftPanel(){
     onInput:v=>{S.sec.palBlend=v;},onCommit:()=>{secChanged();refreshPalUI();secCommitted();}});
   /* 膚保力度：0=成張圖跟 grade（舊行為），100=膚色扇區完全唔跟。
      配合【保護膚色】checkbox 用 —— checkbox 關就當 0。 */
-  makeSlider(g1b.body,'skinProt',{label:'膚保',min:0,max:100,def:85,value:S.skinProt,unit:'%',
+  makeSlider(g1b.body,'skinProt',{label:'膚保',min:0,max:100,def:100,value:S.skinProt,unit:'%',
     onInput:v=>{S.skinProt=v;},onCommit:()=>{S.pvKey++;S.pvCache.clear();scheduleRender();}});
   g1b.secKeys=null;
   refreshPalUI();
