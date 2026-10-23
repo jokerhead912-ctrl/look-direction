@@ -3,459 +3,540 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction — 參考色方向工具 v6</title>
+<title>Look Direction — 調色方向工具 v12（ASC CDL + Scopes）</title>
 <style>
 :root{
-  /* Krafted 設計語言（kraftpub.html :root 直接搬過嚟，一家人個樣） */
-  --bg:#1a1a1a; --panel:#222222; --panel2:#2a2a2a; --panel3:#333333;
-  --line:#2a2a2a; --line2:#444444;
-  --tx:#e8e8e8; --tx2:#888888; --tx3:#666666;
-  --acc:#7c8cf0; --acc-soft:rgba(124,140,240,.15); --acc-glow:rgba(124,140,240,.45);
-  --warn:#e8a33d; --bad:#e74c3c;
-  --r:8px; --rl:12px;
-  --tw:150px; --th:84px;
+  /* Krafted 家族色系，但推向更極簡／高端：少邊框、靠層次分面，accent 只用喺「生效中」 */
+  --bg:#141414;
+  --panel:#1a1a1a;
+  --panel2:#202020;
+  --panel3:#272727;
+  --raise:#2e2e2e;
+  --line:rgba(255,255,255,.065);
+  --line2:rgba(255,255,255,.12);
+  --line3:rgba(255,255,255,.2);
+  --tx:#ececec;
+  --tx2:#9c9c9c;
+  --tx3:#6c6c6c;
+  --tx4:#525252;
+  --acc:#7c8cf0;
+  --acc2:#93a0f5;
+  --acc-soft:rgba(124,140,240,.13);
+  --acc-line:rgba(124,140,240,.42);
+  --warn:#e0a44a;
+  --bad:#d9534f;
+  --ok:#5fb37a;
+  --r:6px;
+  --rl:10px;
+  --tw:150px;
+  --th:84px;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
 body{
   background:var(--bg);color:var(--tx);
   font-family:'Inter',-apple-system,BlinkMacSystemFont,"PingFang HK","PingFang SC","Microsoft JhengHei","Segoe UI",system-ui,sans-serif;
-  font-size:15.5px;line-height:1.6;letter-spacing:-0.01em;-webkit-font-smoothing:antialiased;
+  font-size:15.5px;line-height:1.55;letter-spacing:-0.01em;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
   overflow:hidden;
 }
 button,input,textarea{font-family:inherit;font-size:inherit;color:inherit}
-:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+button{background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:3px}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-/* .empty / .gridbox / #cv 有自己嘅 display，會蓋過 UA 嘅 [hidden]，必須強制 */
 [hidden]{display:none !important}
 
-/* checkbox */
-.checks{display:flex;flex-direction:column;gap:6px}
-.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--tx2);cursor:pointer}
-.chk input{accent-color:var(--acc);cursor:pointer;width:14px;height:14px;flex:0 0 auto}
+/* 微標籤：高端 UI 嘅靈魂 —— 10px 大寫 + 字距 */
+.mlabel{
+  font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--tx4);
+}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 
-.app{display:flex;flex-direction:column;height:100vh;min-height:620px}
+.app{display:flex;flex-direction:column;height:100vh;min-height:600px}
 
 /* ---------- header ---------- */
 header{
-  display:flex;align-items:center;gap:7px;padding:8px 14px;
+  display:flex;align-items:center;gap:10px;padding:0 14px;height:46px;
   border-bottom:1px solid var(--line);background:var(--panel);flex:0 0 auto;
 }
-.logo{font-size:16px;font-weight:500;letter-spacing:.2px;margin-right:6px;white-space:nowrap}
+.logo{font-size:14px;font-weight:600;letter-spacing:.02em;white-space:nowrap;color:var(--tx)}
 .logo span{color:var(--acc)}
-.kbd{
-  font-size:12.5px;color:var(--tx3);border:1px solid var(--line2);border-radius:5px;
-  padding:0 5px;font-family:ui-monospace,Menlo,monospace;
-}
 .hspacer{flex:1}
-.hstatus{font-size:13px;color:var(--tx3);white-space:nowrap}
+.hstatus{font-size:12.5px;color:var(--tx3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.hdot{width:3px;height:3px;border-radius:50%;background:var(--tx4);flex:0 0 auto}
+
+/* 快捷鍵：收埋入「?」彈層，唔好霸住條 header */
+.iconbtn{
+  width:26px;height:26px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;
+  color:var(--tx3);font-size:13px;border:1px solid var(--line);transition:.13s;flex:0 0 auto;
+}
+.iconbtn:hover{color:var(--tx);border-color:var(--line2);background:var(--panel2)}
+.iconbtn.on{color:var(--acc);border-color:var(--acc-line);background:var(--acc-soft)}
+.kbdpop{
+  position:fixed;z-index:400;right:14px;top:52px;width:330px;
+  background:var(--panel2);border:1px solid var(--line2);border-radius:var(--rl);
+  padding:12px 14px;box-shadow:0 22px 60px rgba(0,0,0,.7);
+}
+.kbdpop h3{font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--tx4);margin:0 0 9px}
+.kbdpop .kr{display:flex;align-items:baseline;gap:10px;font-size:12.5px;color:var(--tx2);padding:3px 0}
+.kbdpop .kr b{
+  flex:0 0 92px;font-family:var(--mono);font-size:11.5px;font-weight:500;color:var(--tx);
+  background:var(--panel3);border:1px solid var(--line);border-radius:4px;padding:1px 6px;text-align:center;
+}
+.kbd{
+  font-size:11px;color:var(--tx3);border:1px solid var(--line2);border-radius:4px;
+  padding:0 4px;font-family:var(--mono);
+}
 
 /* ---------- main ---------- */
-/* 左＝方向/note　中＝主畫面　右＝調控板（用家習慣右手拉桿） */
-.main{flex:1 1 auto;display:grid;grid-template-columns:322px minmax(0,1fr) 292px;min-height:0}
-@media(max-width:1480px){.main{grid-template-columns:296px minmax(0,1fr) 274px}}
-@media(max-width:1240px){.main{grid-template-columns:minmax(0,1fr) 274px}.col-l{display:none}}
+.main{flex:1 1 auto;display:grid;grid-template-columns:316px minmax(0,1fr) 300px;min-height:0}
+@media(max-width:1500px){.main{grid-template-columns:290px minmax(0,1fr) 280px}}
+@media(max-width:1240px){.main{grid-template-columns:minmax(0,1fr) 280px}.col-l{display:none}}
 @media(max-width:900px){.main{grid-template-columns:1fr}.col-r{display:none}}
-.col{min-height:0;overflow-y:auto;background:var(--panel);scrollbar-width:thin}
-.col::-webkit-scrollbar{width:8px}
-.col::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
-.col-l{border-right:1px solid var(--line);padding:11px 12px 24px}
-.col-c{background:var(--bg);display:flex;flex-direction:column;min-height:0;padding:10px 12px}
-.col-r{border-left:1px solid var(--line);padding:11px 12px 24px}
+.col{min-height:0;overflow-y:auto;background:var(--panel);scrollbar-width:thin;scrollbar-color:var(--raise) transparent}
+.col::-webkit-scrollbar{width:7px}
+.col::-webkit-scrollbar-thumb{background:var(--raise);border-radius:4px}
+.col-l{border-right:1px solid var(--line);padding:12px 13px 26px}
+.col-c{background:var(--bg);display:flex;flex-direction:column;min-height:0;padding:10px 12px;gap:9px}
+.col-r{border-left:1px solid var(--line);padding:12px 13px 26px}
 
-.sec{margin-bottom:14px}
+.sec{margin-bottom:16px}
 .sec>h2{
-  font-size:12.5px;font-weight:500;color:var(--tx3);
-  letter-spacing:.5px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center;
+  font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--tx4);
+  margin-bottom:8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px;
 }
+.sec>h2 .hstatus{font-size:11.5px;letter-spacing:0;text-transform:none;color:var(--tx3)}
 
-/* vendor card */
-.vcard{border:1.5px dashed var(--line2);border-radius:var(--r);padding:8px;text-align:center;cursor:pointer;transition:.15s}
-.vcard:hover{border-color:var(--acc);background:var(--acc-soft)}
-.vcard.filled{border-style:solid;border-color:var(--line);padding:5px;background:var(--panel2)}
-.vcard canvas,.vcard .ph{width:100%;border-radius:5px;display:block}
-.vcard .ph{height:76px;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--tx3);line-height:1.7}
-.vcard .cap{font-size:12.5px;color:var(--tx3);margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
 
-hr.sep{border:0;border-top:1px solid var(--line);margin:12px 0}
+/* ---------- checkbox ---------- */
+.checks{display:flex;flex-direction:column;gap:5px}
+.chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--tx2);cursor:pointer;line-height:1.4}
+.chk input{accent-color:var(--acc);cursor:pointer;width:13px;height:13px;flex:0 0 auto}
+.chk:hover{color:var(--tx)}
 
-/* ---------- 自製 slider ---------- */
-.sl{margin-bottom:10px;outline:none}
-.sl-hd{display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:3px}
-.sl-nm{font-size:14px;color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ---------- slider ---------- */
+.sl{margin-bottom:9px;outline:none}
+.sl-hd{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:2px}
+.sl-nm{font-size:13px;color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sl-vl{
-  font-variant-numeric:tabular-nums;color:var(--tx3);font-size:12.5px;background:var(--panel2);
-  padding:0 5px;border-radius:4px;min-width:46px;text-align:right;cursor:text;
-  flex:0 0 auto;font-family:ui-monospace,Menlo,monospace;
-  border:0;outline:none;width:56px;
+  font-variant-numeric:tabular-nums;color:var(--tx3);font-size:11.5px;background:transparent;
+  padding:1px 4px;border-radius:4px;min-width:44px;text-align:right;cursor:text;
+  flex:0 0 auto;font-family:var(--mono);border:1px solid transparent;outline:none;width:54px;
 }
-.sl-vl:hover{background:var(--panel3);color:var(--tx2)}
-.sl-vl:focus{background:var(--panel3);color:var(--tx);box-shadow:0 0 0 1px var(--acc)}
-.sl.mod .sl-vl{color:var(--acc);background:var(--acc-soft)}
-.sl.mod .sl-vl:focus{color:var(--tx)}
+.sl-vl:hover{background:var(--panel2);color:var(--tx2)}
+.sl-vl:focus{background:var(--panel2);color:var(--tx);border-color:var(--acc-line)}
+.sl.mod .sl-vl{color:var(--acc)}
 .sl.mod .sl-nm{color:var(--tx)}
-.sl-tr{position:relative;height:18px;cursor:pointer;touch-action:none}
-.sl-tr::before{content:'';position:absolute;left:0;right:0;top:7px;height:4px;background:var(--panel3);border-radius:3px}
-.sl-fl{position:absolute;top:7px;height:4px;background:var(--acc);border-radius:3px;opacity:.85;pointer-events:none}
-.sl-kn{position:absolute;top:3px;width:12px;height:12px;border-radius:50%;background:#d8dde6;
-  border:2px solid var(--panel);box-shadow:0 1px 3px rgba(0,0,0,.55);
-  transform:translateX(-50%);pointer-events:none;transition:background .1s}
+.sl-tr{position:relative;height:16px;cursor:pointer;touch-action:none}
+.sl-tr::before{content:'';position:absolute;left:0;right:0;top:7px;height:2px;background:var(--raise);border-radius:2px}
+.sl-fl{position:absolute;top:7px;height:2px;background:var(--acc);border-radius:2px;opacity:.9;pointer-events:none}
+.sl-kn{position:absolute;top:3px;width:10px;height:10px;border-radius:50%;background:#cfd4dd;
+  box-shadow:0 0 0 3px var(--panel);transform:translateX(-50%);pointer-events:none;transition:background .1s}
 .sl:hover .sl-kn{background:#fff}
 .sl.dragging .sl-kn{background:var(--acc)}
-.sl-tip{font-size:11.5px;color:var(--tx3);margin-top:2px;opacity:.7}
+.sl-tip{font-size:11px;color:var(--tx4);margin-top:1px}
 
 /* ---------- 摺疊群組 ---------- */
-.grp{border-top:1px solid var(--line);padding:6px 0 2px}
-.grp:first-of-type{border-top:0}
+.grp{border-top:1px solid var(--line);padding:7px 0 2px}
+.grp:first-of-type{border-top:0;padding-top:0}
 .grp-hd{
-  width:100%;background:none;border:0;padding:5px 0;display:flex;align-items:center;gap:6px;
-  cursor:pointer;color:var(--tx2);font-size:13px;letter-spacing:.4px;text-align:left;
+  width:100%;background:none;border:0;padding:4px 0;display:flex;align-items:center;gap:7px;
+  cursor:pointer;color:var(--tx2);font-size:12.5px;letter-spacing:.02em;text-align:left;
 }
 .grp-hd:hover{color:var(--tx)}
-.grp-hd .dot{width:6px;height:6px;border-radius:50%;background:var(--acc);display:none;flex:0 0 auto}
+.grp-hd .dot{width:5px;height:5px;border-radius:50%;background:var(--acc);display:none;flex:0 0 auto}
 .grp.mod .grp-hd .dot{display:block}
 .grp.mod .grp-hd{color:var(--tx)}
 .grp-hd .sp{flex:1}
-.grp-hd .cnt{font-size:11.5px;color:var(--tx3);font-family:ui-monospace,Menlo,monospace}
-.grp-hd .chev{font-size:11px;color:var(--tx3);transition:transform .15s;flex:0 0 auto}
+.grp-hd .cnt{font-size:10.5px;color:var(--tx4);font-family:var(--mono)}
+.grp-hd .chev{font-size:9px;color:var(--tx4);transition:transform .15s;flex:0 0 auto}
 .grp:not(.open) .grp-hd .chev{transform:rotate(-90deg)}
-.grp-bd{display:none;padding:4px 0 8px}
+.grp-bd{display:none;padding:5px 0 9px}
 .grp.open .grp-bd{display:block}
 
+/* ---------- segmented control ---------- */
+.seg{display:flex;gap:0;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:11px}
+.seg button{
+  flex:1;padding:5px 0;font-size:12.5px;color:var(--tx3);background:var(--panel2);
+  border-right:1px solid var(--line);transition:.13s;white-space:nowrap;
+}
+.seg button:last-child{border-right:0}
+.seg button:hover{color:var(--tx2);background:var(--panel3)}
+.seg button.on{background:var(--acc-soft);color:var(--acc);font-weight:600}
+
 /* ---------- HSL ---------- */
-/* v5：7 粒方掣（白邊+黑影好突兀）→ 一個真正嘅 hue ring canvas。
-   外圈 Lab 色相環揀色帶；中心碟係當前色帶調整後嘅實色，上下拖推飽和；
-   雙擊歸零。tweak 過嘅色帶喺環外側標 accent 點。 */
-.huering{display:flex;gap:9px;align-items:center;margin-bottom:8px}
-.huering canvas{
-  width:92px;height:92px;flex:0 0 auto;cursor:pointer;touch-action:none;
-  display:block;border-radius:50%;
-}
-.huering .hinfo{flex:1;min-width:0;line-height:1.55}
-.huering .hnm{display:flex;align-items:center;gap:6px;font-size:12.5px;
-  font-weight:500;color:var(--tx1)}
-.huering .hnm .hsw{width:11px;height:11px;border-radius:3px;display:inline-block;flex:0 0 auto}
-.huering .hst{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--tx3);
-  font-variant-numeric:tabular-nums}
-.huering .hlg{font-size:11px;color:var(--tx3)}
+.huering{display:flex;gap:10px;align-items:center;margin-bottom:9px}
+.huering canvas{width:88px;height:88px;flex:0 0 auto;cursor:pointer;touch-action:none;display:block;border-radius:50%}
+.huering .hinfo{flex:1;min-width:0;line-height:1.5}
+.huering .hnm{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;color:var(--tx)}
+.huering .hnm .hsw{width:10px;height:10px;border-radius:3px;display:inline-block;flex:0 0 auto}
+.huering .hst{font-family:var(--mono);font-size:11px;color:var(--tx3);font-variant-numeric:tabular-nums}
+.huering .hlg{font-size:10.5px;color:var(--tx4)}
 .huering .hlg b{color:var(--acc);font-weight:500}
-.hslbox{border-left:2px solid var(--line);padding-left:8px;margin-left:2px}
-.palwall{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
+.hslbox{border-left:1px solid var(--line);padding-left:9px;margin-left:2px}
+
+/* ---------- 方向預覽牆 ---------- */
+.palwall{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:8px}
 .palwall.dirgrid{max-height:360px;overflow-y:auto;padding-right:2px}
-.dirsearch{width:100%;margin:0 0 6px;padding:5px 8px;font-size:12px;border-radius:6px;background:#1e1e1e;border:1px solid #3a3a3a;color:#e8e8e8;box-sizing:border-box}
+.dirsearch{width:100%;margin:0 0 6px;padding:5px 8px;font-size:11.5px;border-radius:var(--r);background:var(--panel3);border:1px solid var(--line2);color:var(--tx);box-sizing:border-box;outline:none}
 .ptile{
-  position:relative;padding:0;border-radius:6px;border:1.5px solid var(--line);
-  background:var(--panel2);cursor:pointer;overflow:hidden;
-  transition:border-color .12s,transform .12s;
+  position:relative;padding:0;border-radius:5px;border:1px solid var(--line);
+  background:var(--panel2);cursor:pointer;overflow:hidden;transition:border-color .12s,transform .12s;
 }
-.ptile:hover{transform:scale(1.04);border-color:var(--line2)}
+.ptile:hover{transform:scale(1.035);border-color:var(--line2)}
 .ptile canvas{display:block;width:100%;height:auto}
 .ptile span{
-  position:absolute;left:0;right:0;bottom:0;padding:2px 0 3px;
-  font-size:11px;color:#fff;text-align:center;pointer-events:none;
-  background:linear-gradient(transparent,rgba(0,0,0,.75));
+  position:absolute;left:0;right:0;bottom:0;padding:2px 4px 3px;
+  font-size:10.5px;color:#fff;text-align:center;pointer-events:none;
+  background:linear-gradient(transparent,rgba(0,0,0,.8));
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;   /* 導演名有長有短，長名縮略唔好爆格 */
 }
-.ptile.on{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-soft)}
-.palhint{font-size:12px;color:var(--tx3);margin-bottom:8px;line-height:1.5}
+.ptile.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.palhint{font-size:11.5px;color:var(--tx3);margin-bottom:8px;line-height:1.5}
 .palhint b{color:var(--acc);font-weight:600}
-/* 未注入方向嗰陣，牆上嘅嘢唔會改圖 —— 調暗 + 提示（牆本身仍可撳，撳就開） */
-.grp[data-g="palette"] .grp-bd.dim .palwall{opacity:.5}
-.grp[data-g="palette"] .grp-bd.dim .sl{opacity:.35;pointer-events:none}
-/* ---------- 傳統色板 view（v9 加返，同方向牆切換） ---------- */
-.palseg{display:flex;gap:4px;margin-bottom:8px}
+.grp[data-g="palette"] .grp-bd.dim .palwall{opacity:.45}
+.grp[data-g="palette"] .grp-bd.dim .sl{opacity:.3;pointer-events:none}
+
+.palseg{display:flex;gap:3px;margin-bottom:8px}
 .palseg button{
-  flex:1;padding:5px 0;border-radius:6px;border:1px solid var(--line);
-  background:var(--panel2);color:var(--tx2);font-size:14px;cursor:pointer;
+  flex:1;padding:4px 0;border-radius:5px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--tx3);font-size:12.5px;transition:.13s;
 }
-.palseg button.on{background:var(--acc-soft);border-color:var(--acc);color:var(--tx);font-weight:600}
-/* 導出欄：檔名輸入 + 揀位置 */
-.expf{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.expf .expl{display:flex;align-items:center;gap:5px;color:var(--tx2);font-size:14px;white-space:nowrap}
+.palseg button:hover{color:var(--tx2)}
+.palseg button.on{background:var(--acc-soft);border-color:var(--acc-line);color:var(--acc);font-weight:600}
+
+/* ---------- 導出 ---------- */
+.expf{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
 .fname{
-  width:140px;padding:4px 7px;border-radius:6px;border:1px solid var(--line);
-  background:var(--panel2);color:var(--tx);font-size:14px;font-family:inherit;
+  width:132px;padding:4px 7px;border-radius:5px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--tx);font-size:13px;
 }
-.fname:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-soft)}
-.dirpath{color:var(--tx3);font-size:13px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.palsw{display:flex;gap:4px;margin-bottom:8px;min-height:26px;align-items:center}
-.palsw .psw{
-  flex:1;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,.14);
-  cursor:pointer;padding:0;transition:transform .12s;
+.fname:focus{outline:none;border-color:var(--acc-line);box-shadow:0 0 0 2px var(--acc-soft)}
+.dirpath{color:var(--tx4);font-size:11.5px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono)}
+
+/* 彈出選單 */
+.exppane{padding:6px 8px 9px;margin-bottom:5px;border-bottom:1px solid var(--line)}
+.exppane .mlabel{display:block;margin-bottom:5px}
+.exppane .dirpath{margin-top:5px;max-width:100%}
+.menuwrap{position:relative;flex:0 0 auto}
+.menu{
+  position:absolute;right:0;bottom:calc(100% + 6px);z-index:120;min-width:186px;
+  background:var(--panel2);border:1px solid var(--line2);border-radius:var(--r);
+  padding:5px;box-shadow:0 18px 46px rgba(0,0,0,.72);
 }
-.palsw .psw:hover{transform:scale(1.08);border-color:#fff}
-.palnone{font-size:12.5px;color:var(--tx3)}
-.palstops{display:flex;gap:4px;margin-bottom:6px}
+.menu button{
+  display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;
+  padding:7px 9px;border-radius:4px;font-size:13px;color:var(--tx2);text-align:left;transition:.1s;
+}
+.menu button:hover{background:var(--panel3);color:var(--tx)}
+.menu button em{font-style:normal;font-size:10.5px;color:var(--tx4);font-family:var(--mono)}
+
+.palsw{display:flex;gap:3px;margin-bottom:8px;min-height:24px;align-items:center}
+.palsw .psw{flex:1;height:24px;border-radius:5px;border:1px solid rgba(255,255,255,.12);cursor:pointer;padding:0;transition:transform .12s}
+.palsw .psw:hover{transform:scale(1.06);border-color:#fff}
+.palnone{font-size:12px;color:var(--tx4)}
+.palstops{display:flex;gap:3px;margin-bottom:6px}
 .pchip{
   flex:1;display:flex;align-items:center;justify-content:center;gap:5px;
-  padding:4px 0;border-radius:6px;border:1px solid var(--line);
-  background:var(--panel2);color:var(--tx2);font-size:13px;cursor:pointer;
+  padding:3px 0;border-radius:5px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--tx3);font-size:12px;
 }
-.pchip i{width:12px;height:12px;border-radius:3px;border:1px solid rgba(255,255,255,.18);display:inline-block}
-.pchip.sel{border-color:var(--acc);color:var(--tx);background:var(--acc-soft)}
-.pchip.cus::after{content:'';width:5px;height:5px;border-radius:50%;background:var(--acc)}
-/* 忠實模式下色票同位都唔會改圖 —— 調暗兼鎖住（seg 掣保持可撳，畀用戶開返） */
-.grp[data-g="palette"] .grp-bd.dim .palsw,.grp[data-g="palette"] .grp-bd.dim .palstops{opacity:.35;pointer-events:none}
+.pchip i{width:11px;height:11px;border-radius:3px;border:1px solid rgba(255,255,255,.16);display:inline-block}
+.pchip.sel{border-color:var(--acc-line);color:var(--tx);background:var(--acc-soft)}
+.pchip.cus::after{content:'';width:4px;height:4px;border-radius:50%;background:var(--acc)}
+.grp[data-g="palette"] .grp-bd.dim .palsw,.grp[data-g="palette"] .grp-bd.dim .palstops{opacity:.3;pointer-events:none}
 
-/* ---------- 分區調色輪 ---------- */
-.wheels{display:flex;gap:5px;margin-bottom:6px}
-.wheel{flex:1;text-align:center;min-width:0}
+/* ---------- 色輪 ---------- */
+.wheelgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:9px}
+.wheel{text-align:center;min-width:0}
 .wheel canvas{
-  width:100%;max-width:70px;height:auto;border-radius:50%;cursor:grab;
+  width:100%;max-width:60px;height:auto;border-radius:50%;cursor:grab;
   display:block;margin:0 auto;touch-action:none;
 }
 .wheel canvas:active{cursor:grabbing}
-.wheel .wlb{font-size:11.5px;color:var(--tx3);margin-top:3px;line-height:1.3}
-.wheel .wlb b{display:block;color:var(--tx2);font-weight:500;
-  font-variant-numeric:tabular-nums;font-size:11px;font-family:ui-monospace,Menlo,monospace}
+.wheel .wlb{font-size:10.5px;color:var(--tx4);margin-top:3px;line-height:1.3}
+.wheel .wlb b{display:block;color:var(--tx3);font-weight:500;white-space:nowrap;
+  font-variant-numeric:tabular-nums;font-size:9.5px;font-family:var(--mono)}
+.wheel .wlb b.on{color:var(--acc)}
+
+/* ---------- CDL 數值面 ---------- */
+.cdlrow{display:grid;grid-template-columns:26px repeat(3,1fr);gap:5px;align-items:center;margin-bottom:7px}
+.cdlrow .rk{font-size:10px;font-weight:600;letter-spacing:.1em;color:var(--tx4);text-transform:uppercase}
+.cdlrow .cv input{
+  width:100%;padding:3px 5px;border-radius:4px;border:1px solid var(--line);background:var(--panel2);
+  color:var(--tx);font-family:var(--mono);font-size:11.5px;text-align:right;font-variant-numeric:tabular-nums;
+}
+.cdlrow .cv input:focus{outline:none;border-color:var(--acc-line);background:var(--panel3)}
+.cdlrow .cv.mod input{color:var(--acc);border-color:var(--acc-line)}
+.cdlhint{font-size:11px;color:var(--tx4);line-height:1.5;margin-top:6px}
+.cdlout{
+  margin-top:9px;padding:7px 9px;border-radius:5px;background:var(--panel2);border:1px solid var(--line);
+  font-family:var(--mono);font-size:11px;color:var(--tx2);white-space:pre;overflow-x:auto;line-height:1.55;
+}
+
+/* ---------- 曲線 ---------- */
+.curwrap{margin-bottom:8px}
+.curwrap canvas{width:100%;height:auto;display:block;border-radius:5px;background:#0f1013;cursor:crosshair;touch-action:none}
+.curtabs{display:flex;gap:3px;margin-top:5px}
+.curtabs button{
+  flex:1;padding:3px 0;border-radius:4px;border:1px solid var(--line);background:var(--panel2);
+  font-size:11.5px;color:var(--tx3);
+}
+.curtabs button.on{background:var(--acc-soft);border-color:var(--acc-line);color:var(--acc);font-weight:600}
+
+/* ---------- Scopes ---------- */
+.scopes{
+  flex:0 0 auto;border:1px solid var(--line);border-radius:var(--rl);overflow:hidden;
+  background:var(--panel);
+}
+.scopes.folded .scopebd{display:none}
+.scopehd{
+  display:flex;align-items:center;gap:8px;padding:5px 9px;border-bottom:1px solid var(--line);
+}
+.scopes.folded .scopehd{border-bottom:0}
+.scopehd .seg{margin:0;flex:0 0 auto;border-radius:5px}
+.scopehd .seg button{padding:3px 11px;font-size:11.5px;background:transparent}
+.scopehd .seg button.on{background:var(--acc-soft)}
+.scopehd .clip{margin-left:auto;display:flex;gap:7px;align-items:center;font-size:11px;font-family:var(--mono)}
+.scopehd .clip span{color:var(--tx4)}
+.scopehd .clip b{font-weight:600;color:var(--tx3)}
+.scopehd .clip b.hot{color:var(--bad)}
+.scopebd{position:relative;height:150px;background:#0c0d10}
+.scopebd canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.scopenote{
+  position:absolute;right:8px;bottom:6px;font-size:10.5px;color:var(--tx4);font-family:var(--mono);
+  pointer-events:none;
+}
 
 /* ---------- center ---------- */
-.stagetop{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex:0 0 auto}
-.vmodes{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;flex:0 0 auto}
+.stagetop{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.vmodes{display:flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;flex:0 0 auto}
 .vmodes button{
   background:var(--panel2);border:0;border-right:1px solid var(--line);
-  padding:4px 11px;font-size:14px;cursor:pointer;color:var(--tx2);transition:.12s;
+  padding:3px 10px;font-size:12.5px;color:var(--tx3);transition:.12s;
 }
 .vmodes button:last-child{border-right:0}
-.vmodes button:hover{color:var(--tx)}
-.vmodes button.on{background:var(--acc-soft);color:var(--acc)}
+.vmodes button:hover{color:var(--tx2)}
+.vmodes button.on{background:var(--acc-soft);color:var(--acc);font-weight:600}
 
 .stage{
   flex:1 1 auto;position:relative;min-height:0;
   border:1px solid var(--line);border-radius:var(--rl);overflow:hidden;
-  background:radial-gradient(120% 90% at 50% 0%,#151922 0%,#0b0d11 62%,#08090c 100%);
+  background:radial-gradient(120% 90% at 50% 0%,#15171b 0%,#0c0d10 62%,#090a0c 100%);
 }
-/* 內陰影：令張圖有「鑲」落去嘅感覺，而唔係一塊死板貼上去 */
 .stage::after{
   content:'';position:absolute;inset:0;pointer-events:none;border-radius:var(--rl);
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.035),inset 0 18px 44px rgba(0,0,0,.5);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03),inset 0 16px 40px rgba(0,0,0,.45);
 }
 #viewport{
-  position:absolute;inset:0;overflow:auto;display:flex;padding:16px;
+  position:absolute;inset:0;overflow:auto;display:flex;padding:14px;
   scrollbar-width:thin;overscroll-behavior:contain;
 }
-#viewport::-webkit-scrollbar{width:9px;height:9px}
-#viewport::-webkit-scrollbar-thumb{background:var(--line2);border-radius:5px}
+#viewport::-webkit-scrollbar{width:8px;height:8px}
+#viewport::-webkit-scrollbar-thumb{background:var(--raise);border-radius:4px}
 #cv{
-  /* flex:0 0 auto 一定要有：#viewport 係 flex，canvas 設咗明確 width 之後
-     默認 flex-shrink:1 會將佢縮返入容器 —— 放大 200% 會變返同適應一樣闊，
-     scrollWidth 永遠等於 clientWidth，即係「放大咗但捲唔到」。 */
   margin:auto;flex:0 0 auto;display:block;touch-action:none;background:#0d0f13;
-  max-width:100%;max-height:100%;
-  border-radius:7px;
-  box-shadow:0 12px 34px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.07);
+  max-width:100%;max-height:100%;border-radius:6px;
+  box-shadow:0 10px 30px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.05);
 }
 .stage.single #cv{cursor:pointer}
 .stage.divider #cv{cursor:col-resize}
-.stage.panning #cv,
-.stage.panning.divider #cv{cursor:grabbing}
-/* zoom 掣（stagetop 右邊） */
-.zoombar{display:flex;align-items:center;border:1px solid var(--line);border-radius:7px;overflow:hidden;flex:0 0 auto}
+.stage.panning #cv,.stage.panning.divider #cv{cursor:grabbing}
+
+.zoombar{display:flex;align-items:center;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;flex:0 0 auto}
 .zoombar button{
-  background:var(--panel2);border:0;border-right:1px solid var(--line);color:var(--tx2);
-  font:400 12px/1 -apple-system,sans-serif;padding:0 9px;height:24px;cursor:pointer;transition:.12s;
+  background:var(--panel2);border:0;border-right:1px solid var(--line);color:var(--tx3);
+  font:400 12px/1 -apple-system,sans-serif;padding:0 8px;height:23px;transition:.12s;
 }
+.zoombar button:hover{color:var(--tx);background:var(--panel3)}
 .zoombar button:last-child{border-right:0}
-.zoombar button:hover{color:var(--tx);background:var(--line)}
 .zoombar .zp{
-  min-width:54px;text-align:center;color:var(--tx3);background:var(--panel2);
-  font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:24px;
-  border-right:1px solid var(--line);
+  min-width:50px;text-align:center;color:var(--tx4);background:var(--panel2);
+  font-family:var(--mono);font-size:11.5px;line-height:23px;border-right:1px solid var(--line);
 }
 .empty{
   position:absolute;inset:0;display:flex;flex-direction:column;
   align-items:center;justify-content:center;text-align:center;color:var(--tx3);
-  font-size:14.5px;line-height:2;padding:30px;
+  font-size:14px;line-height:2;padding:30px;
 }
-.empty .big{font-size:18px;color:var(--tx2);margin-bottom:6px;font-weight:500}
+.empty .big{font-size:16.5px;color:var(--tx2);margin-bottom:4px;font-weight:500}
 .gridbox{
   position:absolute;inset:0;overflow-y:auto;display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(216px,1fr));gap:11px;
-  padding:11px;align-content:start;scrollbar-width:thin;
+  grid-template-columns:repeat(auto-fill,minmax(212px,1fr));gap:10px;
+  padding:10px;align-content:start;scrollbar-width:thin;
 }
-.gridbox::-webkit-scrollbar{width:8px}
-.gridbox::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
+.gridbox::-webkit-scrollbar{width:7px}
+.gridbox::-webkit-scrollbar-thumb{background:var(--raise);border-radius:4px}
 .gcell{
-  background:var(--panel2);border:1.5px solid var(--line);border-radius:var(--r);
+  background:var(--panel2);border:1px solid var(--line);border-radius:var(--r);
   overflow:hidden;cursor:pointer;transition:.15s;
 }
 .gcell:hover{border-color:var(--line2)}
 .gcell.on{border-color:var(--acc)}
 .gcell canvas{width:100%;display:block;background:#0d0f13}
-.gcell .glb{font-size:13px;padding:5px 8px;color:var(--tx2);display:flex;justify-content:space-between;gap:6px}
+.gcell .glb{font-size:12px;padding:4px 7px;color:var(--tx2);display:flex;justify-content:space-between;gap:6px}
 .gcell.on .glb{color:var(--acc)}
-.gcell .glb em{font-style:normal;color:var(--tx3);font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.gcell .glb em{font-style:normal;color:var(--tx4);font-family:var(--mono);font-size:11px}
 
 .holdpill{
-  position:absolute;left:50%;bottom:12px;transform:translateX(-50%);
-  background:rgba(13,15,19,.82);border:1px solid var(--line2);border-radius:20px;
-  padding:3px 12px;font-size:13px;color:var(--tx2);pointer-events:none;
+  position:absolute;left:50%;bottom:11px;transform:translateX(-50%);
+  background:rgba(12,14,18,.85);border:1px solid var(--line2);border-radius:16px;
+  padding:2px 11px;font-size:12px;color:var(--tx2);pointer-events:none;
   display:flex;align-items:center;gap:6px;white-space:nowrap;
 }
-.holdpill.act{background:var(--acc);color:#1a1a2e;border-color:var(--acc);font-weight:500}
-/* 原圖鎖定：畫面 badge + 左面板半透明，等用戶一眼知「調色暫停咗」 */
+.holdpill.act{background:var(--acc);color:#10121c;border-color:var(--acc);font-weight:600}
 .lockpill{
-  position:absolute;left:50%;top:12px;transform:translateX(-50%);
-  background:var(--acc);color:#1a1a2e;border-radius:20px;
-  padding:4px 14px;font-size:14px;font-weight:600;pointer-events:none;
-  white-space:nowrap;box-shadow:0 2px 14px var(--acc-glow);z-index:5;
+  position:absolute;left:50%;top:11px;transform:translateX(-50%);
+  background:var(--acc);color:#10121c;border-radius:16px;
+  padding:3px 13px;font-size:12.5px;font-weight:600;pointer-events:none;
+  white-space:nowrap;box-shadow:0 2px 14px rgba(124,140,240,.35);z-index:5;
 }
-body.locked .left,body.locked .dock{opacity:.42;transition:opacity .15s}
+body.locked .col-l,body.locked .col-r{opacity:.4;transition:opacity .15s}
 body.locked .rowbtns{opacity:1}
-/* A/B 對比 badge：左上顯示而家睇緊 A（原圖）定 B（LOOK） */
 .abbadge{
-  position:absolute;left:10px;top:10px;z-index:6;pointer-events:none;
-  font-size:14px;font-weight:600;font-family:ui-monospace,Menlo,monospace;
-  background:var(--acc);color:#1a1a2e;padding:3px 12px;border-radius:16px;
-  white-space:nowrap;box-shadow:0 2px 12px var(--acc-glow);
+  position:absolute;left:9px;top:9px;z-index:6;pointer-events:none;
+  font-size:12px;font-weight:600;font-family:var(--mono);letter-spacing:.04em;
+  background:var(--acc);color:#10121c;padding:2px 10px;border-radius:12px;
+  white-space:nowrap;box-shadow:0 2px 12px rgba(124,140,240,.3);
 }
-.abbadge.b{background:rgba(10,12,16,.82);color:var(--acc);box-shadow:none}
+.abbadge.b{background:rgba(10,12,16,.8);color:var(--acc);box-shadow:none}
 .badge-l,.badge-r{
-  position:absolute;top:10px;font-size:12px;font-family:ui-monospace,Menlo,monospace;
-  background:rgba(10,12,16,.8);color:var(--tx2);padding:2px 7px;border-radius:4px;pointer-events:none;
+  position:absolute;top:9px;font-size:10.5px;font-family:var(--mono);letter-spacing:.08em;
+  background:rgba(10,12,16,.8);color:var(--tx2);padding:1px 6px;border-radius:3px;pointer-events:none;
 }
-.badge-l{left:10px}
-.badge-r{right:10px;color:var(--acc)}
-/* 層次擠壓警告：掣位推到盡嗰陣半張圖會塞喺 1L 之內 */
+.badge-l{left:9px}
+.badge-r{right:9px;color:var(--acc)}
 .warnflat{
-  position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:55;
-  background:rgba(58,32,10,.92);border:1px solid #d08b3a;border-radius:6px;
-  padding:4px 11px;font-size:13px;color:#ffca83;pointer-events:none;
+  position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:55;
+  background:rgba(52,30,10,.94);border:1px solid #c07f34;border-radius:5px;
+  padding:3px 10px;font-size:12px;color:#ffca83;pointer-events:none;
   display:flex;align-items:center;gap:7px;white-space:nowrap;
   box-shadow:0 3px 14px rgba(0,0,0,.45);
 }
 .warnflat b{color:#ffb454;font-weight:600}
 
 #veil{
-  position:absolute;inset:0;background:rgba(20,22,26,.9);border:2px dashed var(--acc);
+  position:absolute;inset:0;background:rgba(18,20,24,.9);border:2px dashed var(--acc-line);
   border-radius:var(--rl);display:none;align-items:center;justify-content:center;
-  font-size:17px;color:var(--acc);z-index:50;pointer-events:none;
+  font-size:16px;color:var(--acc);z-index:50;pointer-events:none;
 }
 #veil.show{display:flex}
 .toast{
-  position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
-  background:var(--panel3);border:1px solid var(--line2);border-radius:7px;
-  padding:6px 13px;font-size:14.5px;color:var(--tx);z-index:60;opacity:0;transition:.2s;
-  pointer-events:none;
+  position:absolute;bottom:12px;left:50%;transform:translateX(-50%);
+  background:var(--panel3);border:1px solid var(--line2);border-radius:6px;
+  padding:5px 12px;font-size:13.5px;color:var(--tx);z-index:60;opacity:0;transition:.2s;
+  pointer-events:none;max-width:80%;
 }
 .toast.show{opacity:1}
 
-.rowbtns{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap;flex:0 0 auto;align-items:center}
+.rowbtns{display:flex;gap:5px;flex-wrap:wrap;flex:0 0 auto;align-items:center}
 button.b{
-  background:var(--panel2);border:1px solid var(--line);border-radius:7px;
-  padding:5px 10px;font-size:14px;cursor:pointer;transition:.15s;white-space:nowrap;
+  background:var(--panel2);border:1px solid var(--line);border-radius:var(--r);
+  padding:4px 10px;font-size:13px;transition:.14s;white-space:nowrap;color:var(--tx2);
 }
-button.b:hover{border-color:var(--acc);color:var(--acc)}
-button.b.pri{background:var(--acc);border-color:var(--acc);color:#1a1a2e;font-weight:500}
-button.b.pri:hover{filter:brightness(1.08);color:#1a1a2e}
-button.b:disabled{opacity:.35;cursor:not-allowed}
-button.b:disabled:hover{border-color:var(--line);color:inherit}
-button.b.sm{padding:3px 8px;font-size:12.5px}
-button.b.icon{padding:4px 9px;font-size:15.5px;line-height:1;font-weight:500;min-width:30px;text-align:center}
-button.b.icon:hover:not(:disabled){background:var(--acc-soft)}
+button.b:hover{border-color:var(--line2);color:var(--tx);background:var(--panel3)}
+button.b.pri{background:var(--acc);border-color:var(--acc);color:#10121c;font-weight:600}
+button.b.pri:hover{filter:brightness(1.08);color:#10121c;background:var(--acc)}
+button.b:disabled{opacity:.3;cursor:not-allowed}
+button.b:disabled:hover{border-color:var(--line);color:var(--tx2);background:var(--panel2)}
+button.b.sm{padding:3px 8px;font-size:12px}
+button.b.icon{padding:4px 8px;font-size:14px;line-height:1;font-weight:500;min-width:28px;text-align:center}
 
 /* ---------- right ---------- */
-.dirlist{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
-.ditem{background:var(--panel2);border-radius:7px;padding:7px 9px;border-left:2px solid var(--line)}
+.dirlist{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.ditem{background:var(--panel2);border-radius:5px;padding:6px 9px;border-left:2px solid var(--line)}
 .ditem.hot{border-left-color:var(--acc)}
 .ditem.warn{border-left-color:var(--warn)}
-.ditem.bad{border-left-color:var(--bad);background:#2b1f1f}
-.ditem .k{font-size:12.5px;color:var(--tx3);margin-bottom:2px}
-.ditem .v{font-size:14px;line-height:1.55}
-.ditem .v em{font-style:normal;color:var(--acc);font-family:ui-monospace,Menlo,monospace}
+.ditem.bad{border-left-color:var(--bad);background:rgba(217,83,79,.08)}
+.ditem .k{font-size:11px;color:var(--tx4);margin-bottom:1px;letter-spacing:.02em}
+.ditem .v{font-size:13px;line-height:1.5}
+.ditem .v em{font-style:normal;color:var(--acc);font-family:var(--mono)}
 .ditem.bad .v em{color:#f0a0a0}
-.ditem.sec{border-left-color:var(--line2);background:#1f232b}
-.ditem.sec .v{font-size:13px;color:var(--tx2);font-family:ui-monospace,Menlo,monospace}
+.ditem.sec{border-left-color:var(--line2);background:var(--panel2)}
+.ditem.sec .v{font-size:11.5px;color:var(--tx3);font-family:var(--mono)}
 textarea{
-  width:100%;min-height:120px;background:var(--panel2);border:1px solid var(--line);
-  border-radius:var(--r);padding:8px;font-size:12.5px;line-height:1.65;resize:vertical;
-  font-family:ui-monospace,Menlo,monospace;
+  width:100%;min-height:112px;background:var(--panel2);border:1px solid var(--line);
+  border-radius:var(--r);padding:7px;font-size:11.5px;line-height:1.6;resize:vertical;
+  font-family:var(--mono);color:var(--tx2);
 }
 
 /* ---------- bottom dock ---------- */
-.dock{flex:0 0 auto;background:var(--panel);border-top:1px solid var(--line);padding:6px 14px 10px}
-.dockrow{margin-bottom:7px}
+.dock{flex:0 0 auto;background:var(--panel);border-top:1px solid var(--line);padding:5px 14px 9px}
+.dockrow{margin-bottom:6px}
 .dockrow:last-child{margin-bottom:0}
 .dockrow .hd{display:flex;align-items:center;justify-content:space-between;gap:8px;
-  font-size:12.5px;color:var(--tx3);margin-bottom:5px}
-.dockrow .hd b{font-weight:500;color:var(--tx2);letter-spacing:.4px}
-.dockrow .hd .sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 摺疊：淨係收起片條，個 header 留低，隨時撳返開 */
+  font-size:11.5px;color:var(--tx4);margin-bottom:4px}
+.dockrow .hd b{font-weight:600;color:var(--tx3);letter-spacing:.1em;font-size:10px;text-transform:uppercase}
+.dockrow .hd .sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx4);font-size:11px}
 .dockrow.folded .strip{display:none}
-.dockrow.folded{margin-bottom:2px}
+.dockrow.folded{margin-bottom:1px}
 .dockrow.folded .hd{margin-bottom:0}
 .foldbtn{
-  flex:0 0 auto;width:17px;height:17px;border-radius:4px;border:1px solid var(--line);
-  background:var(--panel2);color:var(--tx3);font-size:11px;line-height:1;cursor:pointer;
+  flex:0 0 auto;width:16px;height:16px;border-radius:3px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--tx4);font-size:9px;line-height:1;
   padding:0;display:flex;align-items:center;justify-content:center;transition:.12s;
 }
-.foldbtn:hover{color:var(--tx);border-color:var(--line2)}
+.foldbtn:hover{color:var(--tx2);border-color:var(--line2)}
 .dockrow.folded .foldbtn{transform:rotate(-90deg)}
-.foldbtn .cnt{
-  font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--tx3);
-  margin-left:5px;background:var(--panel2);border:1px solid var(--line);
-  padding:0 4px;border-radius:3px;
-}
 .minib{
-  flex:0 0 auto;background:var(--panel2);border:1px solid var(--line);border-radius:6px;
-  color:var(--tx2);font:400 10.5px/1 -apple-system,sans-serif;padding:0 8px;height:20px;cursor:pointer;
+  flex:0 0 auto;background:var(--panel2);border:1px solid var(--line);border-radius:5px;
+  color:var(--tx3);font:400 10.5px/1 -apple-system,sans-serif;padding:0 8px;height:19px;
 }
-.minib:hover{color:var(--acc);border-color:var(--acc)}
-.strip{display:flex;gap:7px;overflow-x:auto;padding-bottom:5px;scrollbar-width:thin}
-.strip::-webkit-scrollbar{height:7px}
-.strip::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
-/* 來稿 shot：有方向紙 marker，揀中嗰張要有明確框 */
+.minib:hover{color:var(--acc);border-color:var(--acc-line)}
+.strip{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.strip::-webkit-scrollbar{height:6px}
+.strip::-webkit-scrollbar-thumb{background:var(--raise);border-radius:3px}
 .tile.shot.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
 .tile.shot .sno{
-  position:absolute;top:3px;left:3px;font-size:11px;font-family:ui-monospace,Menlo,monospace;
-  background:rgba(10,12,16,.82);color:var(--tx2);padding:0 4px;border-radius:3px;
+  position:absolute;top:3px;left:3px;font-size:10px;font-family:var(--mono);
+  background:rgba(10,12,16,.82);color:var(--tx3);padding:0 4px;border-radius:3px;
 }
-.tile.shot.on .sno{background:var(--acc);color:#1a1a2e;font-weight:600}
+.tile.shot.on .sno{background:var(--acc);color:#10121c;font-weight:600}
 .tile.shot .done{
-  position:absolute;bottom:20px;left:3px;font-size:10px;font-weight:600;
-  background:rgba(124,140,240,.95);color:#1a1a2e;padding:0 4px;border-radius:3px;
+  position:absolute;bottom:19px;left:3px;font-size:9.5px;font-weight:600;
+  background:rgba(124,140,240,.95);color:#10121c;padding:0 4px;border-radius:3px;
 }
-
 .tile{
-  flex:0 0 auto;width:var(--tw);border-radius:7px;overflow:hidden;cursor:pointer;
-  background:var(--panel2);border:1.5px solid var(--line);transition:.14s;position:relative;
+  flex:0 0 auto;width:var(--tw);border-radius:6px;overflow:hidden;cursor:pointer;
+  background:var(--panel2);border:1px solid var(--line);transition:.14s;position:relative;
 }
 .tile:hover{border-color:var(--line2)}
 .tile.on{border-color:var(--acc);background:var(--acc-soft)}
 .tile canvas{width:100%;height:var(--th);display:block;background:#0d0f13}
-.tile .lb{
-  font-size:12px;padding:3px 6px;color:var(--tx2);white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis;
-}
+.tile .lb{font-size:11.5px;padding:3px 6px;color:var(--tx3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile.on .lb{color:var(--acc)}
 .tile .no{
-  position:absolute;top:3px;left:3px;font-size:11px;font-family:ui-monospace,Menlo,monospace;
-  background:rgba(10,12,16,.8);color:var(--tx2);padding:0 4px;border-radius:3px;
+  position:absolute;top:3px;left:3px;font-size:10px;font-family:var(--mono);
+  background:rgba(10,12,16,.8);color:var(--tx3);padding:0 4px;border-radius:3px;
 }
 .tile .rm{
-  position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:4px;
-  background:rgba(10,12,16,.8);color:var(--tx2);border:0;cursor:pointer;
-  font-size:14.5px;line-height:16px;text-align:center;padding:0;opacity:0;transition:.12s;
+  position:absolute;top:2px;right:2px;width:15px;height:15px;border-radius:3px;
+  background:rgba(10,12,16,.8);color:var(--tx3);font-size:13px;line-height:15px;text-align:center;padding:0;
+  opacity:0;transition:.12s;
 }
 .tile:hover .rm{opacity:1}
 .tile .rm:hover{background:var(--bad);color:#fff}
 .tile.add{
-  width:calc(var(--tw) * .62);height:var(--th);border-style:dashed;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:1px;color:var(--tx3);font-size:12.5px;padding:0;
+  width:calc(var(--tw) * .6);height:var(--th);border:1px dashed var(--line2);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:1px;color:var(--tx4);font-size:11.5px;padding:0;
 }
-.tile.add:hover{border-color:var(--acc);color:var(--acc)}
-.tile.add .plus{font-size:19px;line-height:1}
+.tile.add:hover{border-color:var(--acc-line);color:var(--acc)}
+.tile.add .plus{font-size:17px;line-height:1}
 .tile .badge{
-  position:absolute;bottom:20px;right:3px;font-size:11px;font-family:ui-monospace,Menlo,monospace;
-  background:rgba(10,12,16,.78);color:var(--tx3);padding:0 4px;border-radius:3px;
+  position:absolute;bottom:19px;right:3px;font-size:10px;font-family:var(--mono);
+  background:rgba(10,12,16,.78);color:var(--tx4);padding:0 4px;border-radius:3px;
 }
 .tile .cust{
-  position:absolute;bottom:20px;left:3px;font-size:10px;
-  background:rgba(124,140,240,.92);color:#1a1a2e;padding:0 4px;border-radius:3px;font-weight:600;
+  position:absolute;bottom:19px;left:3px;font-size:9.5px;
+  background:rgba(124,140,240,.92);color:#10121c;padding:0 4px;border-radius:3px;font-weight:600;
 }
-.szbtns{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;flex:0 0 auto}
+.szbtns{display:flex;border:1px solid var(--line);border-radius:5px;overflow:hidden;flex:0 0 auto}
 .szbtns button{
   background:var(--panel2);border:0;border-right:1px solid var(--line);
-  padding:0 7px;font-size:12px;cursor:pointer;color:var(--tx3);line-height:16px;
+  padding:0 6px;font-size:11px;color:var(--tx4);line-height:15px;
 }
 .szbtns button:last-child{border-right:0}
 .szbtns button.on{background:var(--acc-soft);color:var(--acc)}
@@ -463,65 +544,58 @@ textarea{
 /* ---------- 放大鏡 ---------- */
 #mag{
   position:fixed;z-index:300;background:var(--panel2);border:1px solid var(--line2);
-  border-radius:10px;padding:6px;pointer-events:none;display:none;
-  box-shadow:0 14px 38px rgba(0,0,0,.65);
+  border-radius:8px;padding:5px;pointer-events:none;display:none;
+  box-shadow:0 14px 38px rgba(0,0,0,.7);
 }
 #mag.show{display:block}
-#mag canvas{display:block;border-radius:6px;background:#0d0f13}
-#mag .mn{font-size:13px;color:var(--tx);margin-top:5px;display:flex;justify-content:space-between;gap:12px}
-#mag .mn em{font-style:normal;color:var(--tx3);font-family:ui-monospace,Menlo,monospace;font-size:12px}
-#mag .mh{font-size:11.5px;color:var(--tx3);margin-top:1px}
+#mag canvas{display:block;border-radius:5px;background:#0d0f13}
+#mag .mn{font-size:12px;color:var(--tx);margin-top:4px;display:flex;justify-content:space-between;gap:12px}
+#mag .mn em{font-style:normal;color:var(--tx4);font-family:var(--mono);font-size:11px}
+#mag .mh{font-size:10.5px;color:var(--tx4);margin-top:1px}
 </style>
 </head>
-<body data-page-node-id="29lABQzg4oTaKoeQDEhAnh">
-<div class="app" data-page-node-id="hAsgorcq5k2qpBrV4vfKXg">
+<body>
+<div class="app">
 
-  <header data-page-node-id="LBGsddcN3gf6DWO2MyRJ0C">
-    <div class="logo" data-page-node-id="oittYfQpGjADXjq0Rrzcz7">Look <span data-page-node-id="Kp5SpXSZtbru0NXxdGbTLH">Direction</span></div>
-    <span class="kbd" data-page-node-id="waJJ5gYvxgxumcEPRXeZNX">1–9</span><span class="hstatus" data-page-node-id="Px7khZ39vhmvKqe8pkAr1W">揀 look</span>
-    <span class="kbd" data-page-node-id="yxXLKtLjqzG7OUv5WWfVG2">← →</span><span class="hstatus" data-page-node-id="OjHYvMVHoDZq3EWrV2Jnjq">上／下個 look</span>
-    <span class="kbd">[ ]</span><span class="hstatus">上／下張來稿</span>
-    <span class="kbd" data-page-node-id="K1b0LE06KMP5a0OrfkrB5u">`</span><span class="hstatus" data-page-node-id="NhlR9Q3EKfWSF5805UJxye">撳實睇原圖</span>
-    <span class="kbd">⇧Z</span><span class="hstatus">鎖原圖</span>
-    <span class="kbd">⌘Z</span><span class="hstatus">退回</span>
-    <span class="kbd" data-page-node-id="K1nofbbgZz60C5BaqVezbi">B</span><span class="hstatus" data-page-node-id="bVBRsFf6SuzeufQAuEMMVq">鎖定前後</span>
-    <span class="kbd" data-page-node-id="lDnKBSmn4zTPO4aFOXDXY6">G</span><span class="hstatus" data-page-node-id="zGfjfT8b32AIkAHMa86L4j">格仔</span>
-    <span class="kbd">0</span><span class="hstatus">縮返適應</span>
-    <span class="hstatus" data-page-node-id="80D2mIp6NqB6Eqm6EHEpkt">· ⌘滾輪放大 · 空白鍵拖 pan · Shift 拖拉桿 = 精細</span>
-    <span class="hspacer" data-page-node-id="DAlSMlpcA0SQvFc0tPkinQ"></span>
-    <span class="hstatus" id="hstatus" data-page-node-id="nJc67SjwHm18PSRFwXMhWD">未入圖</span>
+  <header>
+    <div class="logo">Look <span>Direction</span></div>
+    <span class="hdot"></span>
+    <span class="hstatus" id="hstatus">未入圖</span>
+    <span class="hspacer"></span>
+    <span class="hstatus" id="hdrlook">—</span>
+    <button class="iconbtn" id="b-help" type="button" title="快捷鍵" aria-label="快捷鍵">?</button>
   </header>
 
-  <div class="main" data-page-node-id="vADVOhZ4NliqpL6SlAwaBo">
+  <div class="main">
 
-    <!-- LEFT：方向 + note（調控板搬咗去右邊） -->
-    <div class="col col-l" data-page-node-id="1rGAmnHOrcOTDE9HTG33PD">
-      <div class="sec" data-page-node-id="IqrAAMtXqSPBT79jCTOVGW">
-        <h2 data-page-node-id="7Udr2llaWVSphaRTkQRDwH">方向 <span class="hstatus" id="refname" data-page-node-id="9XDyhsHlVBMVqxgKaB7iS9">—</span></h2>
-        <div class="dirlist" id="dirlist" data-page-node-id="DehDG9JEtXrXRhD9zFRUBk">
-          <div class="hstatus" data-page-node-id="BM1o29h5mOpGv0kMefiGGr">入圖 / 揀個 look 就自動計</div>
+    <!-- LEFT：方向 + note -->
+    <div class="col col-l">
+      <div class="sec">
+        <h2>方向 <span class="hstatus" id="refname">—</span></h2>
+        <div class="dirlist" id="dirlist">
+          <div class="hstatus">入圖 / 揀個 look 就自動計</div>
         </div>
       </div>
-      <div class="sec" data-page-node-id="0WYFAGY6VL6n95Ay8MDlV7">
-        <h2 data-page-node-id="TxESGMdGl44rFFr9OoALrh">可以抄出去嘅 note</h2>
+      <div class="sec">
+        <h2>可以抄出去嘅 note</h2>
         <textarea id="note" readonly aria-label="方向文字，可複製" placeholder="方向會喺度出，直接抄去 email / 飛書畀供應商"></textarea>
-        <div class="rowbtns" data-page-node-id="0wihX4m6lwgTOk3JBWjKSB">
-          <button class="b" id="b-copy" type="button" data-page-node-id="Ey4gyF65FXCDdXsUyDZ3OF">抄方向</button>
+        <div class="rowbtns" style="margin-top:6px">
+          <button class="b" id="b-copy" type="button">抄方向</button>
         </div>
       </div>
     </div>
 
     <!-- CENTER -->
-    <div class="col col-c" data-page-node-id="KHK6e9BPeUDFBb9Ag6RhCl">
-      <div class="stagetop" data-page-node-id="w5jfSLNTloGrj25DK1hcmK">
-        <div class="vmodes" id="vmodes" role="group" aria-label="對比模式" data-page-node-id="lYs1m9GlTDJJOSNyymGbL2">
-          <button type="button" data-m="single" class="on" data-page-node-id="X71t1EpUW1rDkG4Df5L7Mi">單圖</button>
-          <button type="button" data-m="wipe" data-page-node-id="hYlWTFTLz78uOYqQbnEP5l">抹除</button>
-          <button type="button" data-m="side" data-page-node-id="HmIFvwfhliaJBbP3jdd6UV">並排</button>
-          <button type="button" data-m="grid" data-page-node-id="Wt5e9tmxtbwDKtiXPE8wOD">格仔</button>
+    <div class="col col-c">
+      <div class="stagetop">
+        <div class="vmodes" id="vmodes" role="group" aria-label="對比模式">
+          <button type="button" data-m="single" class="on">單圖</button>
+          <button type="button" data-m="wipe">抹除</button>
+          <button type="button" data-m="side">並排</button>
+          <button type="button" data-m="grid">格仔</button>
         </div>
-        <span class="hspacer" data-page-node-id="mpShPvGQiRGf1lkpucN1ot"></span>
-        <span class="hstatus" id="cstat" data-page-node-id="wxzTdzp7nSxMF5xDM2DoDm"></span>
+        <span class="hspacer"></span>
+        <span class="hstatus" id="cstat"></span>
         <div class="zoombar" role="group" aria-label="縮放">
           <button type="button" id="z-out" aria-label="縮細">−</button>
           <span class="zp" id="zpct">適應</span>
@@ -531,108 +605,153 @@ textarea{
         </div>
       </div>
 
-      <div class="stage single" id="stage" data-page-node-id="kN1WBI4tTKx4YFlKHNf13p">
-        <div id="viewport"><canvas id="cv" hidden data-page-node-id="ElYWCyG5AlBAk26GPvTIFV"></canvas></div>
-        <div class="empty" id="empty" data-page-node-id="uVWQSRGIKXzsTzrfhoOb0o">
-          <div class="big" data-page-node-id="gyGjLJ4c8nFpUwwV3Ln0g9">拖啲供應商嘅圖入嚟</div>
-          拖幾多張都得 —— 會入落下面「來稿」嗰條，逐張撳就得<br data-page-node-id="MvEcICZWQWyLLy0lchfmlm">
+      <div class="stage single" id="stage">
+        <div id="viewport"><canvas id="cv" hidden></canvas></div>
+        <div class="empty" id="empty">
+          <div class="big">拖啲供應商嘅圖入嚟</div>
+          拖幾多張都得 —— 會入落下面「來稿」嗰條，逐張撳就得<br>
           參考圖拖落 REFERENCE 嗰條 · Pinterest 張圖可以直接拖入嚟 · 或者撳內建 look 即刻試
         </div>
-        <div class="gridbox" id="gridbox" hidden data-page-node-id="qFy0MQHx7xnDkiWlKnA1ne"></div>
+        <div class="gridbox" id="gridbox" hidden></div>
         <div class="abbadge" id="abbadge" hidden>A · 原圖</div>
-        <div class="badge-l" id="badgeL" hidden data-page-node-id="3izU7t24COyUh97WOgmGay">原圖 BEFORE</div>
-        <div class="badge-r" id="badgeR" hidden data-page-node-id="YIfqeZaNCD3P4qbZovfUnt">調色後 AFTER</div>
-        <div class="holdpill" id="holdpill" hidden data-page-node-id="eonXM5eBfXjmu9DWvDxhte">撳實睇原圖</div>
-        <div class="lockpill" id="lockpill" hidden>🔒 原圖鎖定中 · 調色已暫停 · 撳「◧ 原圖」或 Shift+Z 解除</div>
-        <div class="warnflat" id="warnflat" hidden data-page-node-id="qF7warnflat001"></div>
-        <div id="veil" data-page-node-id="JgAoyq3XUNc31pE3o0y150">放低就加入 reference</div>
-        <div class="toast" id="toast" data-page-node-id="lD5YOABRJv3FFgy684jJm6"></div>
+        <div class="badge-l" id="badgeL" hidden>原圖 BEFORE</div>
+        <div class="badge-r" id="badgeR" hidden>調色後 AFTER</div>
+        <div class="holdpill" id="holdpill" hidden>撳實睇原圖</div>
+        <div class="lockpill" id="lockpill" hidden>原圖鎖定中 · 調色已暫停 · 撳 A/B 或 Shift+Z 解除</div>
+        <div class="warnflat" id="warnflat" hidden></div>
+        <div id="veil">放低就加入 reference</div>
+        <div class="toast" id="toast"></div>
       </div>
 
-      <div class="rowbtns" data-page-node-id="ROpmx3NJJE9Xjy1uyf4piR">
-        <button class="b icon" id="b-undo" type="button" title="退回 (⌘Z)" disabled data-page-node-id="ld-undo">↶</button>
-        <button class="b icon" id="b-redo" type="button" title="重做 (⌘⇧Z)" disabled data-page-node-id="ld-redo">↷</button>
+      <!-- SCOPES（v12）：永遠唔好盲調 -->
+      <div class="scopes" id="scopes">
+        <div class="scopehd">
+          <div class="seg" id="scopetabs" role="group" aria-label="示波器">
+            <button type="button" data-s="hist" class="on">直方圖</button>
+            <button type="button" data-s="wave">波形</button>
+            <button type="button" data-s="vec">向量</button>
+          </div>
+          <div class="clip">
+            <span>死黑</span><b id="clipLo">0.0%</b>
+            <span>爆光</span><b id="clipHi">0.0%</b>
+          </div>
+          <button class="iconbtn" id="b-scopefold" type="button" title="收起／展開示波器" aria-label="收起示波器">▾</button>
+        </div>
+        <div class="scopebd">
+          <canvas id="scopecv" aria-label="示波器"></canvas>
+          <div class="scopenote" id="scopenote"></div>
+        </div>
+      </div>
+
+      <div class="rowbtns">
+        <button class="b icon" id="b-undo" type="button" title="退回 (⌘Z)" disabled>↶</button>
+        <button class="b icon" id="b-redo" type="button" title="重做 (⌘⇧Z)" disabled>↷</button>
         <button class="b" id="b-ab" type="button" title="A/B 一鍵對比：原圖 ↔ LOOK（\ 鍵）">A/B</button>
-        <button class="b" id="b-lock" type="button" title="暫停調色、鎖定顯示原圖 (Shift+Z)" data-page-node-id="ld-lock">◧ 原圖</button>
-        <button class="b" id="b-save" type="button" data-page-node-id="eI0dWWyOEV9AIQhTGwZnrP">存為 LOOK</button>
-        <button class="b" id="b-reset" type="button" title="全部微調歸零" data-page-node-id="VcjBtPCccjdOA5IY3aYef8">↺ 微調</button>
-        <button class="b icon" id="b-lookexp" type="button" title="匯出自訂 LOOK（.json，搬去第部機用）" data-page-node-id="ld-lookexp">⇩</button>
-        <button class="b icon" id="b-lookimp" type="button" title="匯入自訂 LOOK（.json）" data-page-node-id="ld-lookimp">⇧</button>
-        <span class="hspacer" data-page-node-id="uBdSYA5hky1u18JsPaIKgX"></span>
-        <button class="b" id="b-side2" type="button" data-page-node-id="1yg5mGj7rWMrQiXdAT4YFA">抄對比圖</button>
-        <span class="expf" id="expf">
-          <label class="expl">檔名<input id="expname" class="fname" value="look-direction" spellcheck="false"></label>
-          <button class="b" id="b-dir" type="button" title="揀保存資料夾（Chrome/Edge 支援；Safari/Firefox 唔支援，會用檔名落 Downloads）">揀位置</button>
-          <span id="dirpath" class="dirpath"></span>
-        </span>
-        <button class="b" id="b-png" type="button" data-page-node-id="79q8uJo45DdUunU74M23hw">匯出 PNG</button>
-        <button class="b" id="b-cube" type="button" data-page-node-id="5GL9xJdwHvImEsUplrOLKw">.cube LUT</button>
-        <button class="b pri" id="b-expall" type="button" title="一次過出齊 .cube + PNG + 方向紙，同一個檔名，寫入揀咗嘅資料夾">導出全套</button>
-        <button class="b pri" id="b-sheet" type="button" data-page-node-id="i22PEnogLuXPzLtbF4AlmF">出方向紙</button>
+        <button class="b" id="b-save" type="button">存為 LOOK</button>
+        <button class="b" id="b-reset" type="button" title="全部微調歸零">↺ 微調</button>
+        <button class="b icon" id="b-lookexp" type="button" title="匯出自訂 LOOK（.json，搬去第部機用）">⇩</button>
+        <button class="b icon" id="b-lookimp" type="button" title="匯入自訂 LOOK（.json）">⇧</button>
+        <span class="hspacer"></span>
+        <button class="b" id="b-side2" type="button">抄對比圖</button>
+        <button class="b pri" id="b-expall" type="button" title="一次過出齊 .cube + .cdl + PNG + 方向紙，同一個檔名，寫入揀咗嘅資料夾">導出全套</button>
+        <div class="menuwrap">
+          <button class="b" id="b-expmenu" type="button" aria-haspopup="true" aria-expanded="false" title="逐樣導出">導出 ──</button>
+          <div class="menu" id="expmenu" hidden>
+            <div class="exppane">
+              <div class="mlabel">檔名</div>
+              <div class="expf">
+                <input id="expname" class="fname" value="look-direction" spellcheck="false">
+                <button class="b sm" id="b-dir" type="button" title="揀保存資料夾（Chrome/Edge 支援；Safari/Firefox 會用檔名落 Downloads）">揀位置</button>
+              </div>
+              <div class="dirpath" id="dirpath"></div>
+            </div>
+            <button type="button" id="b-png">匯出 PNG<em>.png</em></button>
+            <button type="button" id="b-cube">3D LUT<em>.cube</em></button>
+            <button type="button" id="b-cdl">ASC CDL<em>.cdl</em></button>
+            <button type="button" id="b-sheet">方向紙<em>.png</em></button>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- RIGHT：調控板（用家習慣右手拉桿） -->
-    <div class="col col-r" data-page-node-id="fRcqOqRurwQxXlVE7SuexH">
-      <div class="sec" data-page-node-id="Fq3eovGqo2jUqAwWx0I60a">
-        <h2 data-page-node-id="GjmcftVsnafhrduyr0eRis">調控板 <span class="hstatus" id="shotname">—</span></h2>
-        <div class="rowbtns" style="margin-bottom:10px">
+    <!-- RIGHT：調控板 -->
+    <div class="col col-r">
+      <div class="sec">
+        <h2>調控板 <span class="hstatus" id="shotname">—</span></h2>
+        <div class="rowbtns" style="margin-bottom:11px">
           <button class="b" id="b-addshot" type="button">＋ 加入來稿</button>
           <button class="b" id="b-repshot" type="button">換呢張</button>
         </div>
       </div>
-
-      <div id="grpbox" data-page-node-id="TvpvjwrN5yqAfiSs6kQ3aR"></div>
-
-      <hr class="sep" data-page-node-id="F9BLQi27upx9XNKY5aMcgK">
-      <div class="hstatus" id="stat2" data-page-node-id="BQ7rdYvC1ObUlrsHxxJJZo">—</div>
+      <div id="grpbox"></div>
+      <hr class="sep">
+      <div class="hstatus" id="stat2">—</div>
     </div>
   </div>
 
   <!-- DOCK -->
-  <div class="dock" data-page-node-id="mT7P0g1k0v7DHNGcxYMlZ1">
+  <div class="dock">
     <div class="dockrow" id="row-shots">
-      <div class="hd" data-page-node-id="OlraOQsSplLVTRqyVbLQN2">
+      <div class="hd">
         <button class="foldbtn" type="button" data-row="shots" aria-expanded="true" aria-label="摺疊來稿">▾</button>
-        <b>來稿 SHOTS</b>
-        <span class="sub" id="shotcount" data-page-node-id="hxnYJUlaEBFAqaQrfQGFdn">0 張 · 逐張撳 · 每張記住自己套設定 · ⌘V/Ctrl+V 跟滑鼠落位</span>
-        <span class="hspacer" data-page-node-id="xJ7xKIZnAp7s00uIV0GTzE"></span>
-        <button class="minib" id="b-addshot2" type="button">＋ 加入來稿</button>
-        <div class="szbtns" id="szS" data-page-node-id="k3KZEbPb98SycochFprhXZ"></div>
+        <b>來稿 Shots</b>
+        <span class="sub" id="shotcount">0 張 · 逐張撳 · 每張記住自己套設定 · ⌘V/Ctrl+V 跟滑鼠落位</span>
+        <span class="hspacer"></span>
+        <div class="szbtns" id="szS"></div>
       </div>
       <div class="strip" id="shots" role="radiogroup" aria-label="供應商來稿"></div>
     </div>
 
     <div class="dockrow folded" id="row-presets">
-      <div class="hd" data-page-node-id="cN2NC9HmTnGobGuKTMC6IQhd">
+      <div class="hd">
         <button class="foldbtn" type="button" data-row="presets" aria-expanded="false" aria-label="摺疊內建 LOOK">▾</button>
-        <b data-page-node-id="4M3qfs7ox0tkXUsDvthugw">內建 LOOK</b>
+        <b>內建 Look</b>
         <span class="sub">即刻試，唔使入圖 · hover 出大預覽</span>
-        <span class="hspacer" data-page-node-id="xJ7xKIZnAp7s00uIV0GTzE2"></span>
-        <div class="szbtns" id="szA" data-page-node-id="k3KZEbPb98SycochFprhXZ"></div>
+        <span class="hspacer"></span>
+        <div class="szbtns" id="szA"></div>
       </div>
-      <div class="strip" id="presets" role="radiogroup" aria-label="色調預設" data-page-node-id="CCTOJNOeO0QKlTTdrb2xay"></div>
+      <div class="strip" id="presets" role="radiogroup" aria-label="色調預設"></div>
     </div>
 
     <div class="dockrow" id="row-refs">
-      <div class="hd" data-page-node-id="C59kxu5i7zQl2TS0UBGrmv">
+      <div class="hd">
         <button class="foldbtn" type="button" data-row="refs" aria-expanded="true" aria-label="摺疊 REFERENCE">▾</button>
-        <b data-page-node-id="S9WMSaUebZ6lgEWu6UmOLv">REFERENCE</b>
-        <span class="sub" id="refcount" data-page-node-id="vFCywQcCDVZt1qrPy2FaJi">0 張 · hover 即時預覽 · click 採用</span>
-        <span class="hspacer" data-page-node-id="uX8bSOp3HiD9Ul5ujMnjJF"></span>
-        <div class="szbtns" id="szB" data-page-node-id="i3QEhKgoEChHwpdKFWkYT0"></div>
+        <b>Reference</b>
+        <span class="sub" id="refcount">0 張 · hover 即時預覽 · click 採用</span>
+        <span class="hspacer"></span>
+        <div class="szbtns" id="szB"></div>
       </div>
-      <div class="strip" id="refs" role="radiogroup" aria-label="參考圖" data-page-node-id="jke3GUqnP0nplR1VO24A7y"></div>
+      <div class="strip" id="refs" role="radiogroup" aria-label="參考圖"></div>
     </div>
   </div>
 
 </div>
 
-<div id="mag" data-page-node-id="UEVQBzlM4nPF7TZ445e4zd"><canvas id="magcv" data-page-node-id="Dep8eJNvendpx8pg7wjqkd"></canvas>
-  <div class="mn" data-page-node-id="Zzn07qLjcVAnAP1qy1hbA3"><span id="magnm" data-page-node-id="5Cnc9pM5EtRtwHG7gQSk41">—</span><em id="magst" data-page-node-id="jRe62WoCGYc0DH1ZbHXmsg"></em></div>
-  <div class="mh" id="maghh" data-page-node-id="Uf3LswS5qttiW9FXYNVoi5"></div>
+<div class="kbdpop" id="kbdpop" hidden>
+  <h3>快捷鍵</h3>
+  <div class="kr"><b>⌘/Ctrl+Z</b>退回</div>
+  <div class="kr"><b>⇧⌘Z</b>重做</div>
+  <div class="kr"><b>\</b>A/B 對比（原圖 ↔ LOOK）</div>
+  <div class="kr"><b>⇧Z</b>鎖定／解鎖原圖</div>
+  <div class="kr"><b>`</b>撳實睇原圖</div>
+  <div class="kr"><b>B</b>翻轉 before/after</div>
+  <div class="kr"><b>1–9</b>揀 look</div>
+  <div class="kr"><b>← →</b>上／下個 look</div>
+  <div class="kr"><b>[ ]</b>上／下張來稿</div>
+  <div class="kr"><b>P</b>開／關方向注入</div>
+  <div class="kr"><b>V</b>換對比模式</div>
+  <div class="kr"><b>G</b>格仔比較</div>
+  <div class="kr"><b>0 / +−</b>適應 · 放大縮細</div>
+  <div class="kr"><b>⌘滾輪</b>對游標 zoom</div>
+  <div class="kr"><b>空白鍵拖</b>pan</div>
+  <div class="kr"><b>⇧拖桿</b>精細（1/5 速度）</div>
+  <div class="kr"><b>雙擊桿</b>歸零</div>
 </div>
 
+<div id="mag"><canvas id="magcv"></canvas>
+  <div class="mn"><span id="magnm">—</span><em id="magst"></em></div>
+  <div class="mh" id="maghh"></div>
+</div>
 <script>
 "use strict";
 const $=id=>document.getElementById(id);
@@ -822,6 +941,8 @@ function newSec(){
   for(const b of HSLB) hsl[b.id]={h:0,s:0,l:0};
   return {exp:0,con:0,high:0,shad:0,white:0,black:0,
           temp:0,tint:0,sat:0,vib:0,hsl,
+          /* v12：ASC CDL 三份 authoring state（SPL 已喺上面嗰 5 條桿） */
+          lgg:newLgg(), cur:newCur(), cdlOv:IDCDL(),
           wsh:{h:210,s:0,l:0}, wmid:{h:0,s:0,l:0}, whi:{h:40,s:0,l:0},
           wblend:50, wbal:0,
           /* 色板模式：on=開關、blend=融合%、palOv=用家改過嘅 暗/中/亮 色（null=自動） */
@@ -835,6 +956,9 @@ function normSec(s){
   for(const k in d){ if(s[k]!==undefined) d[k]=s[k]; }
   d.hsl={}; for(const b of HSLB){ d.hsl[b.id]=Object.assign({h:0,s:0,l:0}, (s.hsl||{})[b.id]); }
   ['wsh','wmid','whi'].forEach(k=>{ d[k]=Object.assign(d[k], s[k]||{}); });
+  d.lgg=normLgg(s.lgg);
+  d.cur=normCur(s.cur);
+  d.cdlOv=normCdl(s.cdlOv);
   d.palOv=Object.assign({sh:null,mid:null,hi:null}, s.palOv||{});
   d.palOn=d.palOn?1:0;
   d.palBlend=clamp(+d.palBlend||0,0,100);
@@ -923,9 +1047,11 @@ function wheelAdd(z){
 }
 function buildSecPlan(s){
   const p={active:false,tone:false,wb:false,sv:false,hasHue:false,hsl:[],zone:null,zkeys:[],add:{}};
-  p.tone = !!(s.exp||s.con||s.high||s.shad||s.white||s.black);
-  p.wb   = !!(s.temp||s.tint);
-  p.sv   = !!(s.sat||s.vib);
+  /* v12：曝光／對比／色溫／色調／飽和 搬咗去 ASC CDL（見 4c），
+     呢度淨係留「分區」掣（高光/陰影/白位/黑位）同自然飽和 —— 兩套正交，唔會再互相疊加。 */
+  p.tone = !!(s.high||s.shad||s.white||s.black);
+  p.wb   = false;
+  p.sv   = !!s.vib;
   p.hsl  = HSLB.filter(b=>{const c=s.hsl[b.id]; return c&&(c.h||c.s||c.l);});
   p.hasHue = p.hsl.length>0;
   p.zkeys = WHEELS.filter(w=>{const z=s[w.id]; return z&&(z.s>0.5||z.l);});
@@ -939,9 +1065,9 @@ function buildSecPlan(s){
 function applySec(L,a,b,s,p){
   let dL=0;                       /* HSL／調色輪嘅亮度偏移集中喺收尾時一次過落 */
   if(p.tone){
-    /* 曝光：線性光乘算（攝影式），黑位留住；expL 可能 >100，靠收尾 shoulder 收 */
-    let x=expL(L,s.exp)/100;
-    /* 其餘 tone 掣先夾埋成一個總偏移 d，再過 budget() —— 否則逐個疊加，
+    /* v12：曝光／對比已經交咗畀 ASC CDL，呢度淨係做分區（高光/陰影/白位/黑位） */
+    let x=L/100;
+    /* 四個分區掣先夾埋成一個總偏移 d，再過 budget() —— 否則逐個疊加，
        高光位會一次食晒 high+white 兩份，直接爆。 */
     let d = 0;
     if(s.shad)  d += s.shad/100 *0.30*(1-smoothstep(0.02,0.45,x));
@@ -949,21 +1075,8 @@ function applySec(L,a,b,s,p){
     if(s.high)  d += s.high/100 *0.30*smoothstep(0.55,0.98,x);
     if(s.white) d += s.white/100*0.26*smoothstep(0.70,1.00,x);
     x += budget(d,0.30,0.25);
-    if(s.con){
-      /* 對比用「有界 S 曲線」x²(3−2x)：天生鎖喺 [0,1] 入面，
-         唔似線性放大咁會將曝光偏移再乘大一次（舊版 ×(1+k·1.1)
-         令 +100 對比喺已推亮嘅圖上直接爆到 1.4）。負對比就用
-         圍繞 0.5 嘅線性壓平，同樣有界。
-         超出 [0,1] 就唔好再做 S —— 呢啲極端位交畀收尾嘅肩位處理，
-         否則 S 曲線會將 x<0 拉返去 0，反而食咗暗位。 */
-      const k=s.con/100;
-      if(k>0 && x>=0 && x<=1){ const ss=x*x*(3-2*x);
-                               x = x + (ss-x)*Math.min(1,k*1.15); }
-      else if(k<0){ x = 0.5 + (x-0.5)*(1+k*0.55); }
-    }
     L = softClip(x)*100;
   }
-  if(p.wb){ a += s.tint/100*14; b += s.temp/100*14; }
   if(p.hasHue && (a*a+b*b)>2.25){
     const HL=getHueLUT();
     let ia=Math.round(a)+128; ia=ia<0?0:(ia>255?255:ia);
@@ -1001,8 +1114,8 @@ function applySec(L,a,b,s,p){
     a+=aa; b+=bb; dL+=ll;
   }
   if(p.sv){
+    /* v12：整體飽和度交咗畀 CDL 嘅 SatNode，呢度淨係留自然飽和（暗淡色先推） */
     if(s.vib){ const C=Math.hypot(a,b); const f=1+s.vib/100*1.0*(1-cl01(C/48)); a*=f; b*=f; }
-    if(s.sat){ const f=1+s.sat/100*0.9; a*=f; b*=f; }
   }
   /* 收尾：7 條 HSL 明度 + 3 個調色輪明度合計最多推 ~16L，
      再多淨係收到 25%，避免全部推到盡時疊成一片白 */
@@ -1010,6 +1123,254 @@ function applySec(L,a,b,s,p){
   const cm=Math.hypot(a,b);
   if(cm>MAX_CHROMA){ a*=MAX_CHROMA/cm; b*=MAX_CHROMA/cm; }
   return [clamp(L,0,100),a,b];
+}
+
+/* ============================================================
+   4c. ASC CDL 核心（v12）
+   ------------------------------------------------------------
+   工業標準 ASC CDL：out = (in × Slope + Offset) ^ Power，再過
+   Saturation（以 Rec.709 luma 做權重）。全部 10 個數：S×3 O×3 P×3 Sat。
+   Resolve / Baselight / Nuke(OCIOCDLTransform) / RED / OpenRV 全部讀得入。
+
+   為咗唔再出現「一堆掣互相疊加、唔知邊個影響邊個」，而家得一套規範值，
+   四個操作面（簡化 / 色輪 / 曲線 / 數值）全部寫入同一套 CDL：
+     · 簡化（SPL）  → Slope（曝光/對比/色溫/色調）+ Saturation，Pivot 鎖 0.18
+     · 色輪（LGG）  → Lift→Offset、Gamma→Power、Gain→Slope、Offset→Offset
+     · 曲線          → CDL 之後嘅逐通道曲線（CDL 做唔到嘅形狀）
+     · 數值          → 直接睇／改 SOP + Sat
+   SPL 同 LGG 係「串接」而唔係「互相覆寫」：SPL 做全局（S/O），
+   LGG 做分區色偏，兩者合成出一套 CDL（數學上閉合，見 composeCdl）。
+   ============================================================ */
+const CDL_PIVOT=0.18;        /* 對比／曝光的樞紐點（18% 中灰） */
+const CON_K=0.80;            /* 對比 ±100 → slope ×0.20 .. ×1.80 */
+const TEMP_K=0.20;           /* 色溫 ±100 → R/B slope ±20% */
+const TINT_K=0.20;           /* 色調 ±100 → G slope ∓20%（洋紅／綠） */
+const SAT_K=0.90;
+const LGG_AMT={lift:0.085, off:0.085, gain:0.60, gamma:0.50};
+const LGG_L0 ={lift:26,     off:50,    gain:74,   gamma:50};
+const LGG_DEF=[
+  {id:'lift', name:'暗部 Lift'},
+  {id:'gamma',name:'中間 Gamma'},
+  {id:'gain', name:'亮部 Gain'},
+  {id:'off',  name:'全域 Offset'}
+];
+
+function newLgg(){ return {lift:{x:0,y:0}, gamma:{x:0,y:0}, gain:{x:0,y:0}, off:{x:0,y:0}}; }
+function normLgg(l){
+  const d=newLgg();
+  if(!l||typeof l!=='object') return d;
+  for(const k in d){
+    const v=l[k];
+    if(v&&typeof v==='object') d[k]={x:clamp(+v.x||0,-1.4,1.4), y:clamp(+v.y||0,-1.4,1.4)};
+  }
+  return d;
+}
+/* 色輪 2D 位置 → RGB 三通道權重（cos 分佈，三條加埋 = 0，所以唔會帶亮度偏移） */
+function wheelToRGB(x,y,amt){
+  const r=Math.min(1,Math.hypot(x,y));
+  if(r<1e-4) return [0,0,0];
+  const a=Math.atan2(y,x);
+  return [Math.cos(a)*r*amt, Math.cos(a-2.094395102390239)*r*amt, Math.cos(a+2.094395102390239)*r*amt];
+}
+function newCur(){ return {Y:[[0,0],[1,1]], R:null, G:null, B:null}; }
+function normCur(c){
+  const d=newCur();
+  if(!c||typeof c!=='object') return d;
+  ['Y','R','G','B'].forEach(k=>{
+    const v=c[k];
+    if(Array.isArray(v)&&v.length>=2){
+      d[k]=v.filter(p=>Array.isArray(p)&&p.length>=2)
+            .map(p=>[clamp(+p[0]||0,0,1),clamp(+p[1]||0,0,1)])
+            .sort((a,b)=>a[0]-b[0]);
+      if(d[k].length<2) d[k]=[[0,0],[1,1]];
+    }
+  });
+  return d;
+}
+function curFlat(c){
+  if(!c) return true;
+  let flat=true;
+  ['Y','R','G','B'].forEach(k=>{
+    const v=c[k]; if(!v) return;
+    if(v.length!==2 || Math.abs(v[0][1]-v[0][0])>1e-4 || Math.abs(v[1][1]-v[1][0])>1e-4) flat=false;
+  });
+  return flat;
+}
+
+/* ---------- SPL（簡化面）→ CDL ---------- */
+function splToCdl(s){
+  const base=Math.pow(2,(s.exp||0)/100*EXP_STOPS);
+  const k=1+(s.con||0)/100*CON_K;
+  const t=(s.temp||0)/100*TEMP_K, g=(s.tint||0)/100*TINT_K;
+  const wb=[1+t+g*0.5, 1-g, 1-t+g*0.5];
+  const S=[0,0,0], O=[0,0,0];
+  for(let i=0;i<3;i++){
+    const s0=base*wb[i];
+    S[i]=s0*k;
+    O[i]=CDL_PIVOT*s0*(1-k);      /* 對比唔郁樞紐點：out(0.18) 永遠 = 0.18×base×wb */
+  }
+  return {s:S,o:O,p:[1,1,1],sat:1+(s.sat||0)/100*SAT_K};
+}
+/* ---------- LGG（色輪面）→ CDL ---------- */
+function lggToCdl(l){
+  const S=[1,1,1], O=[0,0,0], P=[1,1,1];
+  for(let i=0;i<3;i++){
+    const gv=l.gamma? wheelToRGB(l.gamma.x,l.gamma.y,LGG_AMT.gamma)[i] : 0;
+    const lv=l.lift ? wheelToRGB(l.lift.x, l.lift.y, LGG_AMT.lift)[i]   : 0;
+    const ov=l.off  ? wheelToRGB(l.off.x,  l.off.y,  LGG_AMT.off)[i]    : 0;
+    const gai=l.gain? wheelToRGB(l.gain.x, l.gain.y, LGG_AMT.gain)[i]   : 0;
+    S[i]=1+gai;
+    P[i]=1/Math.max(0.12, 1+gv);
+    O[i]=lv+ov;
+  }
+  return {s:S,o:O,p:P,sat:1};
+}
+/* ---------- 串接兩套 CDL（A 嘅 Power 必須係 1）----------
+   out = ((in·Sa + Oa) · Sb + Ob)^Pb
+       = ( in·Sa·Sb + Oa·Sb + Ob )^Pb            —— 閉合，冇近似 */
+function composeCdl(A,B){
+  return {s:[A.s[0]*B.s[0], A.s[1]*B.s[1], A.s[2]*B.s[2]],
+          o:[A.o[0]*B.s[0]+B.o[0], A.o[1]*B.s[1]+B.o[1], A.o[2]*B.s[2]+B.o[2]],
+          p:[B.p[0],B.p[1],B.p[2]],
+          sat:A.sat*(B.sat===undefined?1:B.sat)};
+}
+const IDCDL=()=>({s:[1,1,1],o:[0,0,0],p:[1,1,1],sat:1});
+function normCdl(c){
+  const d=IDCDL();
+  if(!c||typeof c!=='object') return d;
+  ['s','o','p'].forEach(k=>{
+    /* Offset 係加減，可以負（正對比／Lift 向下）；Slope 同 Power 一定要正 */
+    const lo=(k==='o')? -2 : 0, hi=(k==='o')? 2 : 12;
+    if(Array.isArray(c[k])) for(let i=0;i<3;i++) d[k][i]=clamp(+c[k][i]||0, lo, hi);
+  });
+  if(isFinite(c.sat)) d.sat=clamp(+c.sat,0,4);
+  return d;
+}
+function cdlIsIdentity(c){
+  const E=1e-4;
+  return Math.abs(c.sat-1)<E && Math.abs(c.p[0]-1)<E && Math.abs(c.p[1]-1)<E && Math.abs(c.p[2]-1)<E
+      && Math.abs(c.o[0])<E && Math.abs(c.o[1])<E && Math.abs(c.o[2])<E
+      && Math.abs(c.s[0]-1)<E && Math.abs(c.s[1]-1)<E && Math.abs(c.s[2]-1)<E;
+}
+/* 而家生效嗰套 CDL（唯一真相） */
+function activeCdlFor(sec){
+  const s=sec||S.sec;
+  const spl=splToCdl(s);
+  const B=(S.toneMode==='num')? normCdl(s.cdlOv) : lggToCdl(normLgg(s.lgg));
+  return composeCdl(spl,B);
+}
+const activeCdl=()=>activeCdlFor(S.sec);
+
+/* ---------- 曲線 ---------- */
+function curveAt(pts,x){
+  const n=pts.length;
+  if(n<2) return x;
+  if(x<=pts[0][0]) return pts[0][1];
+  if(x>=pts[n-1][0]) return pts[n-1][1];
+  let i=0; while(i<n-2 && pts[i+1][0]<x) i++;
+  const p0=pts[Math.max(0,i-1)], p1=pts[i], p2=pts[i+1], p3=pts[Math.min(n-1,i+2)];
+  const dx=p2[0]-p1[0];
+  const t=dx>1e-9? (x-p1[0])/dx : 0;
+  const t2=t*t, t3=t2*t;
+  const v=0.5*(2*p1[1] + (-p0[1]+p2[1])*t
+             + (2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*t2
+             + (-p0[1]+3*p1[1]-3*p2[1]+p3[1])*t3);
+  return v<0?0:(v>1?1:v);
+}
+function buildCurveLUT(pts){
+  const L=new Float32Array(256);
+  for(let i=0;i<256;i++) L[i]=curveAt(pts,i/255)*255;
+  return L;
+}
+/* ---------- 逐通道後處理 LUT：曲線 → 保層次膝位 ---------- */
+function buildPostLUT(cur,protect){
+  const L=new Float32Array(256);
+  const lY=buildCurveLUT(cur.Y||[[0,0],[1,1]]);
+  const lR=cur.R? buildCurveLUT(cur.R) : lY;
+  const lG=cur.G? buildCurveLUT(cur.G) : lY;
+  const lB=cur.B? buildCurveLUT(cur.B) : lY;
+  const per=[lR,lG,lB];
+  for(let c=0;c<3;c++){
+    const t=per[c];
+    for(let i=0;i<256;i++){
+      /* 保層次：無論推到幾盡都唔會出現絕對 0 / 255，資訊永遠留得住 */
+      L[c*256+i] = protect? (0.070+0.875*(t[i]/255))*255 : t[i];
+    }
+  }
+  return L;
+}
+/* ---------- CDL 逐通道 LUT（輸入係 0..255 整數，快）---------- */
+function buildCdlLUT(cdl){
+  const L=new Float32Array(768);
+  for(let c=0;c<3;c++){
+    const s=cdl.s[c], o=cdl.o[c], p=cdl.p[c];
+    for(let i=0;i<256;i++){
+      let v=i/255*s+o;
+      if(v<0) v=0;
+      L[c*256+i]= p===1? v : Math.pow(v,p);
+    }
+  }
+  return L;
+}
+/* 精確版（匯出 .cube 用，輸入係 0..255 浮點） */
+function applyCdlRGB(r,g,b,cdl){
+  const x=[r/255,g/255,b/255];
+  for(let i=0;i<3;i++){
+    let v=x[i]*cdl.s[i]+cdl.o[i];
+    if(v<0) v=0;
+    x[i]= cdl.p[i]===1? v : Math.pow(v,cdl.p[i]);
+  }
+  const sat=cdl.sat;
+  if(sat!==1){
+    const Y=0.2126*x[0]+0.7152*x[1]+0.0722*x[2];
+    x[0]=Y+(x[0]-Y)*sat; x[1]=Y+(x[1]-Y)*sat; x[2]=Y+(x[2]-Y)*sat;
+  }
+  return x;
+}
+/* 完整後段（CDL → 曲線 → 保層次），畀 .cube 用 */
+function postProcessRGB(x,cur,protect){
+  for(let i=0;i<3;i++){
+    let v=x[i];
+    if(v<0)v=0; else if(v>1)v=1;
+    const pts=(i===0&&cur.R)||(i===1&&cur.G)||(i===2&&cur.B)||cur.Y||[[0,0],[1,1]];
+    v=curveAt(pts,v);
+    if(protect) v=0.070+0.875*v;
+    x[i]=v;
+  }
+  return x;
+}
+/* ---------- .cdl（ASC CDL XML）---------- */
+function makeCdlText(){
+  const cdl=activeCdl();
+  const it=allItems()[S.active]||{name:'-'};
+  const f=v=>{
+    let s=(Math.round(v*1000000)/1000000).toFixed(6);
+    if(s==='-0.000000') s='0.000000';
+    return s;
+  };
+  return '<?xml version="1.0" encoding="UTF-8"?>\n'+
+    '<ColorDecisionList xmlns="urn:ASC:CDL:v1.2">\n'+
+    '  <ColorDecision>\n'+
+    '    <MediaRef ref=""/>\n'+
+    '    <ColorCorrection id="'+escXml(S.vendorName||'look-direction')+'">\n'+
+    '      <SOPNode>\n'+
+    '        <Slope>'+f(cdl.s[0])+' '+f(cdl.s[1])+' '+f(cdl.s[2])+'</Slope>\n'+
+    '        <Offset>'+f(cdl.o[0])+' '+f(cdl.o[1])+' '+f(cdl.o[2])+'</Offset>\n'+
+    '        <Power>'+f(cdl.p[0])+' '+f(cdl.p[1])+' '+f(cdl.p[2])+'</Power>\n'+
+    '      </SOPNode>\n'+
+    '      <SatNode>\n'+
+    '        <Saturation>'+f(cdl.sat)+'</Saturation>\n'+
+    '      </SatNode>\n'+
+    '    </ColorCorrection>\n'+
+    '  </ColorDecision>\n'+
+    '  <Description>Generated by Look Direction v12 · ref: '+escXml(it.name)+
+       ' · chroma '+S.chromaStr+'% tone '+S.toneStr+'%'+
+       (curFlat(S.sec.cur)?'':' · +curve')+'</Description>\n'+
+    '</ColorDecisionList>\n';
+}
+function escXml(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                  .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 /* ============================================================
@@ -1137,13 +1498,25 @@ function applyPal(L,a,b,pal,skinProt,mf){
   return [L,na,nb];
 }
 
-/* 一條龍：追色 + 色板 + 二次創作 */
+/* RGB 收尾：ASC CDL → 曲線 → 保層次（三樣都係 RGB 運算，擺喺 Lab 之後） */
+function finishRGB(c,sec,opt){
+  const _s=sec||S.sec;
+  const cdl=activeCdlFor(_s);
+  const cur=normCur(_s.cur);
+  if(cdlIsIdentity(cdl) && curFlat(cur) && !opt.protect) return c;
+  const x=applyCdlRGB(c[0],c[1],c[2],cdl);
+  postProcessRGB(x,cur,!!opt.protect);
+  return [clamp(Math.round(x[0]*255),0,255),
+          clamp(Math.round(x[1]*255),0,255),
+          clamp(Math.round(x[2]*255),0,255)];
+}
+/* 一條龍：追色 + 色板 + 分區 + ASC CDL */
 function gradeRGB(r,g,b,grade,opt,sec,plan,pal){
   const lab=rgbToLab(Math.round(r),Math.round(g),Math.round(b));
   let q=applyPixel(lab[0],lab[1],lab[2],grade,opt);
   if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProt);
   if(plan&&plan.active) q=applySec(q[0],q[1],q[2],sec,plan);
-  return labToRgb(q[0],q[1],q[2]);
+  return finishRGB(labToRgb(q[0],q[1],q[2]),sec,opt);
 }
 function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
   const n=lab.n, out=new ImageData(lab.w,lab.h), o=out.data;
@@ -1158,16 +1531,36 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
     return out;
   }
   const useSec = plan&&plan.active;
-  const prot = !!opt.protect;
   /* 膚色 mask 場（整個 render 計一次，空間平滑 —— 消走逐 pixel 判定嘅斑點） */
   const sm=(opt.skinProt&&(pal||grade))?buildSkinField(lab):null;
+  /* v12：CDL + 曲線 + 保層次 全部喺 RGB 度做。
+     逐通道部分預先拆成 LUT（256 格），每粒 pixel 淨係 3 次查表 + 一次 luma 混合，
+     所以即使多咗 CDL 同曲線，全解 render 都唔會慢。 */
+  const _s=sec||S.sec;
+  const cdl=activeCdlFor(_s);
+  const cur=normCur(_s.cur);
+  const need = !cdlIsIdentity(cdl) || !!opt.protect || !curFlat(cur);
+  const clut = need? buildCdlLUT(cdl)   : null;
+  const plut = need? buildPostLUT(cur, !!opt.protect) : null;
+  const sat  = cdl.sat;
   for(let i=0;i<n;i++){
     const mf=sm?sampleSkin(sm,lab.w,lab.h,i):undefined;
     let q=applyPixel(lab.L[i],lab.a[i],lab.b[i],grade,opt,mf);
     if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProt,mf);
     if(useSec) q=applySec(q[0],q[1],q[2],sec,plan);
-    if(prot) q[0]=protectL(q[0]);
-    const c=labToRgb(q[0],q[1],q[2]), p=i*4;
+    let c=labToRgb(q[0],q[1],q[2]);
+    if(need){
+      let x0=clut[c[0]], x1=clut[256+c[1]], x2=clut[512+c[2]];
+      if(sat!==1){
+        const Y=0.2126*x0+0.7152*x1+0.0722*x2;
+        x0=Y+(x0-Y)*sat; x1=Y+(x1-Y)*sat; x2=Y+(x2-Y)*sat;
+      }
+      let b0=x0*255; b0=b0<0?0:(b0>255?255:b0);
+      let b1=x1*255; b1=b1<0?0:(b1>255?255:b1);
+      let b2=x2*255; b2=b2<0?0:(b2>255?255:b2);
+      c[0]=plut[b0|0]; c[1]=plut[256+(b1|0)]; c[2]=plut[512+(b2|0)];
+    }
+    const p=i*4;
     o[p]=c[0]; o[p+1]=c[1]; o[p+2]=c[2]; o[p+3]=255;
   }
   return out;
@@ -1236,11 +1629,17 @@ function buildDirection(src,ref,g,opt){
 function secSummary(s){
   const out=[];
   const add=(n,v)=>{ if(Math.abs(v)>0.5) out.push(n+fmt1(v)); };
-  add('曝光',s.exp); add('對比',s.con); add('高光',s.high);
-  add('陰影',s.shad); add('白位',s.white); add('黑位',s.black);
+  /* v12：曝光直接用攝影單位（級光圈）講，供應商一睇就明 */
+  if(Math.abs(s.exp)>0.5){
+    const st=s.exp/100*EXP_STOPS;
+    out.push('曝光 '+fmt1(s.exp)+'（'+(st>0?'+':'')+st.toFixed(2)+' 級光圈）');
+  }
+  add('對比',s.con);
   add('色溫（正=加暖／負=偏藍）',s.temp);
   add('色調（正=洋紅／負=綠）',s.tint);
-  add('飽和度',s.sat); add('自然飽和',s.vib);
+  add('飽和度',s.sat);
+  add('高光',s.high); add('陰影',s.shad); add('白位',s.white); add('黑位',s.black);
+  add('自然飽和',s.vib);
   for(const b of HSLB){
     const c=s.hsl[b.id];
     if(c.h||c.s||c.l){
@@ -1255,6 +1654,17 @@ function secSummary(s){
     const z=s[w.id];
     if(z.s>0.5||z.l) out.push('分區調色 '+w.name+'：色相 '+z.h+'° 強度 '+z.s+' 明度'+fmt1(z.l));
   }
+  /* ASC CDL：無論用邊個操作面，出口都係同一套標準值，供應商可以直接 import */
+  try{
+    const cd=activeCdlFor(s);
+    if(!cdlIsIdentity(cd)){
+      const f=v=>v.toFixed(4);
+      out.push('ASC CDL　Slope '+f(cd.s[0])+' '+f(cd.s[1])+' '+f(cd.s[2])+
+               '　Offset '+f(cd.o[0])+' '+f(cd.o[1])+' '+f(cd.o[2])+
+               '　Power '+f(cd.p[0])+' '+f(cd.p[1])+' '+f(cd.p[2])+
+               '　Sat '+f(cd.sat));
+    }
+  }catch(_){}
   if(s.palOn){
     let t='色板模式：融合 '+Math.round(s.palBlend)+'%';
     const ov=s.palOv||{}, nm={sh:'暗',mid:'中',hi:'亮'};
@@ -1317,8 +1727,15 @@ const S={
   /* 方向注入：palPlan 係 render 時嘅快取；palView = 牆／傳統色板切換（v9 加返）；
      palSel 係色板 view 揀緊邊個位（暗/中/亮）—— 兩個都係 UI state，唔入 snapshot */
   palPlan:null, palView:'wall', palSel:'mid', palWallMode:'color', dirQ:'',
-  skinProt:100                             /* 膚色保護力度 %（0=唔保，100=全保） */
+  skinProt:100,                            /* 膚色保護力度 %（0=唔保，100=全保） */
+  /* v12：調色操作面（簡化/色輪/曲線/數值）、曲線通道、示波器 */
+  toneMode:'spl', curCh:'Y', scopeMode:'hist', scopeFold:false
 };
+try{ const _tm=localStorage.getItem('ld.tone');
+     if(_tm==='spl'||_tm==='wheel'||_tm==='curve'||_tm==='num') S.toneMode=_tm; }catch(_){}
+try{ const _sm=localStorage.getItem('ld.scope');
+     if(_sm==='hist'||_sm==='wave'||_sm==='vec') S.scopeMode=_sm; }catch(_){}
+try{ if(localStorage.getItem('ld.scopefold')==='1') S.scopeFold=true; }catch(_){}
 /* 記住用家上次的 view 選擇（牆定色板） */
 try{ const _pv=localStorage.getItem('ld.palview'); if(_pv==='sw'||_pv==='wall') S.palView=_pv; }catch(_){}
 /* 記住方向牆嘅子模式（顏色方向 / 變數） */
@@ -2107,6 +2524,10 @@ function applySnap(snap,msg){
   if(typeof updateGroupDots==='function') updateGroupDots();
   if(typeof refreshHueBar==='function') refreshHueBar();
   if(typeof drawAllWheels==='function') drawAllWheels();
+  if(typeof drawLggWheels==='function') drawLggWheels();
+  if(typeof drawCurveUI==='function') drawCurveUI();
+  if(typeof updateNumUI==='function') updateNumUI();
+  if(typeof updateToneSurfaces==='function') updateToneSurfaces();
   renderPresets();
   scheduleRender();
   applyingHist=false;
@@ -2133,11 +2554,6 @@ function updateHistBtns(){
 }
 function toggleLock(){
   S.locked=!S.locked;
-  const b=$('b-lock');
-  if(b){
-    b.classList.toggle('pri',S.locked);
-    b.textContent=S.locked?'🔒 原圖':'◧ 原圖';
-  }
   document.body.classList.toggle('locked',S.locked);
   const lp=$('lockpill'); if(lp) lp.hidden=!S.locked;
   updateABBadge();
@@ -2162,11 +2578,6 @@ function updateABBadge(){
 function toggleAB(){
   if(!S.vendorImg){ toast('先入來稿 · A/B 對比要張圖先得'); return; }
   S.locked=S.locked?0:1;
-  const b=$('b-lock');
-  if(b){
-    b.classList.toggle('pri',S.locked);
-    b.textContent=S.locked?'🔒 原圖':'◧ 原圖';
-  }
   document.body.classList.toggle('locked',S.locked);
   const lp=$('lockpill'); if(lp) lp.hidden=!S.locked;
   updateABBadge();
@@ -2193,13 +2604,355 @@ const SECDEF=[
 function secChanged(){ S.pvKey++; S.pvCache.clear(); scheduleRender(); updateGroupDots(); schedulePalWall(); }
 function secCommitted(){ renderPresets(); }
 
+/* ---------- v12：LGG 色輪 ---------- */
+function rgbToWheel(v,amt){
+  const k=Math.sqrt(v[0]*v[0] + Math.pow((v[1]-v[2])/1.7320508,2));
+  if(k<1e-6) return {x:0,y:0};
+  const r=Math.min(1,k/amt);
+  const X=v[0]/k, Y=(v[1]-v[2])/(1.7320508*k);
+  return {x:r*X, y:r*Y};
+}
+function cdlToLgg(c){
+  const l=newLgg();
+  const gain=[c.s[0]-1,c.s[1]-1,c.s[2]-1];
+  const gv=[1/Math.max(0.12,c.p[0])-1, 1/Math.max(0.12,c.p[1])-1, 1/Math.max(0.12,c.p[2])-1];
+  l.gain =rgbToWheel(gain,LGG_AMT.gain);
+  l.gamma=rgbToWheel(gv,  LGG_AMT.gamma);
+  l.lift =rgbToWheel([c.o[0],c.o[1],c.o[2]], LGG_AMT.lift);
+  l.off  ={x:0,y:0};
+  return l;
+}
+function drawLggWheels(){
+  document.querySelectorAll('.wheelgrid canvas[data-lg]').forEach(c=>{
+    const id=c.dataset.lg, L0=LGG_L0[id]||50;
+    const S0=68, R=31, x=c.getContext('2d');
+    const idat=x.createImageData(S0,S0), d=idat.data;
+    for(let y=0;y<S0;y++)for(let xx=0;xx<S0;xx++){
+      const dx=(xx-S0/2)/R, dy=(y-S0/2)/R, p=(y*S0+xx)*4;
+      const rr=Math.hypot(dx,dy);
+      if(rr>1){ d[p+3]=0; continue; }
+      const a=Math.atan2(dy,dx);
+      const w=[Math.cos(a),Math.cos(a-2.094395102390239),Math.cos(a+2.094395102390239)];
+      const m=(id==='lift'||id==='off')? 0.085*rr : (id==='gain'? 0.60*rr : 0.50*rr);
+      const col=labToRgb(L0, (id==='gain'? w[0]*m*30 : w[0]*m*30), 0);
+      /* 直接由 wheelToRGB 推返顯示色：Slope/Offset/Power 三種權重同色相一致 */
+      const rgb=[0,0,0];
+      for(let i=0;i<3;i++){
+        rgb[i]= id==='gain'? clamp(128+w[i]*m*127,0,255)
+              : (id==='gamma'? clamp(128+w[i]*m*127,0,255)
+                             : clamp(128+w[i]*m*400,0,255));
+      }
+      d[p]=rgb[0]; d[p+1]=rgb[1]; d[p+2]=rgb[2]; d[p+3]=255;
+      void col;
+    }
+    x.putImageData(idat,0,0);
+    const z=(S.sec.lgg&&S.sec.lgg[id])||{x:0,y:0};
+    const px=S0/2+z.x*R, py=S0/2+z.y*R;
+    x.beginPath(); x.arc(S0/2,S0/2,R,0,6.2832);
+    x.strokeStyle='rgba(255,255,255,.13)'; x.lineWidth=1; x.stroke();
+    x.beginPath(); x.arc(px,py,4.5,0,6.2832);
+    x.fillStyle='#fff'; x.fill();
+    x.lineWidth=2; x.strokeStyle='rgba(0,0,0,.7)'; x.stroke();
+    const on=Math.hypot(z.x,z.y)>0.02;
+    c.dataset.on=on?'1':'0';
+    const lb=document.querySelector('.wlb b[data-lg="'+id+'"]');
+    if(lb){
+      const deg=Math.round((Math.atan2(z.y,z.x)*180/Math.PI+360)%360);
+      lb.textContent = on? (Math.round(Math.hypot(z.x,z.y)*100)+'% '+deg+'°') : '—';
+      lb.classList.toggle('on',on);
+    }
+  });
+}
+function wireLggWheel(canvas,id){
+  let on=false;
+  const Z=()=>{ if(!S.sec.lgg) S.sec.lgg=newLgg(); if(!S.sec.lgg[id]) S.sec.lgg[id]={x:0,y:0};
+                return S.sec.lgg[id]; };
+  let before=null, sh=false, ax=0, ay=0, x0=0, y0=0;
+  function pick(e,anchor){
+    const r=canvas.getBoundingClientRect(); if(!r.width) return;
+    const z=Z();
+    if(e.shiftKey&&!anchor){
+      const dx=(e.clientX-ax)/r.width, dy=(e.clientY-ay)/r.height;
+      z.x=clamp(x0+dx*0.4,-1,1); z.y=clamp(y0-dy*0.4,-1,1);
+    }else{
+      const dx=(e.clientX-r.left)/r.width*2-1, dy=(e.clientY-r.top)/r.height*2-1;
+      z.x=clamp(dx,-1,1); z.y=clamp(-dy,-1,1);
+    }
+    drawLggWheels(); updateGroupDots(); scheduleRender(true);
+  }
+  canvas.addEventListener('pointerdown',e=>{
+    e.preventDefault(); e.stopPropagation();
+    on=true; sh=e.shiftKey;
+    const r=canvas.getBoundingClientRect();
+    ax=e.clientX; ay=e.clientY;
+    const z=Z(); x0=z.x; y0=z.y;
+    before=snapshot();
+    try{ canvas.setPointerCapture(e.pointerId); }catch(_){}
+    pick(e,true); void r;
+  });
+  canvas.addEventListener('pointermove',e=>{
+    if(!on) return;
+    if(e.shiftKey!==sh){ sh=e.shiftKey; ax=e.clientX; ay=e.clientY; const z=Z(); x0=z.x; y0=z.y; }
+    pick(e,false);
+  });
+  const end=()=>{
+    if(!on) return; on=false;
+    if(before){
+      S.hist.push({label:'色輪 '+(LGG_DEF.find(w=>w.id===id)||{name:id}).name,snap:before});
+      if(S.hist.length>S.histCap) S.hist.shift();
+      S.fut.length=0; updateHistBtns();
+    }
+    before=null; scheduleRender(); secCommitted();
+  };
+  canvas.addEventListener('pointerup',end);
+  canvas.addEventListener('pointercancel',end);
+  canvas.addEventListener('dblclick',e=>{
+    e.stopPropagation();
+    pushHistNow('色輪歸零 '+id);
+    const z=Z(); z.x=0; z.y=0;
+    drawLggWheels(); updateGroupDots(); scheduleRender(); secCommitted();
+  });
+}
+
+/* ---------- v12：曲線 ---------- */
+function curPts(){
+  if(!S.sec.cur) S.sec.cur=newCur();
+  const k=S.curCh;
+  if(k!=='Y' && !S.sec.cur[k]) S.sec.cur[k]=[[0,0],[1,1]];
+  return S.sec.cur[k]||S.sec.cur.Y;
+}
+function drawCurveUI(){
+  const c=$('curcv'); if(!c) return;
+  const W=c.width, H=c.height;
+  const x=c.getContext('2d');
+  x.clearRect(0,0,W,H);
+  x.fillStyle='#0f1013'; x.fillRect(0,0,W,H);
+  x.strokeStyle='rgba(255,255,255,.07)'; x.lineWidth=1;
+  for(let i=1;i<4;i++){
+    const gx=W*i/4, gy=H*i/4;
+    x.beginPath(); x.moveTo(gx,0); x.lineTo(gx,H); x.stroke();
+    x.beginPath(); x.moveTo(0,gy); x.lineTo(W,gy); x.stroke();
+  }
+  x.strokeStyle='rgba(255,255,255,.16)';
+  x.beginPath(); x.moveTo(0,H); x.lineTo(W,0); x.stroke();
+  const COL={Y:'#d8dde6', R:'#e0675f', G:'#5fb37a', B:'#5b83d6'};
+  const all=S.sec.cur||newCur();
+  ['Y','R','G','B'].forEach(k=>{
+    const pts=all[k]; if(!pts||k!=='Y'&&k!==S.curCh&&k!=='Y') return;
+    if(k!=='Y'&&k!==S.curCh) return;
+    x.strokeStyle=(k===S.curCh)? COL[k] : 'rgba(255,255,255,.22)';
+    x.lineWidth=(k===S.curCh)?2.5:1.5;
+    x.beginPath();
+    for(let i=0;i<W;i++){
+      const v=curveAt(pts,i/(W-1));
+      const px=i, py=H-v*H;
+      if(i===0) x.moveTo(px,py); else x.lineTo(px,py);
+    }
+    x.stroke();
+  });
+  const pts=curPts();
+  x.fillStyle=COL[S.curCh]||'#d8dde6';
+  for(const p of pts){
+    x.beginPath(); x.arc(p[0]*W, H-p[1]*H, 5, 0, 6.2832); x.fill();
+    x.lineWidth=2; x.strokeStyle='rgba(0,0,0,.6)'; x.stroke();
+  }
+  c.dataset.n=String(pts.length);
+  document.querySelectorAll('#curtabs button').forEach(b=>b.classList.toggle('on',b.dataset.c===S.curCh));
+}
+function wireCurve(canvas){
+  let drag=-1, moved=false;
+  function toXY(e){
+    const r=canvas.getBoundingClientRect(); if(!r.width||!r.height) return null;
+    return {x:clamp((e.clientX-r.left)/r.width,0,1), y:clamp(1-(e.clientY-r.top)/r.height,0,1)};
+  }
+  canvas.addEventListener('pointerdown',e=>{
+    e.preventDefault(); e.stopPropagation();
+    const p=toXY(e); if(!p) return;
+    if(S.curCh!=='Y'&&!S.sec.cur[S.curCh]) S.sec.cur[S.curCh]=[[0,0],[1,1]];
+    const pts=curPts();
+    const th=0.075;
+    let best=-1,bd=1e9;
+    for(let i=0;i<pts.length;i++){
+      const d=Math.hypot(pts[i][0]-p.x,(pts[i][1]-p.y)*0.75);
+      if(d<bd){ bd=d; best=i; }
+    }
+    if(bd>th){
+      pts.push([p.x,p.y]); pts.sort((a,b)=>a[0]-b[0]);
+      best=pts.length-1;
+      for(let i=0;i<pts.length;i++) if(pts[i][0]===p.x&&pts[i][1]===p.y){ best=i; break; }
+    }
+    drag=best; moved=false;
+    try{ canvas.setPointerCapture(e.pointerId); }catch(_){}
+  });
+  canvas.addEventListener('pointermove',e=>{
+    if(drag<0) return;
+    const p=toXY(e); if(!p) return;
+    const pts=curPts(); if(!pts[drag]) return;
+    const isEnd=(drag===0||drag===pts.length-1);
+    if(!isEnd){
+      const lo=drag>0? pts[drag-1][0]+0.008 : 0;
+      const hi=drag<pts.length-1? pts[drag+1][0]-0.008 : 1;
+      pts[drag][0]=clamp(p.x,lo,hi);
+    }
+    pts[drag][1]=p.y;
+    if(isEnd) pts[drag][0]=drag===0?0:1;
+    moved=true;
+    drawCurveUI(); updateGroupDots(); scheduleRender(true);
+  });
+  const end=()=>{
+    if(drag<0) return;
+    drag=-1;
+    if(moved){
+      pushHistNow('曲線 '+S.curCh);
+      scheduleRender(); secCommitted();
+    }
+  };
+  canvas.addEventListener('pointerup',end);
+  canvas.addEventListener('pointercancel',end);
+  canvas.addEventListener('dblclick',e=>{
+    e.stopPropagation();
+    const p=toXY(e); if(!p) return;
+    const pts=curPts();
+    if(pts.length<=2){ return; }
+    let best=-1,bd=1e9;
+    for(let i=1;i<pts.length-1;i++){
+      const d=Math.hypot(pts[i][0]-p.x,(pts[i][1]-p.y)*0.75);
+      if(d<bd){ bd=d; best=i; }
+    }
+    if(best>0&&bd<0.09){
+      pushHistNow('曲線刪點');
+      pts.splice(best,1);
+      drawCurveUI(); updateGroupDots(); scheduleRender(); secCommitted();
+    }
+  });
+}
+
+/* ---------- v12：數值面 ---------- */
+function buildNumUI(){
+  const box=$('tnum'); if(!box) return;
+  box.innerHTML='';
+  const rows=[['s','Slope','斜率'],['o','Offset','偏移'],['p','Power','伽瑪']];
+  rows.forEach(([k,en,zh])=>{
+    const r=document.createElement('div'); r.className='cdlrow';
+    const rk=document.createElement('span'); rk.className='rk'; rk.textContent=en;
+    r.appendChild(rk);
+    for(let i=0;i<3;i++){
+      const cv=document.createElement('span'); cv.className='cv';
+      const inp=document.createElement('input');
+      inp.type='text'; inp.inputmode='decimal'; inp.spellcheck='false'; inp.autocomplete='off';
+      inp.dataset.cdl=k+i;
+      inp.addEventListener('keydown',e=>{
+        e.stopPropagation();
+        if(e.key==='Enter'){ e.preventDefault(); commitNum(inp); inp.blur(); }
+        else if(e.key==='Escape'){ e.preventDefault(); updateNumUI(); inp.blur(); }
+      });
+      inp.addEventListener('blur',()=>commitNum(inp));
+      cv.appendChild(inp); r.appendChild(cv);
+    }
+    box.appendChild(r);
+    void zh;
+  });
+  const rs=document.createElement('div'); rs.className='cdlrow';
+  const rk=document.createElement('span'); rk.className='rk'; rk.textContent='Sat';
+  rs.appendChild(rk);
+  const cvs=document.createElement('span'); cvs.className='cv'; cvs.style.gridColumn='span 3';
+  const si=document.createElement('input');
+  si.type='text'; si.inputmode='decimal'; si.spellcheck='false'; si.autocomplete='off'; si.dataset.cdl='sat';
+  si.addEventListener('keydown',e=>{
+    e.stopPropagation();
+    if(e.key==='Enter'){ e.preventDefault(); commitNum(si); si.blur(); }
+    else if(e.key==='Escape'){ e.preventDefault(); updateNumUI(); si.blur(); }
+  });
+  si.addEventListener('blur',()=>commitNum(si));
+  cvs.appendChild(si); rs.appendChild(cvs);
+  box.appendChild(rs);
+
+  const out=document.createElement('div'); out.className='cdlout'; out.id='cdlout';
+  box.appendChild(out);
+  const bt=document.createElement('div'); bt.className='rowbtns'; bt.style.marginTop='7px';
+  const b1=document.createElement('button'); b1.className='b sm'; b1.type='button'; b1.textContent='抄 CDL 數值';
+  b1.onclick=()=>{
+    const c=activeCdl();
+    const t='S '+c.s.map(v=>v.toFixed(4)).join(' ')+'\nO '+c.o.map(v=>v.toFixed(4)).join(' ')+'\nP '+c.p.map(v=>v.toFixed(4)).join(' ')+'\nSAT '+c.sat.toFixed(4);
+    if(navigator.clipboard) navigator.clipboard.writeText(t).catch(()=>{});
+    b1.textContent='抄咗 ✓'; setTimeout(()=>{b1.textContent='抄 CDL 數值';},1400);
+  };
+  bt.appendChild(b1);
+  const b2=document.createElement('button'); b2.className='b sm'; b2.type='button'; b2.textContent='歸零';
+  b2.onclick=()=>{
+    pushHistNow('CDL 數值歸零');
+    S.sec.cdlOv=IDCDL(); updateNumUI(); secChanged(); secCommitted();
+  };
+  bt.appendChild(b2);
+  box.appendChild(bt);
+  updateNumUI();
+}
+function numVal(inp){
+  const n=parseFloat(String(inp.value==null?'':inp.value).replace(/[^0-9.\-]/g,''));
+  return isFinite(n)? n : null;
+}
+function commitNum(inp){
+  const k=inp.dataset.cdl, n=numVal(inp);
+  if(n===null){ updateNumUI(); return; }
+  const c=normCdl(S.sec.cdlOv);
+  if(k==='sat') c.sat=clamp(n,0,4);
+  else{
+    const key=k[0], i=+k[1];
+    c[key][i]=clamp(n, key==='o'? -2 : 0, 12);
+    if(key==='p') c[key][i]=Math.max(0.05,c[key][i]);
+  }
+  S.sec.cdlOv=c;
+  updateNumUI(); updateGroupDots(); scheduleRender(); secCommitted();
+}
+function updateNumUI(){
+  const c=activeCdl();
+  const dflt={s:[1,1,1],o:[0,0,0],p:[1,1,1],sat:1};
+  document.querySelectorAll('#tnum input[data-cdl]').forEach(inp=>{
+    if(document.activeElement===inp) return;
+    const k=inp.dataset.cdl;
+    const v= k==='sat'? c.sat : c[k[0]][+k[1]];
+    inp.value=(Math.round(v*10000)/10000).toFixed(4);
+    const base= k==='sat'? dflt.sat : dflt[k[0]][+k[1]];
+    inp.parentNode.classList.toggle('mod', Math.abs(v-base)>1e-4);
+  });
+  const out=$('cdlout');
+  if(out){
+    const f=v=>(v<0?'':' ')+v.toFixed(4);
+    out.textContent='Slope  '+f(c.s[0])+f(c.s[1])+f(c.s[2])+'\n'+
+                    'Offset '+f(c.o[0])+f(c.o[1])+f(c.o[2])+'\n'+
+                    'Power  '+f(c.p[0])+f(c.p[1])+f(c.p[2])+'\n'+
+                    'Sat    '+f(c.sat);
+  }
+}
+
+/* ---------- v12：操作面切換 ---------- */
+function setToneMode(v){
+  if(S.toneMode===v) return;
+  try{ localStorage.setItem('ld.tone',v); }catch(_){}
+  if(v==='num') S.sec.cdlOv=lggToCdl(normLgg(S.sec.lgg));
+  else if(S.toneMode==='num') S.sec.lgg=cdlToLgg(normCdl(S.sec.cdlOv));
+  S.toneMode=v;
+  updateToneSurfaces();
+  scheduleRender();
+}
+function updateToneSurfaces(){
+  const seg=$('tonemode');
+  if(seg) seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.v===S.toneMode));
+  const show={spl:'tspl', wheel:'twheel', curve:'tcurve', num:'tnum'};
+  ['tspl','twheel','tcurve','tnum'].forEach(id=>{
+    const e=$(id); if(e) e.style.display = (show[S.toneMode]===id)? '' : 'none';
+  });
+  if(S.toneMode==='wheel') drawLggWheels();
+  if(S.toneMode==='curve') drawCurveUI();
+  if(S.toneMode==='num')   updateNumUI();
+}
+
+/* ---------- 調控板 ---------- */
 function buildLeftPanel(){
   const box=$('grpbox'); box.innerHTML='';
 
   /* --- 追色（永遠開） --- */
   const g1=mkGroup(box,'match','追色（參考匹配）',true);
-  /* 呢兩條之前得 onInput 同 renderPresets() —— 主畫面從來冇 render 過，
-     所以「拉極都冇反應」。而家 set() 會自動出預覽，onCommit 再出全解 + 重出縮圖。 */
   makeSlider(g1.body,'chromaStr',{label:'色調強度',min:0,max:100,def:70,value:S.chromaStr,unit:'%',
     onInput:v=>{S.chromaStr=v;},
     onCommit:()=>{S.pvKey++;S.pvCache.clear();renderPresets();scheduleRender();}});
@@ -2209,7 +2962,7 @@ function buildLeftPanel(){
 
   const bandWrap=document.createElement('div');
   bandWrap.className='checks';
-  bandWrap.style.cssText='display:flex;flex-direction:column;gap:6px;margin:6px 0 8px';
+  bandWrap.style.cssText='display:flex;flex-direction:column;gap:5px;margin:6px 0 8px';
   [['b0','陰影色調',true],['b1','中間調色調',true],['b2','高光色調',true]].forEach(([id,lb,ck])=>{
     const l=document.createElement('label'); l.className='chk';
     l.innerHTML='<input type="checkbox" id="'+id+'" '+(ck?'checked':'')+'> '+lb;
@@ -2220,7 +2973,7 @@ function buildLeftPanel(){
 
   const optWrap=document.createElement('div');
   optWrap.className='checks';
-  optWrap.style.cssText='display:flex;flex-direction:column;gap:6px';
+  optWrap.style.cssText='display:flex;flex-direction:column;gap:5px';
   [['tone','跟 reference 改光暗分佈',true],['skin','保護膚色',true],['protect','保層次 · 唔准死黑爆光',false]].forEach(([id,lb,ck])=>{
     const l=document.createElement('label'); l.className='chk';
     l.innerHTML='<input type="checkbox" id="'+id+'" '+(ck?'checked':'')+'> '+lb;
@@ -2234,9 +2987,8 @@ function buildLeftPanel(){
   g1.body.appendChild(optWrap);
   g1.secKeys=['chromaStr','toneStr'];
 
-  /* --- 方向注入（v9）：方向牆 + 傳統色板，頂部切換；融合桿同 P 鍵共用 --- */
+  /* --- 方向注入 --- */
   const g1b=mkGroup(box,'palette','方向預覽 DIRECTIONS',false);
-  /* view 切換掣：方向牆（實圖預覽）／色板（v6 傳統色票） */
   const vseg=document.createElement('div'); vseg.className='palseg'; vseg.id='palview';
   [['wall','方向牆'],['sw','色板']].forEach(([v,lb])=>{
     const b=document.createElement('button'); b.type='button'; b.dataset.v=v; b.textContent=lb;
@@ -2244,10 +2996,7 @@ function buildLeftPanel(){
     vseg.appendChild(b);
   });
   g1b.body.appendChild(vseg);
-
-  /* 牆 view：顏色方向 / 變數 兩種，全部用你真圖即場渲染，撳就注入 */
   const wallbox=document.createElement('div'); wallbox.id='palwallbox';
-  /* 子切換掣：顏色方向（6 色 + 忠實）/ 變數（忠實基準 + 四軸 ±） */
   const wmseg=document.createElement('div'); wmseg.className='palseg'; wmseg.id='palwmode';
   [['color','顏色'],['var','變數'],['dir','導演']].forEach(([v,lb])=>{
     const b=document.createElement('button'); b.type='button'; b.dataset.v=v; b.textContent=lb;
@@ -2271,7 +3020,6 @@ function buildLeftPanel(){
   g1b.body.appendChild(wallbox);
   buildWallTiles();
 
-  /* 色板 view（v6 傳統版）：忠實/色板 seg + 色票行 + 暗/中/亮 位 */
   const swbox=document.createElement('div'); swbox.id='palswbox'; swbox.style.display='none';
   const pseg=document.createElement('div'); pseg.className='palseg'; pseg.id='palseg';
   [['0','忠實'],['1','色板']].forEach(([m,lb])=>{
@@ -2312,38 +3060,98 @@ function buildLeftPanel(){
   g1b.secKeys=null;
   refreshPalUI();
 
-  /* --- 光暗 --- */
-  const g2=mkGroup(box,'tone','光暗 TONE',false);
-  ['exp','con','high','shad','white','black'].forEach(k=>{
-    const d=SECDEF.find(x=>x.k===k);
+  /* --- 調色（ASC CDL）：主掣 + 四個操作面 --- */
+  const gt=mkGroup(box,'cdl','調色 ASC CDL',true);
+  const tseg=document.createElement('div'); tseg.className='seg'; tseg.id='tonemode';
+  [['spl','簡化'],['wheel','色輪'],['curve','曲線'],['num','數值']].forEach(([v,lb])=>{
+    const b=document.createElement('button'); b.type='button'; b.dataset.v=v; b.textContent=lb;
+    b.onclick=()=>setToneMode(v);
+    tseg.appendChild(b);
+  });
+  gt.body.appendChild(tseg);
+
+  /* 主掣：任何操作面都喺度（曝光／對比／飽和 = CDL 嘅 Slope 同 Saturation） */
+  [['exp','曝光'],['con','對比']].forEach(([k,lb])=>{
+    makeSlider(gt.body,k,{label:lb,min:-100,max:100,def:0,value:S.sec[k],
+      onInput:v=>{S.sec[k]=v;},onCommit:()=>{secChanged();updateNumUI();secCommitted();}});
+  });
+
+  /* 簡化面：色溫 + 色調 */
+  const splB=document.createElement('div'); splB.id='tspl';
+  [['temp','色溫　冷←→暖'],['tint','色調　綠←→洋紅']].forEach(([k,lb])=>{
+    makeSlider(splB,k,{label:lb,min:-100,max:100,def:0,value:S.sec[k],
+      onInput:v=>{S.sec[k]=v;},onCommit:()=>{secChanged();updateNumUI();secCommitted();}});
+  });
+  const splHint=document.createElement('div'); splHint.className='cdlhint';
+  splHint.textContent='曝光／對比／色溫／色調 → CDL Slope（對比鎖 18% 中灰樞紐）；飽和 → SatNode。';
+  splB.appendChild(splHint);
+  gt.body.appendChild(splB);
+
+  /* 色輪面：Lift / Gamma / Gain / Offset */
+  const whB=document.createElement('div'); whB.id='twheel';
+  const wg=document.createElement('div'); wg.className='wheelgrid';
+  LGG_DEF.forEach(w=>{
+    const d=document.createElement('div'); d.className='wheel';
+    const c=document.createElement('canvas'); c.width=68; c.height=68; c.dataset.lg=w.id;
+    c.setAttribute('aria-label',w.name+' 色輪');
+    d.appendChild(c);
+    const lb=document.createElement('div'); lb.className='wlb';
+    lb.innerHTML=w.name.split(' ')[0]+'<b data-lg="'+w.id+'"></b>';
+    d.appendChild(lb);
+    wg.appendChild(d);
+    wireLggWheel(c,w.id);
+  });
+  whB.appendChild(wg);
+  const whHint=document.createElement('div'); whHint.className='cdlhint';
+  whHint.textContent='Lift／Offset → CDL Offset（暗部／全域，兩者相加）　·　Gamma → Power　·　Gain → Slope。Shift 拖 = 精細，雙擊歸零。';
+  whB.appendChild(whHint);
+  gt.body.appendChild(whB);
+
+  /* 曲線面 */
+  const cuB=document.createElement('div'); cuB.id='tcurve'; cuB.className='curwrap';
+  const cc=document.createElement('canvas'); cc.id='curcv'; cc.width=496; cc.height=258;
+  cuB.appendChild(cc);
+  const ct=document.createElement('div'); ct.className='curtabs'; ct.id='curtabs';
+  [['Y','Y 亮度'],['R','R'],['G','G'],['B','B']].forEach(([k,lb])=>{
+    const b=document.createElement('button'); b.type='button'; b.dataset.c=k; b.textContent=lb;
+    b.onclick=()=>{ S.curCh=k; drawCurveUI(); };
+    ct.appendChild(b);
+  });
+  cuB.appendChild(ct);
+  const cb=document.createElement('div'); cb.className='rowbtns'; cb.style.marginTop='7px';
+  const rb=document.createElement('button'); rb.className='b sm'; rb.type='button'; rb.textContent='曲線歸零';
+  rb.onclick=()=>{
+    pushHistNow('曲線歸零');
+    S.sec.cur=newCur();
+    drawCurveUI(); updateGroupDots(); secChanged(); secCommitted();
+  };
+  cb.appendChild(rb);
+  cuB.appendChild(cb);
+  gt.body.appendChild(cuB);
+  wireCurve(cc);
+
+  /* 數值面 */
+  const nuB=document.createElement('div'); nuB.id='tnum';
+  gt.body.appendChild(nuB);
+  buildNumUI();
+
+  /* 飽和（CDL Saturation，任何面都喺度） */
+  makeSlider(gt.body,'sat',{label:'飽和度',min:-100,max:100,def:0,value:S.sec.sat,
+    onInput:v=>{S.sec.sat=v;},onCommit:()=>{secChanged();updateNumUI();secCommitted();}});
+  gt.secKeys=['exp','con','temp','tint','sat'];
+  updateToneSurfaces();
+
+  /* --- 分區（正交：Lab 段，同 CDL 冇重疊） --- */
+  const g2=mkGroup(box,'zone','分區 ZONES',false);
+  ['high','shad','white','black','vib'].forEach(k=>{
+    const d=SECDEF.find(x=>x.k===k)||{label:k,min:-100,max:100,def:0};
     makeSlider(g2.body,k,{label:d.label,min:d.min,max:d.max,def:d.def,value:S.sec[k],
       onInput:v=>{S.sec[k]=v;},onCommit:()=>{secChanged();secCommitted();}});
   });
-  g2.secKeys=['exp','con','high','shad','white','black'];
-
-  /* --- 白平衡 --- */
-  const g3=mkGroup(box,'wb','白平衡 WB',false);
-  ['temp','tint'].forEach(k=>{
-    const d=SECDEF.find(x=>x.k===k);
-    makeSlider(g3.body,k,{label:d.label,min:d.min,max:d.max,def:d.def,value:S.sec[k],
-      onInput:v=>{S.sec[k]=v;},onCommit:()=>{secChanged();secCommitted();}});
-  });
-  g3.secKeys=['temp','tint'];
-
-  /* --- 色彩 --- */
-  const g4=mkGroup(box,'col','色彩 SATURATION',false);
-  ['sat','vib'].forEach(k=>{
-    const d=SECDEF.find(x=>x.k===k);
-    makeSlider(g4.body,k,{label:d.label,min:d.min,max:d.max,def:d.def,value:S.sec[k],
-      onInput:v=>{S.sec[k]=v;},onCommit:()=>{secChanged();secCommitted();}});
-  });
-  g4.secKeys=['sat','vib'];
+  g2.secKeys=['high','shad','white','black','vib'];
 
   /* --- HSL --- */
   const g5=mkGroup(box,'hsl','HSL 單色微調',false);
-  /* v5 色環：外圈係 Lab 色相環（角度同 app 嘅 hue 定義一致，band 中心一定啱位），
-     撳外圈揀色帶；中心碟顯示當前色帶調整後嘅實色，上下拖直接推飽和；雙擊歸零。
-     取代舊嘅 7 粒方掣（白邊+黑影突兀，而且細粒難撳）。 */
   const hr=document.createElement('div'); hr.className='huering';
   const rc=document.createElement('canvas');
   rc.id='huering'; rc.width=184; rc.height=184;
@@ -2387,6 +3195,7 @@ function buildLeftPanel(){
   drawAllWheels();
   updateGroupDots();
 }
+
 function mkGroup(host,id,title,open){
   const g=document.createElement('div');
   g.className='grp'+(open?' open':''); g.dataset.g=id;
@@ -2449,8 +3258,16 @@ function updateGroupDots(){
       if(S.chromaStr!==70) n++;
       if(S.toneStr!==45) n++;
       ['b0','b1','b2','tone','skin'].forEach(id=>{ const e=$(id); if(e&&!e.checked) n++; });
+    }else if(g.dataset.g==='cdl'){
+      ['exp','con','temp','tint','sat'].forEach(k=>{ if(Math.abs(S.sec[k])>0.5) n++; });
+      const lg=normLgg(S.sec.lgg);
+      for(const w of LGG_DEF){ const z=lg[w.id]||{x:0,y:0}; if(Math.hypot(z.x,z.y)>0.02) n++; }
+      if(S.toneMode==='num' && !cdlIsIdentity(normCdl(S.sec.cdlOv))) n++;
+      if(!curFlat(S.sec.cur)) n++;
+    }else if(g.dataset.g==='zone'){
+      ['high','shad','white','black','vib'].forEach(k=>{ if(Math.abs(S.sec[k])>0.5) n++; });
     }else{
-      const keys={tone:['exp','con','high','shad','white','black'],wb:['temp','tint'],col:['sat','vib']}[g.dataset.g]||[];
+      const keys={}[g.dataset.g]||[];
       keys.forEach(k=>{ if(Math.abs(S.sec[k])>0.5) n++; });
     }
     g.classList.toggle('mod',n>0);
@@ -2706,6 +3523,10 @@ function applyShotState(st){
   syncSecSliders();
   S.active=Math.min(Math.max(0,st.active|0), Math.max(0,itemCount()-1));
   updateGroupDots(); refreshHueBar(); buildHslSliders(currentHslHost());
+  if(typeof drawLggWheels==='function') drawLggWheels();
+  if(typeof drawCurveUI==='function') drawCurveUI();
+  if(typeof updateNumUI==='function') updateNumUI();
+  if(typeof updateToneSurfaces==='function') updateToneSurfaces();
   if(typeof refreshPalUI==='function') refreshPalUI();
   applyingHist=false;
 }
@@ -2933,33 +3754,46 @@ async function addRefFromUrls(cands){
    Lightroom 咁推一樣爆），但用家一定要睇到，否則會以為自己張圖仲有層次、
    照抄個數俾供應商。淨係喺全解 render（拖桿放手嗰下）先計，
    用 quick lab + stride 抽樣，所以唔會拖慢拖桿。 */
-function flatWarn(lab,g,opt,sec,plan,pal){
-  const n=lab.n, stride=Math.max(1,Math.floor(n/20000));
-  const hist=new Int32Array(256); let cnt=0;
-  for(let i=0;i<n;i+=stride){
-    let q=applyPixel(lab.L[i],lab.a[i],lab.b[i],g,opt);
-    if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProt);
-    if(plan&&plan.active) q=applySec(q[0],q[1],q[2],sec,plan);
-    if(opt.protect) q[0]=protectL(q[0]);
-    let b=Math.round(q[0]); if(b<0)b=0; else if(b>255)b=255;
-    hist[b]++; cnt++;
+/* 由「實際畫出嚟嗰張」計，而唔係由中間嘅 Lab 計 —— CDL 同曲線喺 RGB 段，
+   用 Lab 估會計漏（v12）。縮到 200px 闊先讀，唔會拖慢全解 render。 */
+function outSample(){
+  if(!S.outCanvas||!S.outCanvas.width) return null;
+  const w=200, h=Math.max(1,Math.round(w*S.outCanvas.height/S.outCanvas.width));
+  const t=document.createElement('canvas'); t.width=w; t.height=h;
+  const tx=t.getContext('2d',{willReadFrequently:true});
+  tx.imageSmoothingQuality='low';
+  tx.drawImage(S.outCanvas,0,0,w,h);
+  return tx.getImageData(0,0,w,h);
+}
+function flatWarn(){
+  const id=outSample(); if(!id) return {flat:0,topL:0,lo:0,hi:0};
+  const d=id.data, n=id.width*id.height, hist=new Int32Array(256);
+  for(let i=0;i<n;i++){
+    const p=i*4;
+    let y=Math.round(0.2126*d[p]+0.7152*d[p+1]+0.0722*d[p+2]);
+    if(y<0)y=0; else if(y>255)y=255;
+    hist[y]++;
   }
-  if(!cnt) return {flat:0,topL:0};
   let top=255; while(top>0 && hist[top]===0) top--;
   const near=hist[top]+(top>0?hist[top-1]:0)+(top>1?hist[top-2]:0);
-  return {flat:near/cnt*100, topL:top};
+  let lo=0,hi=0;
+  for(let i=0;i<3;i++) lo+=hist[i];
+  for(let i=253;i<256;i++) hi+=hist[i];
+  return {flat:near/n*100, topL:Math.round(YtoL(LUT_LIN[top])), lo:lo/n*100, hi:hi/n*100};
 }
 const FLAT_WARN=35;                 /* 高過呢個 % 就彈警告 */
-function updateFlatWarn(lab,g,opt,sec,plan,pal){
+function updateFlatWarn(){
   const el=$('warnflat'); if(!el) return;
-  if(S.mode==='grid'){ el.hidden=true; return; }
-  const fw=flatWarn(lab,g,opt,sec,plan,pal);
+  if(S.mode==='grid'||!S.outCanvas){ el.hidden=true; S.flat=0; return; }
+  const fw=flatWarn();
   S.flat=fw.flat;
   if(fw.flat>FLAT_WARN){
     el.hidden=false;
     el.innerHTML='<b>層次擠壓 '+fw.flat.toFixed(0)+'%</b> 最高得返 '+fw.topL+
                  'L · 掣位推太盡，拉返少少先好抄數俾供應商';
   } else el.hidden=true;
+  if(typeof updateClipReadout==='function') updateClipReadout(fw.lo,fw.hi);
+  if(typeof drawScopes==='function') drawScopes();
 }
 function render(quick){
   if(!S.vendorImg || !S.vendorAn) return;
@@ -2973,9 +3807,11 @@ function render(quick){
   const lab = quick ? S.vendorLabQuick : S.vendorLabFull;
   const o=opt();
   S.outCanvas = idToCanvas(imageDataFrom(lab,g,o,S.sec,S.secPlan,S.palPlan));
+  invalidateScope();
+  if(S.toneMode==="num") updateNumUI();
   paint();
   updateDirection(idx,g);
-  if(!quick) updateFlatWarn(S.vendorLabQuick,g,o,S.sec,S.secPlan,S.palPlan);
+  if(!quick) updateFlatWarn();
   updateABBadge();   /* v11：A/B badge 要跟住有冇圖 + locked 狀態 */
   $('cstat').textContent=(quick?'預覽':'全解')+' · '+(performance.now()-t0).toFixed(0)+'ms';
 }
@@ -3129,6 +3965,7 @@ function updateDirection(idx,g){
   txt+='\n────────────────\n備註：以上係「調色做得到」嘅部分。標明「調色救唔到」嘅項目要供應商喺打燈／材質階段改。';
   $('note').value=txt;
   $('refname').textContent=it.name;
+  const hl=$('hdrlook'); if(hl) hl.textContent='參考：'+it.name;
 }
 
 /* ---------- dock ---------- */
@@ -3337,6 +4174,10 @@ function applyCustom(cu){
   syncSecSliders();
   S.pvKey++; S.pvCache.clear();
   updateGroupDots(); drawAllWheels(); refreshHueBar(); buildHslSliders(currentHslHost());
+  if(typeof drawLggWheels==='function') drawLggWheels();
+  if(typeof drawCurveUI==='function') drawCurveUI();
+  if(typeof updateNumUI==='function') updateNumUI();
+  if(typeof updateToneSurfaces==='function') updateToneSurfaces();
   if(typeof refreshPalUI==='function') refreshPalUI();
   applyingHist=false;
 }
@@ -3513,6 +4354,193 @@ function renderGrid(){
 }
 
 /* ============================================================
+   11b. Scopes（v12）— 直方圖 / 波形 / 向量圖
+   ------------------------------------------------------------
+   調色枱上最基本嘅嘢：永遠唔好靠眼睛估。
+   用家鐵律「畫面唔可以有絕對死黑／爆光」就係靠左上角嗰兩個 % 守住 ——
+   死黑 = luma ≤ 2 嘅像素比例，爆光 = luma ≥ 253，一過 2% 就轉紅色。
+   ============================================================ */
+let scopeCache=null, scopeKey='';
+function scopeSample(){
+  const k=(S.outCanvas&&S.outCanvas.width)+'|'+S.pvKey+'|'+(S.locked?'L':'B');
+  if(scopeCache&&scopeKey===k) return scopeCache;
+  if(!S.outCanvas||!S.outCanvas.width){ scopeCache=null; scopeKey=k; return null; }
+  const w=320, h=Math.max(1,Math.round(w*S.outCanvas.height/S.outCanvas.width));
+  const t=document.createElement('canvas'); t.width=w; t.height=h;
+  const tx=t.getContext('2d',{willReadFrequently:true});
+  tx.imageSmoothingQuality='low';
+  tx.drawImage(S.outCanvas,0,0,w,h);
+  scopeCache=tx.getImageData(0,0,w,h); scopeKey=k;
+  return scopeCache;
+}
+function invalidateScope(){ scopeCache=null; scopeKey=''; }
+function updateClipReadout(lo,hi){
+  const a=$('clipLo'), b=$('clipHi');
+  if(a){ a.textContent=(lo||0).toFixed(1)+'%'; a.classList.toggle('hot',(lo||0)>2); }
+  if(b){ b.textContent=(hi||0).toFixed(1)+'%'; b.classList.toggle('hot',(hi||0)>2); }
+}
+function drawScopeGrid(x,W,H){
+  x.strokeStyle='rgba(255,255,255,.06)'; x.lineWidth=1;
+  for(let i=1;i<4;i++){
+    const gx=Math.round(W*i/4)+0.5, gy=Math.round(H*i/4)+0.5;
+    x.beginPath(); x.moveTo(gx,0); x.lineTo(gx,H); x.stroke();
+    x.beginPath(); x.moveTo(0,gy); x.lineTo(W,gy); x.stroke();
+  }
+  /* 死黑／爆光警戒區 */
+  x.fillStyle='rgba(217,83,79,.10)';
+  x.fillRect(0,0,Math.max(2,W*0.012),H);
+  x.fillRect(W-Math.max(2,W*0.012),0,Math.max(2,W*0.012),H);
+}
+function drawScopeHist(id,x,W,H){
+  const d=id.data, n=id.width*id.height;
+  const hL=new Float64Array(256), hR=new Float64Array(256), hG=new Float64Array(256), hB=new Float64Array(256);
+  for(let i=0;i<n;i++){
+    const p=i*4, r=d[p], g=d[p+1], b=d[p+2];
+    hR[r]++; hG[g]++; hB[b]++;
+    let y=Math.round(0.2126*r+0.7152*g+0.0722*b);
+    if(y<0)y=0; else if(y>255)y=255;
+    hL[y]++;
+  }
+  let mx=0; for(let i=0;i<256;i++){ if(hL[i]>mx) mx=hL[i]; if(hR[i]>mx) mx=hR[i];
+                                    if(hG[i]>mx) mx=hG[i]; if(hB[i]>mx) mx=hB[i]; }
+  if(!mx) mx=1;
+  const sy=H/ (mx*1.05);
+  drawScopeGrid(x,W,H);
+  /* 亮度填充 */
+  x.beginPath(); x.moveTo(0,H);
+  for(let i=0;i<256;i++) x.lineTo(i/255*W, H-hL[i]*sy);
+  x.lineTo(W,H); x.closePath();
+  x.fillStyle='rgba(226,231,240,.20)'; x.fill();
+  x.strokeStyle='rgba(226,231,240,.85)'; x.lineWidth=1.2;
+  x.beginPath();
+  for(let i=0;i<256;i++){ const px=i/255*W, py=H-hL[i]*sy; if(i===0)x.moveTo(px,py); else x.lineTo(px,py); }
+  x.stroke();
+  /* RGB 疊線 */
+  const CH=[[hR,'rgba(224,103,95,.75)'],[hG,'rgba(95,179,122,.75)'],[hB,'rgba(91,131,214,.75)']];
+  for(const [hh,col] of CH){
+    x.strokeStyle=col; x.lineWidth=1;
+    x.beginPath();
+    for(let i=0;i<256;i++){ const px=i/255*W, py=H-hh[i]*sy; if(i===0)x.moveTo(px,py); else x.lineTo(px,py); }
+    x.stroke();
+  }
+}
+function drawScopeWave(id,x,W,H){
+  const d=id.data, w=id.width, h=id.height;
+  const acc=new Float32Array(W*H);
+  for(let yy=0;yy<h;yy++)for(let xx=0;xx<w;xx++){
+    const p=(yy*w+xx)*4;
+    const y=Math.round(0.2126*d[p]+0.7152*d[p+1]+0.0722*d[p+2]);
+    const gx=Math.min(W-1,Math.round(xx/w*W));
+    const gy=Math.min(H-1,Math.max(0,H-1-Math.round(y/255*(H-1))));
+    acc[gy*W+gx]+=1;
+  }
+  drawScopeGrid(x,W,H);
+  const img=x.createImageData(W,H), o=img.data;
+  for(let i=0;i<W*H;i++){
+    const v=acc[i]; if(!v) continue;
+    const t=Math.min(1,Math.log(1+v)/Math.log(14));
+    const p=i*4;
+    o[p]=Math.round(150+105*t); o[p+1]=Math.round(150+105*t); o[p+2]=Math.round(150+105*t);
+    o[p+3]=Math.round(60+195*t);
+  }
+  x.putImageData(img,0,0);
+}
+function drawScopeVec(id,x,W,H){
+  const d=id.data, n=id.width*id.height;
+  const cx=W/2, cy=H/2, R=Math.min(W,H)/2-6;
+  const acc=new Float32Array(W*H);
+  for(let i=0;i<n;i++){
+    const p=i*4, r=d[p]/255, g=d[p+1]/255, b=d[p+2]/255;
+    const u=(-0.169*r-0.331*g+0.500*b);
+    const v=( 0.500*r-0.419*g-0.081*b);
+    const gx=Math.round(cx+u*R*2.2), gy=Math.round(cy-v*R*2.2);
+    if(gx<0||gy<0||gx>=W||gy>=H) continue;
+    acc[gy*W+gx]+=1;
+  }
+  x.fillStyle='#0c0d10'; x.fillRect(0,0,W,H);
+  /* 六個色相目標格（Resolve 向量圖嘅標準刻度） */
+  const TARG=[[1,0,'R'],[0.5,-0.866,'Y'],[-0.5,-0.866,'G'],[-1,0,'C'],[-0.5,0.866,'B'],[0.5,0.866,'M']];
+  x.beginPath(); x.arc(cx,cy,R,0,6.2832);
+  x.strokeStyle='rgba(255,255,255,.13)'; x.lineWidth=1; x.stroke();
+  x.beginPath(); x.arc(cx,cy,R*0.5,0,6.2832);
+  x.strokeStyle='rgba(255,255,255,.07)'; x.stroke();
+  TARG.forEach(([u,v,lb])=>{
+    const px=cx+u*R, py=cy-v*R;
+    x.fillStyle='rgba(255,255,255,.42)';
+    x.beginPath(); x.arc(px,py,2.5,0,6.2832); x.fill();
+  });
+  /* 膚色線（I 軸，約 123°） */
+  x.strokeStyle='rgba(224,164,74,.5)'; x.lineWidth=1;
+  x.beginPath();
+  x.moveTo(cx+Math.cos(123*Math.PI/180)*R*0.2, cy-Math.sin(123*Math.PI/180)*R*0.2);
+  x.lineTo(cx+Math.cos(123*Math.PI/180)*R,     cy-Math.sin(123*Math.PI/180)*R);
+  x.stroke();
+  void TARG;
+  const img=x.createImageData(W,H), o=img.data;
+  for(let i=0;i<W*H;i++){
+    const val=acc[i]; if(!val) continue;
+    const t=Math.min(1,Math.log(1+val)/Math.log(18));
+    const p=i*4;
+    o[p]=Math.round(124+80*t); o[p+1]=Math.round(140+80*t); o[p+2]=Math.round(226*t);
+    o[p+3]=Math.round(70+185*t);
+  }
+  x.putImageData(img,0,0);
+}
+function drawScopes(){
+  const cvS=$('scopecv'); if(!cvS) return;
+  const sc=$('scopes');
+  if(!sc||sc.classList.contains('folded')) return;
+  const box=cvS.parentNode;
+  const W=Math.max(80,Math.round(box.clientWidth||260));
+  const H=Math.max(60,Math.round(box.clientHeight||150));
+  const dpr=Math.min(2,window.devicePixelRatio||1);
+  const pw=Math.round(W*dpr), ph=Math.round(H*dpr);
+  if(cvS.width!==pw||cvS.height!==ph){ cvS.width=pw; cvS.height=ph; }
+  const x=cvS.getContext('2d');
+  x.setTransform(dpr,0,0,dpr,0,0);
+  x.fillStyle='#0c0d10'; x.fillRect(0,0,W,H);
+  const id=scopeSample();
+  const note=$('scopenote');
+  if(note) note.textContent = S.locked? 'A · 原圖' : 'B · LOOK';
+  if(!id){
+    x.fillStyle='#4a4a4a'; x.font='400 11.5px -apple-system,sans-serif';
+    x.fillText('未有來稿',10,H/2+4);
+    return;
+  }
+  if(S.scopeMode==='hist')      drawScopeHist(id,x,W,H);
+  else if(S.scopeMode==='wave') drawScopeWave(id,x,W,H);
+  else                          drawScopeVec(id,x,W,H);
+}
+/* 示波器 UI */
+function initScopes(){
+  const tabs=$('scopetabs');
+  if(tabs) tabs.querySelectorAll('button').forEach(b=>{
+    b.classList.toggle('on',b.dataset.s===S.scopeMode);
+    b.onclick=()=>{
+      S.scopeMode=b.dataset.s;
+      try{ localStorage.setItem('ld.scope',S.scopeMode); }catch(_){}
+      tabs.querySelectorAll('button').forEach(q=>q.classList.toggle('on',q.dataset.s===S.scopeMode));
+      drawScopes();
+    };
+  });
+  const fb=$('b-scopefold');
+  const sc=$('scopes');
+  function applyFold(){
+    if(!sc) return;
+    sc.classList.toggle('folded',!!S.scopeFold);
+    if(fb){ fb.textContent=S.scopeFold? '▸':'▾'; fb.classList.toggle('on',!S.scopeFold); }
+    if(!S.scopeFold) drawScopes();
+  }
+  if(fb) fb.onclick=()=>{
+    S.scopeFold=!S.scopeFold;
+    try{ localStorage.setItem('ld.scopefold',S.scopeFold?'1':'0'); }catch(_){}
+    applyFold();
+  };
+  applyFold();
+  window.addEventListener('resize',()=>{ if(!S.scopeFold) drawScopes(); });
+}
+
+/* ============================================================
    12. 匯出
    ============================================================ */
 function download(canvas,name,mime){
@@ -3580,7 +4608,14 @@ $('b-png').onclick=()=>{
 function makeCubeText(){
   if(!S.lastGrade) return null;
   const o=opt(), N=33, sp=buildSecPlan(S.sec), pp=buildPalPlan(S.active);
-  const L=['# Generated by Look Direction v3',
+  const _c=activeCdl();
+  const _f=v=>v.toFixed(6);
+  const L=['# Generated by Look Direction v12 (ASC CDL core)',
+           '# ASC CDL  Slope '+_f(_c.s[0])+' '+_f(_c.s[1])+' '+_f(_c.s[2])+
+           '   Offset '+_f(_c.o[0])+' '+_f(_c.o[1])+' '+_f(_c.o[2])+
+           '   Power '+_f(_c.p[0])+' '+_f(_c.p[1])+' '+_f(_c.p[2])+
+           '   Saturation '+_f(_c.sat),
+           '# display-referred (sRGB encoded) — 放喺 Resolve/Nuke 嘅 output 段用',
            '# ref: '+(allItems()[S.active]||{name:'-'}).name+
            ' | chroma '+S.chromaStr+'% tone '+S.toneStr+'%'+
            (sp.active?' | +secondary':''),
@@ -3657,7 +4692,6 @@ $('b-copy').onclick=()=>{
 $('b-save').onclick=saveCustom;
 $('b-undo').onclick=undo;
 $('b-redo').onclick=redo;
-$('b-lock').onclick=toggleLock;
 $('b-ab').onclick=toggleAB;
 $('b-reset').onclick=()=>{
   pushHistNow('↺ 微調歸零');
@@ -3666,6 +4700,10 @@ $('b-reset').onclick=()=>{
   syncSecSliders();
   S.pvKey++; S.pvCache.clear();
   updateGroupDots(); drawAllWheels(); refreshHueBar(); buildHslSliders(currentHslHost());
+  if(typeof drawLggWheels==='function') drawLggWheels();
+  if(typeof drawCurveUI==='function') drawCurveUI();
+  if(typeof updateNumUI==='function') updateNumUI();
+  if(typeof updateToneSurfaces==='function') updateToneSurfaces();
   refreshPalUI();
   renderPresets(); render(false);
   applyingHist=false;
@@ -3786,6 +4824,17 @@ function buildSheetCanvas(){
   if(Math.abs(S.sec.tint)>0.5) nums.push('色調 a '+sgn2(S.sec.tint));
   if(Math.abs(S.sec.sat)>0.5) nums.push('飽和 '+sgn2(S.sec.sat));
   if(Math.abs(S.sec.vib)>0.5) nums.push('自然飽和 '+sgn2(S.sec.vib));
+  /* v12：ASC CDL —— 供應商可以直接 import 落 Resolve / Nuke，唔使逐條桿對 */
+  try{
+    const cd=activeCdl();
+    if(!cdlIsIdentity(cd)){
+      const f3=v=>v.toFixed(3);
+      nums.push('ASC CDL Slope '+cd.s.map(f3).join(' / '));
+      nums.push('ASC CDL Offset '+cd.o.map(f3).join(' / '));
+      nums.push('ASC CDL Power '+cd.p.map(f3).join(' / '));
+      if(Math.abs(cd.sat-1)>0.001) nums.push('ASC CDL Sat '+f3(cd.sat));
+    }
+  }catch(_){}
   if(nums.length){
     x.fillStyle='#e9ecf2'; x.font=F(15,600);
     x.fillText('具體數值（照做）', PAD, y+14);
@@ -3832,6 +4881,9 @@ function buildSheetCanvas(){
   x.beginPath(); x.moveTo(PAD,y); x.lineTo(W-PAD,y); x.stroke(); y+=28;
   x.fillStyle='#6f7889'; x.font=F(11.5,400);
   x.fillText('標明「調色救唔到」嘅項目要供應商喺打燈／材質階段改 —— 調 LUT 解決唔到。', PAD, y);
+  y += 20;
+  x.fillStyle='#5d6575'; x.font=F(11,400);
+  x.fillText('LUT / CDL 係 display-referred（sRGB 編碼空間）計出嚟 —— 直接套喺輸出段就得，唔使再轉色彩空間。', PAD, y);
   y += 26;
 
   /* 裁走多餘高度 */
@@ -3848,6 +4900,12 @@ async function saveSheet(name){
   const blob=await new Promise(r=>out.toBlob(r,'image/png'));
   return await saveBlob(name,blob);
 }
+$('b-cdl').onclick=()=>{
+  if(!S.lastGrade){ toast('未揀 look'); return; }
+  const nm=expName()+'.cdl';
+  saveBlob(nm,new Blob([makeCdlText()],{type:'text/xml'}));
+  toast('匯出咗 '+nm+(exportDirHandle?(' · 落 '+exportDirHandle.name):'（ASC CDL v1.2 · Resolve/Nuke 讀得入）'));
+};
 $('b-sheet').onclick=async()=>{
   const nm=expName()+'-sheet.png';
   const ok=await saveSheet(nm);
@@ -3858,18 +4916,21 @@ $('b-expall').onclick=async()=>{
   if(!S.vendorImg||!S.lastGrade){ toast('未有來稿 / 未揀 look'); return; }
   const base=expName();
   const done=[], skipped=[];
-  toast('出緊全套（.cube + PNG + 方向紙）…');
+  toast('出緊全套（.cube + .cdl + PNG + 方向紙）…');
   /* 1) .cube */
   const txt=makeCubeText();
   if(txt!==null){ await saveBlob(base+'.cube',new Blob([txt],{type:'text/plain'})); done.push(base+'.cube'); }
   else skipped.push('.cube');
-  /* 2) 全解 PNG */
+  /* 2) ASC CDL */
+  if(S.lastGrade){ await saveBlob(base+'.cdl',new Blob([makeCdlText()],{type:'text/xml'})); done.push(base+'.cdl'); }
+  else skipped.push('.cdl');
+  /* 3) 全解 PNG */
   try{
     const pc=exportFull();
     const pb=await new Promise(r=>pc.toBlob(r,'image/png'));
     await saveBlob(base+'.png',pb); done.push(base+'.png');
   }catch(_){ skipped.push('PNG'); }
-  /* 3) 方向紙 */
+  /* 4) 方向紙 */
   const sh=await saveSheet(base+'-sheet.png');
   if(sh!==null) done.push(base+'-sheet.png'); else skipped.push('方向紙');
   const where=exportDirHandle? (' · 落 '+exportDirHandle.name) : '（Downloads）';
@@ -3955,7 +5016,6 @@ document.querySelectorAll('#vmodes button').forEach(b=>{
 
 /* ---------- 來稿掣 ---------- */
 $('b-addshot').onclick =()=>pickFilesFor('shot');
-$('b-addshot2').onclick=()=>pickFilesFor('shot');
 $('b-repshot').onclick =()=>{
   if(!S.vendorImg){ pickFilesFor('shot'); return; }
   const i=document.createElement('input');
@@ -4111,7 +5171,47 @@ applyTileSize();
 applyDockFold();
 buildLeftPanel();
 renderShots(); renderPresets(); renderRefs();
+initScopes(); initMenus();
 
+/* ---------- v12：導出選單 + 快捷鍵彈層 ---------- */
+function initMenus(){
+  const mb=$('b-expmenu'), mn=$('expmenu');
+  const close=()=>{ if(mn){ mn.hidden=true; if(mb) mb.setAttribute('aria-expanded','false'); } };
+  if(mb&&mn){
+    mb.onclick=e=>{
+      e.stopPropagation();
+      const show=mn.hidden;
+      mn.hidden=!show;
+      mb.setAttribute('aria-expanded',show?'true':'false');
+      if(show){ const i=$('expname'); if(i){ i.focus(); i.select(); } }
+    };
+    mn.addEventListener('click',e=>{
+      const b=e.target.closest&&e.target.closest('button');
+      if(b&&b.id!=='b-dir') close();
+    });
+  }
+  document.addEventListener('click',e=>{
+    if(mn&&!mn.hidden&&!(e.target.closest&&e.target.closest('.menuwrap'))) close();
+    const hp=$('kbdpop'), hb=$('b-help');
+    if(hp&&!hp.hidden&&!(e.target.closest&&(e.target.closest('#b-help')||e.target.closest('#kbdpop')))){
+      hp.hidden=true; if(hb) hb.classList.remove('on');
+    }
+  });
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='Escape') return;
+    close();
+    const hp=$('kbdpop'), hb=$('b-help');
+    if(hp&&!hp.hidden){ hp.hidden=true; if(hb) hb.classList.remove('on'); }
+  });
+  const hp=$('kbdpop'), hb=$('b-help');
+  if(hb&&hp){
+    hb.onclick=e=>{
+      e.stopPropagation();
+      const show=hp.hidden;
+      hp.hidden=!show; hb.classList.toggle('on',show);
+    };
+  }
+}
 /* ---------- IP 保護（防君子唔防小人） ----------
    呢個 app 放喺公開 repo，source 本身就任睇，所以呢層唔係加密，
    只係擋 casual 用戶一撳就把圖 save 走／抄走。
