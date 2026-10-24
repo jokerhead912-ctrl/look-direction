@@ -8,3 +8,11 @@ Thumbs.db
 
 # 測試產物（只喺 /tmp 生成，萬一唔小心放咗入嚟都唔好上）
 _v3_smoke.html
+
+# --- 本地 AI 版（雙保險；真正嗰份喺 ~/.lookdir-local/，喺 repo 外面）---
+.lookdir-local/
+*.local.html
+ai.js
+adapter3000.py
+local_server.py
+credits.json
