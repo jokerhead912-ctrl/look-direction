@@ -303,6 +303,53 @@ const INJECT=`
     ok('skinRenderNoNaN', !_snan);
     sk.checked=oldSk;
 
+    /* ---------- 15. 防「拖 CDL 桿 → 成張圖變紅」回歸 ----------
+       2026-10-24 導演實測：拖任何一條 CDL 桿，畫面即變純紅（G=B=0）。
+       root cause：buildPostLUT 開咗 Float32Array(256) 但按 c*256+i 寫到 767；
+       typed array 越界寫入係靜默丟棄、唔會報錯，所以一定要靠「三通道都有值」守住。 */
+    const _pl=buildPostLUT(newCur(),false);
+    ok('plutLen', _pl.length);                 /* 要 768 */
+    let _plBad=0; for(let i=0;i<_pl.length;i++) if(!isFinite(_pl[i])) _plBad++;
+    ok('plutAllFinite', _plBad===0 && _pl.length===768);
+    const _plP=buildPostLUT(newCur(),true);
+    let _plPBad=0; for(let i=0;i<_plP.length;i++) if(!isFinite(_plP[i])) _plPBad++;
+    ok('plutProtectFinite', _plPBad===0 && _plP.length===768);
+    ok('clutLen', buildCdlLUT(activeCdlFor(newSec())).length);
+
+    const _meanRGB=()=>{ const cc=S.outCanvas;
+      const d=cc.getContext('2d').getImageData(0,0,cc.width,cc.height).data;
+      let r=0,g=0,b=0,n=0;
+      for(let i=0;i<d.length;i+=16){ r+=d[i]; g+=d[i+1]; b+=d[i+2]; n++; }
+      return [r/n,g/n,b/n]; };
+    S.sec=newSec(); syncSecSliders(); render(false);
+    const _m0=_meanRGB();
+    S.sec.exp=30; render(false);
+    const _m1=_meanRGB();
+    ok('cdlBaseRGB', _m0.map(v=>Math.round(v)).join(','));
+    ok('cdlExpRGB',  _m1.map(v=>Math.round(v)).join(','));
+    ok('cdlAllChannelsLive', _m1[0]>5 && _m1[1]>5 && _m1[2]>5);
+    ok('cdlNoGreenBlackout', _m1[1] > _m0[1]*0.9);
+    ok('cdlNoBlueBlackout',  _m1[2] > _m0[2]*0.9);
+    /* 曝光係純 Slope，三通道要同步升 —— G/R 比例唔可以走樣 */
+    ok('cdlRatioKept', Math.abs((_m1[1]/_m1[0])-(_m0[1]/_m0[0]))<0.06);
+    S.sec.exp=0; render(false);
+
+    /* 真·拖一次曝光桿（pointer 事件），驗證畫面唔會塌做純紅 */
+    const _sl=document.querySelector('[data-k="exp"]');
+    if(_sl){
+      const tr=_sl.querySelector('.sl-tr'), r=tr.getBoundingClientRect();
+      const mk=(t,x)=>new PointerEvent(t,{bubbles:true,cancelable:true,clientX:x,clientY:r.top+8,pointerId:1,isPrimary:true});
+      tr.dispatchEvent(mk('pointerdown', r.left+r.width*0.5));
+      tr.dispatchEvent(mk('pointermove', r.left+r.width*0.78));
+      tr.dispatchEvent(mk('pointerup',   r.left+r.width*0.78));
+      render(false);
+      const _m2=_meanRGB();
+      ok('dragExpSec',  S.sec.exp);            /* 拖完要真係改咗值，否則下面兩條係假綠 */
+      ok('dragExpRGB',  _m2.map(v=>Math.round(v)).join(','));
+      ok('dragExpNoRed', _m2[1]>5 && _m2[2]>5);
+      ok('dragExpBrighter', _m2[0] > _m0[0]);  /* 推正曝光 → R 一定要升 */
+    }
+
     ok('OK', true);
   }catch(e){
     R.OK=false; R.ERR=(e&&e.message)||String(e); R.STACK=(e&&e.stack||'').split('\\n').slice(0,3).join(' | ');

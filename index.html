@@ -1284,7 +1284,11 @@ function buildCurveLUT(pts){
 }
 /* ---------- 逐通道後處理 LUT：曲線 → 保層次膝位 ---------- */
 function buildPostLUT(cur,protect){
-  const L=new Float32Array(256);
+  /* 一定要 768（3 通道 × 256）。之前寫 256：c=1/2 嘅寫入全部越界，
+     typed array 靜默丟棄 → plut[256..767] 讀到 undefined → 寫落 ImageData 變 0
+     → G／B 通道全黑、淨剩紅 → 一拖 CDL 桿成張圖變紅。
+     （typed array 越界寫入唔會報錯，所以一定要靠「三通道都有值」嘅測試守住。） */
+  const L=new Float32Array(768);
   const lY=buildCurveLUT(cur.Y||[[0,0],[1,1]]);
   const lR=cur.R? buildCurveLUT(cur.R) : lY;
   const lG=cur.G? buildCurveLUT(cur.G) : lY;
