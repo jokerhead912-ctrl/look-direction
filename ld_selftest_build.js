@@ -151,15 +151,36 @@ const INJECT=`
     })());
     ok('clipLo', ($('clipLo').textContent||''));
     ok('clipHi', ($('clipHi').textContent||''));
+    /* v15 單通道讀數：淨計 luma 會漏報單通道壓死／爆掉 */
+    const _fw1=flatWarn();
+    ok('clipChDom', !!$('clipCh'));
+    ok('clipChText', ($('clipCh').textContent||''));
+    ok('clipChCatchesMore', _fw1.chHi>=_fw1.hi && _fw1.chLo>=_fw1.lo);   /* 單通道一定唔會少過亮度 */
+    ok('clipChHot', (_fw1.chHi>2||_fw1.chLo>2) === $('clipCh').classList.contains('hot'));
+    ok('clipChFinite', isFinite(_fw1.chLo)&&isFinite(_fw1.chHi));
 
-    /* 保層次開咗之後，死黑／爆光一定要係 0% */
+    /* 保層次開咗之後，死黑／爆光／單通道 一定要係 0% */
     $('protect').checked=true;
     render(false);
     await new Promise(r=>setTimeout(r,350));
     ok('protectClipLo', $('clipLo').textContent);
     ok('protectClipHi', $('clipHi').textContent);
+    ok('protectClipCh', $('clipCh').textContent);
+    ok('protectClipChZero', (flatWarn().chLo<0.001)&&(flatWarn().chHi<0.001));
     $('protect').checked=false;
     render(false);
+    await new Promise(r=>setTimeout(r,300));
+
+    /* 默認（CDL 全 identity）嗰陣唔應該無啦啦轉紅 */
+    const _secBak=JSON.parse(JSON.stringify(S.sec));
+    ['exp','con','temp','tint','sat','high','shad','white','black','vib'].forEach(k=>{ S.sec[k]=0; });
+    /* 連 cur / cdlOv / lgg 都要歸零，否則「identity」唔係真 identity */
+    try{ S.sec.cur=newCur(); S.sec.cdlOv=IDCDL(); S.sec.lgg=newLgg(); }catch(e){ ok('clipChZeroWarn', e.message); }
+    secChanged(); render(false);
+    await new Promise(r=>setTimeout(r,300));
+    ok('clipChAtZero', ($('clipCh').textContent||''));
+    ok('clipChAtZeroCool', !$('clipCh').classList.contains('hot'));
+    S.sec=_secBak; secChanged(); render(false);
     await new Promise(r=>setTimeout(r,300));
 
     /* ---------- 8. 匯出 ---------- */

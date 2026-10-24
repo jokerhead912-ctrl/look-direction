@@ -304,6 +304,8 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
 .scopehd .clip span{color:var(--tx4)}
 .scopehd .clip b{font-weight:600;color:var(--tx3)}
 .scopehd .clip b.hot{color:var(--bad)}
+/* 單通道讀數：用一道 hairline 同「亮度」嗰組分開，唔好睇落成同一組 */
+.scopehd .clip span.ck{margin-left:2px;padding-left:8px;border-left:1px solid var(--line2)}
 .scopebd{position:relative;height:150px;background:#0c0d10}
 .scopebd canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .scopenote{
@@ -360,6 +362,8 @@ body.focus .scopes{
   background:rgba(24,24,24,.92);border-color:var(--line2);
   box-shadow:0 18px 48px rgba(0,0,0,.62);
 }
+/* 340px 闊放唔晒 seg + 兩組讀數 → 俾個 header 換行，唔好互相逼爆 */
+body.focus .scopehd{flex-wrap:wrap;row-gap:5px}
 
 /* ---------- C. PiP 目標圖（R 鍵）：釘喺角落，唔使切並排 ----------
    並排模式兩邊各佔一半，其實兩張都細咗 —— PiP 可以單圖全尺寸 + 角落見目標。 */
@@ -707,8 +711,9 @@ textarea{
             <button type="button" data-s="vec">向量</button>
           </div>
           <div class="clip">
-            <span>死黑</span><b id="clipLo">0.0%</b>
-            <span>爆光</span><b id="clipHi">0.0%</b>
+            <span title="亮度（luma）≤ 2 嘅像素比例">死黑</span><b id="clipLo">0.0%</b>
+            <span title="亮度（luma）≥ 253 嘅像素比例">爆光</span><b id="clipHi">0.0%</b>
+            <span class="ck" title="單通道（R／G／B 任一）壓到 ≤2 嘅比例 ／ 爆到 ≥253 嘅比例。淨計亮度會漏報：例如暖高光 R 已經爆到 255、但 luma 未到 253 —— 呢格會報，開保層次即歸零。">單通道</span><b id="clipCh" title="單通道 壓死／爆掉">0.0/0.0%</b>
           </div>
           <button class="iconbtn" id="b-scopefold" type="button" title="收起／展開示波器" aria-label="收起示波器">▾</button>
         </div>
@@ -3856,20 +3861,27 @@ function outSample(){
   return tx.getImageData(0,0,w,h);
 }
 function flatWarn(){
-  const id=outSample(); if(!id) return {flat:0,topL:0,lo:0,hi:0};
+  const id=outSample(); if(!id) return {flat:0,topL:0,lo:0,hi:0,chLo:0,chHi:0};
   const d=id.data, n=id.width*id.height, hist=new Int32Array(256);
+  let chLo=0, chHi=0;
   for(let i=0;i<n;i++){
     const p=i*4;
-    let y=Math.round(0.2126*d[p]+0.7152*d[p+1]+0.0722*d[p+2]);
+    const r=d[p], g=d[p+1], b=d[p+2];
+    let y=Math.round(0.2126*r+0.7152*g+0.0722*b);
     if(y<0)y=0; else if(y>255)y=255;
     hist[y]++;
+    /* 單通道壓死／爆掉。兩個數獨立計（同一粒 pixel 有可能同時入兩邊），
+       所以 chLo + chHi 可以大過 100% —— 每個數各自係「有冇通道到咗盡頭」嘅比例。 */
+    if(r<=2||g<=2||b<=2) chLo++;
+    if(r>=253||g>=253||b>=253) chHi++;
   }
   let top=255; while(top>0 && hist[top]===0) top--;
   const near=hist[top]+(top>0?hist[top-1]:0)+(top>1?hist[top-2]:0);
   let lo=0,hi=0;
   for(let i=0;i<3;i++) lo+=hist[i];
   for(let i=253;i<256;i++) hi+=hist[i];
-  return {flat:near/n*100, topL:Math.round(YtoL(LUT_LIN[top])), lo:lo/n*100, hi:hi/n*100};
+  return {flat:near/n*100, topL:Math.round(YtoL(LUT_LIN[top])), lo:lo/n*100, hi:hi/n*100,
+          chLo:chLo/n*100, chHi:chHi/n*100};
 }
 const FLAT_WARN=35;                 /* 高過呢個 % 就彈警告 */
 function updateFlatWarn(){
@@ -3882,7 +3894,7 @@ function updateFlatWarn(){
     el.innerHTML='<b>層次擠壓 '+fw.flat.toFixed(0)+'%</b> 最高得返 '+fw.topL+
                  'L · 掣位推太盡，拉返少少先好抄數俾供應商';
   } else el.hidden=true;
-  if(typeof updateClipReadout==='function') updateClipReadout(fw.lo,fw.hi);
+  if(typeof updateClipReadout==='function') updateClipReadout(fw.lo,fw.hi,fw.chLo,fw.chHi);
   if(typeof drawScopes==='function') drawScopes();
 }
 function render(quick){
@@ -4466,10 +4478,17 @@ function scopeSample(){
   return scopeCache;
 }
 function invalidateScope(){ scopeCache=null; scopeKey=''; }
-function updateClipReadout(lo,hi){
-  const a=$('clipLo'), b=$('clipHi');
+function updateClipReadout(lo,hi,chLo,chHi){
+  const a=$('clipLo'), b=$('clipHi'), c=$('clipCh');
   if(a){ a.textContent=(lo||0).toFixed(1)+'%'; a.classList.toggle('hot',(lo||0)>2); }
   if(b){ b.textContent=(hi||0).toFixed(1)+'%'; b.classList.toggle('hot',(hi||0)>2); }
+  /* 單通道：淨計亮度會漏報（暖高光 R 爆到 255 但 luma 未到 253），
+     所以呢格同死黑／爆光分開顯示，任一端過 2% 就轉紅。 */
+  if(c){
+    const l=chLo||0, h=chHi||0;
+    c.textContent=l.toFixed(1)+'/'+h.toFixed(1)+'%';
+    c.classList.toggle('hot',(l>2||h>2));
+  }
 }
 function drawScopeGrid(x,W,H){
   x.strokeStyle='rgba(255,255,255,.06)'; x.lineWidth=1;

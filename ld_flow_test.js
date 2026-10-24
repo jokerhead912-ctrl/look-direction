@@ -137,12 +137,15 @@ const INJECT=`
       R.scopes[m]=(mx-mn>20)? 'painted' : 'BLANK';
     }
     updateFlatWarn();
-    R.clip={lo:$('clipLo').textContent, hi:$('clipHi').textContent, flat:S.flat};
+    R.clip={lo:$('clipLo').textContent, hi:$('clipHi').textContent,
+            chan:$('clipCh')?$('clipCh').textContent:'NA', flat:S.flat};
 
     /* 12. 保層次 */
     await astep('保層次 ON', async()=>{
       $('protect').checked=true; render(false); await wait(150);
-      updateFlatWarn(); return 'clip '+$('clipLo').textContent+' / '+$('clipHi').textContent;
+      updateFlatWarn();
+      return 'clip '+$('clipLo').textContent+' / '+$('clipHi').textContent+
+             '  單通道'+($('clipCh')?$('clipCh').textContent:'NA');
     });
     R.clipProtected={lo:$('clipLo').textContent, hi:$('clipHi').textContent};
     $('protect').checked=false; render(false); await wait(120);
