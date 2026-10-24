@@ -363,6 +363,67 @@ const INJECT=`
       }
     }
 
+    /* ---------- 16. 全屏檢查（~ 鍵 · Premiere Pro 式） ---------- */
+    ok('fsDom', !!$('b-fs') && !!$('fsbar') && !!$('fshint'));
+    ok('fsOffDefault', S.fs===false && !document.body.classList.contains('fs'));
+    ok('fsBtnWired', typeof $('b-fs').onclick==='function');
+    /* fsFit：全屏要跟螢幕升解像，但唔可以無上限 */
+    const _big={width:4000,height:3000};
+    const _f1=fsFit(_big), _f0=fitSize(_big,1400,900);
+    ok('fsFitBigger', _f1.w>_f0.w && _f1.h>_f0.h);
+    ok('fsFitCapped', _f1.w<=2400 && _f1.h<=1500);
+    ok('fsFitFinite', isFinite(_f1.w)&&isFinite(_f1.h)&&_f1.w>0&&_f1.h>0);
+    /* 細圖唔好無謂升解 */
+    const _sm=fsFit({width:240,height:180});
+    ok('fsFitSmallNoUpscale', _sm.w<=240 && _sm.h<=180);
+
+    const _cvW0=Math.round($('cv').getBoundingClientRect().width);
+    const _labW0=S.vendorLabFull.w;
+    const _key=(k,o)=>window.dispatchEvent(new KeyboardEvent('keydown',
+      Object.assign({key:k,bubbles:true,cancelable:true},o||{})));
+    _key('~');
+    ok('fsOnByTilde', S.fs===true && document.body.classList.contains('fs'));
+    ok('fsHeaderHidden', getComputedStyle(document.querySelector('header')).display==='none');
+    ok('fsLeftHidden',   getComputedStyle(document.querySelector('.col-l')).display==='none');
+    ok('fsRightHidden',  getComputedStyle(document.querySelector('.col-r')).display==='none');
+    ok('fsScopesHidden', getComputedStyle($('scopes')).display==='none');
+    ok('fsBarShown',     getComputedStyle($('fsbar')).display!=='none');
+    ok('fsHintShown',    getComputedStyle($('fshint')).display!=='none');
+    const _cvW1=Math.round($('cv').getBoundingClientRect().width);
+    ok('fsCanvasWider', _cvW1>_cvW0);          /* 全屏真係大咗 */
+    ok('fsCanvasSize',  _cvW0+'→'+_cvW1);
+    ok('fsLabKept', S.vendorLabFull.w===_labW0 && isFinite(S.vendorLabFull.w));
+    ok('fsNameFilled', ($('fsname').textContent||'').indexOf('—')<0);
+    /* 再撳 ~ 應該出返去 */
+    _key('~');
+    ok('fsOffByTilde', S.fs===false && !document.body.classList.contains('fs'));
+    /* Esc 都要出到去 */
+    _key('~');
+    ok('fsOnAgain', S.fs===true);
+    _key('Escape');
+    ok('fsOffByEsc', S.fs===false && !document.body.classList.contains('fs'));
+    ok('fsHeaderBack', getComputedStyle(document.querySelector('header')).display!=='none');
+    /* 離開之後 render 解像度要還原 1400×900 嗰份 */
+    ok('fsResRestored', S.vendorLabFull.w===_labW0);
+    /* 用 API 直接開關都得（掣就係行呢條） */
+    toggleFs(true);  ok('fsApiOn',  S.fs===true);
+    toggleFs(false); ok('fsApiOff', S.fs===false);
+    /* 冇圖嗰陣唔好炸 */
+    const _keepImg=S.vendorImg; S.vendorImg=null;
+    let _fsNoImgErr=''; try{ toggleFs(true); }catch(e){ _fsNoImgErr=e.message; }
+    ok('fsNoImgSafe', !_fsNoImgErr && S.fs===false);
+    S.vendorImg=_keepImg;
+    /* 全屏入面 render + 拖桿都要照行 */
+    toggleFs(true);
+    S.sec.exp=20; render(false);
+    ok('fsRenderOK', !!S.outCanvas);
+    if(SLIDERS.con){ SLIDERS.con.set(20); render(false); }
+    const _fsm=_meanRGB();
+    ok('fsRGB', _fsm.join(','));
+    ok('fsNoRed', _fsm[1]>5 && _fsm[2]>5);
+    toggleFs(false);
+    S.sec.exp=0; S.sec.con=0; syncSecSliders(); render(false);
+
     ok('OK', true);
   }catch(e){
     R.OK=false; R.ERR=(e&&e.message)||String(e); R.STACK=(e&&e.stack||'').split('\\n').slice(0,3).join(' | ');

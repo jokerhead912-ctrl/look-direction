@@ -346,6 +346,34 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
 .stage.divider #cv{cursor:col-resize}
 .stage.panning #cv,.stage.panning.divider #cv{cursor:grabbing}
 
+/* ---------- 全屏檢查（~ 鍵 · Premiere Pro 式）----------
+   淨留張圖：header / 左右欄 / 工具列 / 示波器全部收埋，底全黑。 */
+body.fs{overflow:hidden}
+body.fs header{display:none}
+body.fs .main{grid-template-columns:minmax(0,1fr)}
+body.fs .col-l,body.fs .col-r{display:none}
+body.fs .dock{display:none}                  /* 底部來稿／參考圖嗰條都收埋 */
+body.fs .col-c{padding:0;gap:0;background:#000}
+/* 淨留張圖：工具列 / 示波器 / 底部嗰排掣全部收埋（唔好逐個 list，漏一個就現形） */
+body.fs .col-c>*:not(.stage){display:none}
+body.fs .stage{border:0;border-radius:0;background:#000}
+body.fs .stage::after{display:none}
+body.fs #cv{border-radius:0;box-shadow:none}
+.fsbar{
+  position:absolute;left:0;right:0;top:0;z-index:6;display:none;pointer-events:none;
+  padding:11px 15px;gap:16px;font-size:12px;color:rgba(255,255,255,.6);
+  text-shadow:0 1px 4px rgba(0,0,0,.85);font-variant-numeric:tabular-nums;
+}
+body.fs .fsbar{display:flex;justify-content:space-between;align-items:baseline}
+.fsbar .fsl{font-weight:600;color:rgba(255,255,255,.88)}
+.fshint{
+  position:absolute;right:15px;bottom:13px;z-index:6;display:none;pointer-events:none;
+  padding:5px 11px;border-radius:999px;font-size:11.5px;color:rgba(255,255,255,.72);
+  background:rgba(0,0,0,.5);transition:opacity .55s;
+}
+body.fs .fshint{display:block}
+body.fs .fshint.fade{opacity:0}
+
 .zoombar{display:flex;align-items:center;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;flex:0 0 auto}
 .zoombar button{
   background:var(--panel2);border:0;border-right:1px solid var(--line);color:var(--tx3);
@@ -603,6 +631,7 @@ textarea{
           <button type="button" id="z-fit" aria-label="適應視窗">適應</button>
           <button type="button" id="z-100" aria-label="原尺寸 1:1">1:1</button>
         </div>
+        <button class="iconbtn" id="b-fs" type="button" title="全屏檢查（~）" aria-label="全屏檢查">⛶</button>
       </div>
 
       <div class="stage single" id="stage">
@@ -621,6 +650,8 @@ textarea{
         <div class="warnflat" id="warnflat" hidden></div>
         <div id="veil">放低就加入 reference</div>
         <div class="toast" id="toast"></div>
+        <div class="fsbar" id="fsbar"><span class="fsl" id="fsname">—</span><span id="fsmode">—</span></div>
+        <div class="fshint" id="fshint">~ 或 Esc 離開全屏　·　\ A/B　·　` 睇原圖　·　0 適應</div>
       </div>
 
       <!-- SCOPES（v12）：永遠唔好盲調 -->
@@ -734,6 +765,7 @@ textarea{
   <div class="kr"><b>\</b>A/B 對比（原圖 ↔ LOOK）</div>
   <div class="kr"><b>⇧Z</b>鎖定／解鎖原圖</div>
   <div class="kr"><b>`</b>撳實睇原圖</div>
+  <div class="kr"><b>~</b>全屏檢查（Esc 離開）</div>
   <div class="kr"><b>B</b>翻轉 before/after</div>
   <div class="kr"><b>1–9</b>揀 look</div>
   <div class="kr"><b>← →</b>上／下個 look</div>
@@ -1733,7 +1765,8 @@ const S={
   palPlan:null, palView:'wall', palSel:'mid', palWallMode:'color', dirQ:'',
   skinProt:100,                            /* 膚色保護力度 %（0=唔保，100=全保） */
   /* v12：調色操作面（簡化/色輪/曲線/數值）、曲線通道、示波器 */
-  toneMode:'spl', curCh:'Y', scopeMode:'hist', scopeFold:false
+  toneMode:'spl', curCh:'Y', scopeMode:'hist', scopeFold:false,
+  fs:false                                  /* 全屏檢查（~ 鍵）· UI state，唔入 snapshot */
 };
 try{ const _tm=localStorage.getItem('ld.tone');
      if(_tm==='spl'||_tm==='wheel'||_tm==='curve'||_tm==='num') S.toneMode=_tm; }catch(_){}
@@ -3552,7 +3585,7 @@ function switchShot(i){
   S.vendorImg=sh.img; S.vendorName=sh.name;
   S.vendorAn=sh.an;
   S.vendorLabQuick=sh.labQuick;
-  const f=fitSize(sh.img,1400,900);
+  const f=S.fs? fsFit(sh.img) : fitSize(sh.img,1400,900);
   S.vendorLabFull=labOf(drawTo(sh.img,f.w,f.h));
   S.vendorOrig   =imgToCanvas(sh.img,f.w,f.h);
   $('empty').hidden=true; cv.hidden=false;
@@ -3828,6 +3861,7 @@ function drawFit(c2d,img,x,y,w,h){
 function paint(){
   if(!S.vendorImg) return;
   if(S.mode==='grid') return;
+  if(S.fs) updateFsBar();          /* 全屏嗰陣左上角嘅檔名 / look / zoom 要跟住郁 */
   const W=S.vendorLabFull.w, H=S.vendorLabFull.h;
   if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
   const after = S.outCanvas || S.vendorOrig;
@@ -5105,11 +5139,68 @@ window.addEventListener('paste',e=>{
   e.preventDefault();
   handleFile(f, pasteZone || (S.shots.length? 'ref':'shot'));
 });
+/* ============================================================
+   全屏檢查（~ 鍵 · Premiere Pro 式）
+   全屏嗰陣係要「睇真啲」，所以 render 解像度跟螢幕升（封頂 2400×1500）；
+   離開就還原 1400×900 —— 費事之後每下 commit 都慢慢拖。
+   ============================================================ */
+const FS_MAX_W=2400, FS_MAX_H=1500;
+function fsFit(img){
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  const mw=Math.max(1400, Math.round(Math.min(window.innerWidth *dpr, FS_MAX_W)));
+  const mh=Math.max(900,  Math.round(Math.min(window.innerHeight*dpr, FS_MAX_H)));
+  return fitSize(img,mw,mh);
+}
+function rebuildFullLab(){
+  const sh=S.shots[S.shotIdx]; if(!sh||!sh.img) return false;
+  const f = S.fs? fsFit(sh.img) : fitSize(sh.img,1400,900);
+  if(S.vendorLabFull && S.vendorLabFull.w===f.w && S.vendorLabFull.h===f.h) return false;
+  S.vendorLabFull=labOf(drawTo(sh.img,f.w,f.h));
+  return true;
+}
+function updateFsBar(){
+  const nm=$('fsname'), md=$('fsmode');
+  if(nm) nm.textContent=(S.vendorName||'—')+(S.vendorImg? '　'+S.vendorImg.width+'×'+S.vendorImg.height : '');
+  if(md){
+    const it=allItems()[S.active];
+    const zp=$('zpct');
+    md.textContent=(it? (it.name||'—') : '—')+'　·　'+(zp? zp.textContent : '');
+  }
+}
+let fsHintT=null;
+function showFsHint(){
+  const h=$('fshint'); if(!h) return;
+  h.classList.remove('fade');
+  clearTimeout(fsHintT);
+  fsHintT=setTimeout(()=>h.classList.add('fade'),2200);
+}
+function toggleFs(force){
+  const want=(force===undefined)? !S.fs : !!force;
+  if(want===S.fs) return;
+  if(!S.vendorImg){ toast('入咗圖先可以全屏'); return; }
+  S.fs=want;
+  document.body.classList.toggle('fs',S.fs);
+  const bf=$('b-fs'); if(bf) bf.classList.toggle('on',S.fs);
+  try{ rebuildFullLab(); }catch(_){}      /* 升／降解像度；失敗都唔好阻住入全屏 */
+  render(false);                          /* 解像度變咗 → 重新出一張 */
+  applyZoom();                            /* viewport 大細變咗 → 重新計畫布 px */
+  paint();
+  if(!S.fs && typeof drawScopes==='function') drawScopes();
+  updateFsBar();
+  if(S.fs) showFsHint();
+  toast(S.fs? '全屏檢查　·　~ 或 Esc 離開' : '離開全屏');
+}
+(function(){ const b=$('b-fs'); if(b) b.onclick=()=>toggleFs(); })();
+/* 全屏入面郁一郁鼠標就彈返個提示出嚟（唔係會唔記得點離開） */
+$('stage').addEventListener('mousemove',()=>{ if(S.fs) showFsHint(); });
+
 /* 鍵盤 */
 window.addEventListener('keydown',e=>{
   if(e.target&&e.target.closest&&e.target.closest('.sl')) return;
   const t=e.target.tagName;
   if(t==='TEXTAREA'||t==='INPUT') return;
+  /* Esc 離開全屏（Esc 冇 modifier，要放喺 meta/ctrl 檢查之前） */
+  if(e.key==='Escape' && S.fs){ toggleFs(false); e.preventDefault(); return; }
   /* ⌘Z / ⌘⇧Z · Undo / Redo（cross-platform：metaKey Mac, ctrlKey Win） */
   if((e.metaKey||e.ctrlKey) && !e.altKey && (e.key==='z'||e.key==='Z')){
     e.preventDefault();
@@ -5128,6 +5219,8 @@ window.addEventListener('keydown',e=>{
   }
   if(!S.vendorImg) return;
   if(e.key==='\\'){ toggleAB(); e.preventDefault(); return; }   /* \ = A/B 一鍵對比 */
+  /* ~ = 全屏檢查（Premiere Pro 式）。Shift+` 同一粒掣：冇 Shift 係「撳實睇原圖」 */
+  if(e.key==='~'||(e.code==='Backquote'&&e.shiftKey)){ toggleFs(); e.preventDefault(); return; }
   if(e.key==='0'){ setZoom(0); e.preventDefault(); return; }
   if(e.key==='-'||e.key==='_'){ zoomStep(-1); e.preventDefault(); return; }
   if(e.key==='='||e.key==='+'){ zoomStep(1); e.preventDefault(); return; }
