@@ -468,6 +468,69 @@ const INJECT=`
                   !document.body.classList.contains('focus') &&
                   !document.body.classList.contains('fs'));
 
+    /* ---------- 18. C. PiP 目標圖（R 鍵）+ A. 示波器浮層 ---------- */
+    ok('pipDom', !!$('pip') && !!$('pipcv') && !!$('pipx'));
+    /* 內建 preset 冇實圖 → PiP 唔應該出 */
+    setActive(0); render(false);
+    ok('pipHiddenForPreset', $('pip').hidden===true);
+    /* 加一張真參考圖 */
+    const _rc=document.createElement('canvas'); _rc.width=600; _rc.height=400;
+    const _rg=_rc.getContext('2d');
+    const _rgd=_rg.createLinearGradient(0,0,600,400);
+    _rgd.addColorStop(0,'#0d2b3e'); _rgd.addColorStop(0.5,'#3f7a86'); _rgd.addColorStop(1,'#d9c79a');
+    _rg.fillStyle=_rgd; _rg.fillRect(0,0,600,400);
+    addRef(_rc,'target.png');
+    await new Promise(r=>setTimeout(r,300));
+    render(false);
+    ok('pipShownForRef', $('pip').hidden===false);
+    ok('pipName', ($('pipnm').textContent||'').indexOf('target')>=0);
+    /* PiP 要真係畫咗嘢（唔係淨係個框） */
+    const _pcv=$('pipcv'), _pd=_pcv.getContext('2d').getImageData(0,0,_pcv.width,_pcv.height).data;
+    let _pmin=255,_pmax=0;
+    for(let i=0;i<_pd.length;i+=4){ const v=_pd[i]; if(v<_pmin)_pmin=v; if(v>_pmax)_pmax=v; }
+    ok('pipPainted', _pmax-_pmin > 30);
+    ok('pipPxRange', _pmin+'–'+_pmax);
+    /* 撳 PiP 轉角（順序 bl→br→tr→tl） */
+    S.pipCorner='bl'; renderPip();
+    ok('pipCorner0', $('pip').className.indexOf('bl')>=0);
+    cyclePipCorner(); ok('pipCorner1', $('pip').className.indexOf('br')>=0);
+    cyclePipCorner(); ok('pipCorner2', $('pip').className.indexOf('tr')>=0);
+    cyclePipCorner(); ok('pipCorner3', $('pip').className.indexOf('tl')>=0);
+    cyclePipCorner(); ok('pipCornerWrap', $('pip').className.indexOf('bl')>=0);
+    /* 撳 PiP 唔好 trigger 個 stage（唔好變咗「撳實睇原圖」） */
+    S.hold=false;
+    $('pip').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true,pointerId:3,isPrimary:true}));
+    ok('pipNoStageHold', S.hold===false);
+    ok('pipClickCycles', $('pip').className.indexOf('br')>=0 ||
+                         $('pip').className.indexOf('bl')>=0);
+    /* R 收起／開返 */
+    _key('r'); ok('pipOffByR', S.pipOn===false && $('pip').hidden===true);
+    _key('r'); ok('pipOnByR',  S.pipOn===true  && $('pip').hidden===false);
+    ok('pipPersist', localStorage.getItem('ld.pip')==='1');
+
+    /* A. 示波器浮層：專注模式要變 absolute，唔好再霸垂直空間 */
+    toggleFocus(false);
+    ok('scopesStatic', getComputedStyle($('scopes')).position!=='absolute');
+    const _h0=Math.round($('cv').getBoundingClientRect().height);
+    toggleFocus(true);
+    ok('scopesFloat', getComputedStyle($('scopes')).position==='absolute');
+    const _h1=Math.round($('cv').getBoundingClientRect().height);
+    ok('focusH', _h0+'→'+_h1);
+    ok('focusTaller', _h1>_h0);
+    ok('scopesStillVisible', getComputedStyle($('scopes')).display!=='none');
+    ok('scopePainted', (()=>{
+      const s=$('scopecv'); const d=s.getContext('2d').getImageData(0,0,s.width,s.height).data;
+      let mn=255,mx=0; for(let i=0;i<d.length;i+=4){ if(d[i]<mn)mn=d[i]; if(d[i]>mx)mx=d[i]; }
+      return mx-mn>20;
+    })());
+    /* 專注 + PiP + 浮層示波器 一齊：render 要照行，三通道唔可以塌 */
+    S.sec.exp=25; S.sec.con=18; render(false);
+    const _allm=_meanRGB();
+    ok('allRGB', _allm.map(v=>Math.round(v)).join(','));
+    ok('allNoRed', _allm[1]>5 && _allm[2]>5);
+    toggleFocus(false);
+    S.sec.exp=0; S.sec.con=0; syncSecSliders(); render(false);
+
     ok('OK', true);
   }catch(e){
     R.OK=false; R.ERR=(e&&e.message)||String(e); R.STACK=(e&&e.stack||'').split('\\n').slice(0,3).join(' | ');

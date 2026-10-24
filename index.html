@@ -353,9 +353,39 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
 body.focus .main{grid-template-columns:minmax(0,1fr) 300px}
 body.focus .col-l{display:none}
 body.focus .dock{display:none}
-body.focus .col-c{padding:8px 10px}
+body.focus .col-c{padding:8px 10px;position:relative}
+/* A. 示波器浮層：專注模式嗰陣唔好再霸一條垂直空間，浮喺右下角 */
+body.focus .scopes{
+  position:absolute;right:14px;bottom:14px;width:340px;z-index:8;
+  background:rgba(24,24,24,.92);border-color:var(--line2);
+  box-shadow:0 18px 48px rgba(0,0,0,.62);
+}
 
-/* ---------- 全屏檢查（~ 鍵 · Premiere Pro 式）----------
+/* ---------- C. PiP 目標圖（R 鍵）：釘喺角落，唔使切並排 ----------
+   並排模式兩邊各佔一半，其實兩張都細咗 —— PiP 可以單圖全尺寸 + 角落見目標。 */
+.pip{
+  position:absolute;z-index:9;width:206px;border-radius:var(--rl);overflow:hidden;
+  background:#0d0f13;border:1px solid var(--line2);
+  box-shadow:0 14px 38px rgba(0,0,0,.62);
+}
+.pip.bl{left:14px;bottom:14px}  .pip.br{right:14px;bottom:14px}
+.pip.tl{left:14px;top:14px}     .pip.tr{right:14px;top:14px}
+.pip canvas{display:block;width:100%;height:auto}
+.pipbar{
+  display:flex;align-items:center;gap:6px;padding:3px 4px 3px 8px;
+  background:rgba(0,0,0,.6);
+}
+.pipbar span{
+  flex:1;font-size:10.5px;color:var(--tx2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.pipbar button{
+  flex:0 0 auto;width:17px;height:17px;border-radius:4px;color:var(--tx4);
+  font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;
+  background:transparent;border:0;opacity:.55;
+}
+.pipbar button:hover{color:var(--tx);background:var(--raise);opacity:1}
+.pip[hidden]{display:none}
    淨留張圖：header / 左右欄 / 工具列 / 示波器全部收埋，底全黑。 */
 body.fs{overflow:hidden}
 body.fs header{display:none}
@@ -660,6 +690,10 @@ textarea{
         <div class="warnflat" id="warnflat" hidden></div>
         <div id="veil">放低就加入 reference</div>
         <div class="toast" id="toast"></div>
+        <div class="pip bl" id="pip" hidden>
+          <canvas id="pipcv" width="206" height="136"></canvas>
+          <div class="pipbar"><span id="pipnm">目標</span><button type="button" id="pipx" title="收起（R）" aria-label="收起目標圖">×</button></div>
+        </div>
         <div class="fsbar" id="fsbar"><span class="fsl" id="fsname">—</span><span id="fsmode">—</span></div>
         <div class="fshint" id="fshint">~ 或 Esc 離開全屏　·　\ A/B　·　` 睇原圖　·　0 適應</div>
       </div>
@@ -776,6 +810,7 @@ textarea{
   <div class="kr"><b>⇧Z</b>鎖定／解鎖原圖</div>
   <div class="kr"><b>`</b>撳實睇原圖</div>
   <div class="kr"><b>F</b>專注調色（圖放大，控件照留）</div>
+  <div class="kr"><b>R</b>目標圖 PiP（撳佢轉角）</div>
   <div class="kr"><b>~</b>全屏檢查（Esc 離開）</div>
   <div class="kr"><b>B</b>翻轉 before/after</div>
   <div class="kr"><b>1–9</b>揀 look</div>
@@ -1778,8 +1813,12 @@ const S={
   /* v12：調色操作面（簡化/色輪/曲線/數值）、曲線通道、示波器 */
   toneMode:'spl', curCh:'Y', scopeMode:'hist', scopeFold:false,
   fs:false,                                 /* 全屏檢查（~ 鍵）· UI state，唔入 snapshot */
-  focus:false                               /* 專注調色（F 鍵）：收埋方向欄＋底部條，圖放大 */
+  focus:false,                              /* 專注調色（F 鍵）：收埋方向欄＋底部條，圖放大 */
+  pipOn:true, pipCorner:'bl'                /* PiP 目標圖：開關 + 釘喺邊個角 */
 };
+try{ const _pi=localStorage.getItem('ld.pip'); if(_pi==='0') S.pipOn=false; }catch(_){}
+try{ const _pc=localStorage.getItem('ld.pipcorner');
+     if(['bl','br','tl','tr'].indexOf(_pc)>=0) S.pipCorner=_pc; }catch(_){}
 try{ const _fc=localStorage.getItem('ld.focus');
      if(_fc==='1'){ S.focus=true; document.body.classList.add('focus'); } }catch(_){}
 try{ const _tm=localStorage.getItem('ld.tone');
@@ -3876,6 +3915,7 @@ function paint(){
   if(!S.vendorImg) return;
   if(S.mode==='grid') return;
   if(S.fs) updateFsBar();          /* 全屏嗰陣左上角嘅檔名 / look / zoom 要跟住郁 */
+  renderPip();                     /* PiP 目標圖要跟住 active／hover 郁 */
   const W=S.vendorLabFull.w, H=S.vendorLabFull.h;
   if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
   const after = S.outCanvas || S.vendorOrig;
@@ -5154,6 +5194,65 @@ window.addEventListener('paste',e=>{
   handleFile(f, pasteZone || (S.shots.length? 'ref':'shot'));
 });
 /* ============================================================
+   PiP 目標圖（R 鍵）
+   調色最實際嘅 workflow 係「我嘅目標 vs 而家」。舊做法要靠 V 切並排，
+   但並排兩邊各佔一半 —— 兩張都細咗。PiP 就係單圖全尺寸 + 角落見目標。
+   ============================================================ */
+const PIP_W=206, PIP_H=136;
+const _pipCache=new Map();
+function refImgFor(i){
+  const it=allItems()[i]; if(!it) return null;
+  if(it.kind==='image'&&it.img) return {img:it.img, name:it.name};
+  /* 自訂 LOOK 自己冇圖，搵返佢嘅基準參考圖 */
+  if(it.kind==='custom'&&it.baseName){
+    const r=S.refs.find(x=>x.name===it.baseName);
+    if(r&&r.img) return {img:r.img, name:it.name+' ← '+r.name};
+  }
+  return null;                       /* 內建 preset 冇實圖，PiP 唔出 */
+}
+function renderPip(){
+  const el=$('pip'); if(!el) return;
+  const r=(S.pipOn&&S.vendorImg)? refImgFor(S.hover>=0? S.hover : S.active) : null;
+  if(!r){ el.hidden=true; return; }
+  const cvP=$('pipcv'); if(!cvP) return;
+  const key=r.name+'|'+r.img.src+'|'+r.img.width+'x'+r.img.height;
+  let cov=_pipCache.get(key);
+  if(!cov){
+    cov=imgToCanvasCover(r.img,PIP_W,PIP_H);
+    if(_pipCache.size>12) _pipCache.clear();     /* 唔好無止境囤 */
+    _pipCache.set(key,cov);
+  }
+  if(cvP.width!==PIP_W||cvP.height!==PIP_H){ cvP.width=PIP_W; cvP.height=PIP_H; }
+  cvP.getContext('2d').drawImage(cov,0,0);
+  const nm=$('pipnm'); if(nm) nm.textContent='目標 · '+r.name;
+  el.className='pip '+S.pipCorner;
+  el.hidden=false;
+}
+function togglePip(force){
+  const want=(force===undefined)? !S.pipOn : !!force;
+  if(want===S.pipOn) return;
+  S.pipOn=want;
+  try{ localStorage.setItem('ld.pip', want?'1':'0'); }catch(_){}
+  renderPip();
+  toast(want? '目標圖 PiP　·　撳佢轉角，R 收起' : '收起目標圖 PiP');
+}
+function cyclePipCorner(){
+  const order=['bl','br','tr','tl'];
+  S.pipCorner=order[(order.indexOf(S.pipCorner)+1)%order.length];
+  try{ localStorage.setItem('ld.pipcorner',S.pipCorner); }catch(_){}
+  renderPip();
+}
+(function(){
+  const p=$('pip');
+  if(p){
+    /* 撳 PiP 唔好 trigger 個 stage 嘅「撳實睇原圖」／pan */
+    p.addEventListener('pointerdown',e=>e.stopPropagation());
+    p.addEventListener('click',e=>{ e.stopPropagation();
+      if(e.target&&e.target.id==='pipx') togglePip(false); else cyclePipCorner(); });
+  }
+})();
+
+/* ============================================================
    專注調色模式（F 鍵）
    調色嗰陣「方向文字」同底部來稿／參考條根本用唔著 —— 收埋佢哋，
    圖即刻大約大一倍，但右欄控件同示波器照留，先可以邊睇邊 tune。
@@ -5261,6 +5360,8 @@ window.addEventListener('keydown',e=>{
   if(e.key==='~'||(e.code==='Backquote'&&e.shiftKey)){ toggleFs(); e.preventDefault(); return; }
   /* F = 專注調色：收埋方向欄＋底部條，圖放大，控件照留 */
   if(e.key==='f'||e.key==='F'){ toggleFocus(); e.preventDefault(); return; }
+  /* R = 目標圖 PiP：釘喺角落，唔使切並排（並排反而兩邊都細） */
+  if(e.key==='r'||e.key==='R'){ togglePip(); e.preventDefault(); return; }
   if(e.key==='0'){ setZoom(0); e.preventDefault(); return; }
   if(e.key==='-'||e.key==='_'){ zoomStep(-1); e.preventDefault(); return; }
   if(e.key==='='||e.key==='+'){ zoomStep(1); e.preventDefault(); return; }
