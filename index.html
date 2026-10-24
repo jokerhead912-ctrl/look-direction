@@ -1093,7 +1093,10 @@ function protectL(L){
    成幅圖對比崩塌變平變灰 —— 呢個就係用家報「曝光 no good」嘅根因。
    正確做法係攝影式曝光：喺線性光（相對亮度 Y）上做乘算，
    黑位乘幾多都係 0（自然留住），中位照推。 */
-const EXP_STOPS=1.5;          /* 滑桿 ±100 → ±1.5 級光圈（中位約 +27L，同舊版手感接近） */
+/* v18：±100 → ±3 級光圈（真·線性光）。
+   舊值 1.5 係「標籤」，但實際乘喺編碼值 → 中調效果約 ×2.2，即滑桿 30 已經 ≈ +1 級。
+   改用線性光之後，用 3.0 先保住同樣手感（滑桿 30 ≈ +0.9 級），而且標籤終於講真話。 */
+const EXP_STOPS=3.0;
 function LtoY(L){ const l=clamp(L,0,100); return l>8 ? Math.pow((l+16)/116,3) : l/903.3; }
 function YtoL(Y){ const y=Y>0?Y:0; return y>0.008856 ? 116*Math.pow(y,1/3)-16 : 903.3*y; }
 function expL(L,exp){
@@ -1225,7 +1228,10 @@ function applySec(L,a,b,s,p){
    SPL 同 LGG 係「串接」而唔係「互相覆寫」：SPL 做全局（S/O），
    LGG 做分區色偏，兩者合成出一套 CDL（數學上閉合，見 composeCdl）。
    ============================================================ */
-const CDL_PIVOT=0.18;        /* 對比／曝光的樞紐點（18% 中灰） */
+/* v18：CDL 係作用喺 sRGB 編碼值上面，所以樞紐點一定要係「18% 中灰嘅編碼值」0.4614，
+   唔係 0.18。之前寫 0.18（= 線性 2.7%，深陰影）→ 加對比會順手推亮中調：
+   對比 +60 實測中灰被改咗 +0.80 stops、+100 係 +1.25 stops。 */
+const CDL_PIVOT=1.055*Math.pow(0.18,1/2.4)-0.055;   /* 0.46135 */
 const CON_K=0.80;            /* 對比 ±100 → slope ×0.20 .. ×1.80 */
 const TEMP_K=0.20;           /* 色溫 ±100 → R/B slope ±20% */
 const TINT_K=0.20;           /* 色調 ±100 → G slope ∓20%（洋紅／綠） */
@@ -1281,17 +1287,17 @@ function curFlat(c){
   return flat;
 }
 
-/* ---------- SPL（簡化面）→ CDL ---------- */
+/* ---------- SPL（簡化面）→ CDL ----------
+   v18：曝光／色溫／色調搬咗去「線性光段」（見 4d）——
+   喺編碼值上面乘 slope 唔係攝影嘅曝光（標 +0.45 級，中灰實際 +0.98），
+   色溫亦唔應該係 R/B 各乘一個冇單位嘅數。
+   CDL 而家淨係負責對比（樞紐 = 編碼中灰）同飽和；匯出時先將線性段近似摺返入 Slope。 */
 function splToCdl(s){
-  const base=Math.pow(2,(s.exp||0)/100*EXP_STOPS);
   const k=1+(s.con||0)/100*CON_K;
-  const t=(s.temp||0)/100*TEMP_K, g=(s.tint||0)/100*TINT_K;
-  const wb=[1+t+g*0.5, 1-g, 1-t+g*0.5];
   const S=[0,0,0], O=[0,0,0];
   for(let i=0;i<3;i++){
-    const s0=base*wb[i];
-    S[i]=s0*k;
-    O[i]=CDL_PIVOT*s0*(1-k);      /* 對比唔郁樞紐點：out(0.18) 永遠 = 0.18×base×wb */
+    S[i]=k;
+    O[i]=CDL_PIVOT*(1-k);         /* 對比唔郁樞紐點：out(0.4614) 永遠 = 0.4614 */
   }
   return {s:S,o:O,p:[1,1,1],sat:1+(s.sat||0)/100*SAT_K};
 }
@@ -1345,6 +1351,188 @@ function activeCdlFor(sec){
 }
 const activeCdl=()=>activeCdlFor(S.sec);
 
+/* ============================================================
+   4d. v18 線性光段 —— 曝光 / 色溫 / 色調 喺 scene-linear 做
+   ------------------------------------------------------------
+   次序：sRGB 解碼 → 線性 → 3×3（CAT16 白點適應 × 2^stops）→ 高光 shoulder
+         → 編碼 → CDL（對比／色輪／飽和）→ 曲線 → 保層次
+   單位（供應商睇得明、做得返）：
+     曝光 = 真·級光圈：18% 中灰嘅線性值精確 ×2^stops
+     色溫 = mired，沿 Planckian locus（±100 → ±80 mired；正 = 加暖）
+     色調 = Duv，垂直 locus（±100 → ∓0.02；正 = 洋紅）
+   高光：膝位 0.5（線性），斜率由 1 連續過渡，最暗斜率 0.3 —— 唔會 clamp；
+         原本唔係純白嘅像素，任何通道都唔准變 255。
+   ============================================================ */
+const LIN_KNEE=0.5, LIN_MINSLOPE=0.3;
+const TEMP_MIRED=80, TINT_DUV=0.02, NEUTRAL_K=6504;
+const lin01=e=> e<=0.04045? e/12.92 : Math.pow((e+0.055)/1.055,2.4);
+const enc01=v=>{ if(!(v>0)) return 0; const s=v<=0.0031308? 12.92*v : 1.055*Math.pow(v,1/2.4)-0.055; return s>1?1:s; };
+const MID_GREY_E=CDL_PIVOT;
+
+/* 高光 shoulder：x ≤ 膝位原樣；之後將 [膝位, k] 平滑壓入 [膝位, 1]。
+   f(u)=(1-m)(1-(1-u)^p)+m·u，喺膝位斜率 = 1（C1 連續），k 時正好 = 1。k ≤ 1 = 恒等。 */
+function ldShoulder(x,k){
+  if(!(k>1)||x<=LIN_KNEE) return x;
+  const t=LIN_KNEE, m=LIN_MINSLOPE;
+  let u=(x-t)/(k-t); if(u>1) u=1;
+  const n=(k-t)/(1-t);
+  if(n<=m) return t+(1-t)*u;
+  const p=(n-m)/(1-m);
+  return t+(1-t)*((1-m)*(1-Math.pow(1-u,p))+m*u);
+}
+
+/* ---- Planckian locus（Krystek 1985，CIE 1960 uv，1000–15000K，|Δuv| < 1e-4）---- */
+function planckUV(T){
+  T=Math.max(1000,Math.min(15000,T));
+  const T2=T*T;
+  return [(0.860117757+1.54118254e-4*T+1.28641212e-7*T2)/(1+8.42420235e-4*T+7.08145163e-7*T2),
+          (0.317398726+4.22806245e-5*T+4.20481691e-8*T2)/(1-2.89741816e-5*T+1.61456053e-7*T2)];
+}
+function uvToXY(u,v){ const d=2*u-8*v+4; return [3*u/d, 2*v/d]; }
+function xyToUV(x,y){ const d=-2*x+12*y+3; return [4*x/d, 6*y/d]; }
+/* CCT = T、偏離 locus Duv（正 = 綠／上面）嘅白點 */
+function whiteUV(T,duv){
+  const a=planckUV(T), b=planckUV(T+1);
+  const du=b[0]-a[0], dv=b[1]-a[1], L=Math.hypot(du,dv)||1;
+  let nu=-dv/L, nv=du/L; if(nv<0){ nu=-nu; nv=-nv; }
+  return [a[0]+nu*(duv||0), a[1]+nv*(duv||0)];
+}
+function xyzOfUV(uv){ const xy=uvToXY(uv[0],uv[1]); return [xy[0]/xy[1], 1, (1-xy[0]-xy[1])/xy[1]]; }
+
+/* ---- 3×3 ---- */
+function m3mul(A,B){ const C=[[0,0,0],[0,0,0],[0,0,0]];
+  for(let i=0;i<3;i++)for(let j=0;j<3;j++) C[i][j]=A[i][0]*B[0][j]+A[i][1]*B[1][j]+A[i][2]*B[2][j];
+  return C; }
+function m3vec(A,v){ return [A[0][0]*v[0]+A[0][1]*v[1]+A[0][2]*v[2],
+                             A[1][0]*v[0]+A[1][1]*v[1]+A[1][2]*v[2],
+                             A[2][0]*v[0]+A[2][1]*v[1]+A[2][2]*v[2]]; }
+function m3inv(m){
+  const [a,b,c]=m[0],[d,e,f]=m[1],[g,h,i]=m[2];
+  const A=e*i-f*h, B=-(d*i-f*g), C=d*h-e*g, det=a*A+b*B+c*C;
+  return [[A/det,-(b*i-c*h)/det,(b*f-c*e)/det],
+          [B/det,(a*i-c*g)/det,-(a*f-c*d)/det],
+          [C/det,-(a*h-b*g)/det,(a*e-b*d)/det]];
+}
+const M_RGB2XYZ=[[0.4124564,0.3575761,0.1804375],[0.2126729,0.7151522,0.0721750],[0.0193339,0.1191920,0.9503041]];
+const M_XYZ2RGB=m3inv(M_RGB2XYZ);
+/* CAT16（Li et al. 2017，CIECAM16 嘅色適應矩陣），完全適應 D=1 */
+const M_CAT16=[[0.401288,0.650173,-0.051461],[-0.250268,1.204414,0.045854],[-0.002079,0.048952,0.953127]];
+const M_CAT16I=m3inv(M_CAT16);
+function cat16RGB(xyzSrc,xyzDst){
+  const s=m3vec(M_CAT16,xyzSrc), d=m3vec(M_CAT16,xyzDst);
+  const D=[[d[0]/s[0],0,0],[0,d[1]/s[1],0],[0,0,d[2]/s[2]]];
+  return m3mul(M_XYZ2RGB, m3mul(M_CAT16I, m3mul(D, m3mul(M_CAT16, M_RGB2XYZ))));
+}
+const D65_UV=xyToUV(0.31271,0.32902);
+/* 目標白點：由 D65 出發，沿 Planckian locus 移 Δmired，再垂直移 Duv。
+   用「相對 6504K 嘅位移」而唔係直接用 locus 上嘅點 —— 否則 0 位會突然偏綠 0.003（D65 唔喺 locus 上）。 */
+function wbTargetUV(K,duv){
+  const ref=planckUV(NEUTRAL_K), tgt=whiteUV(K,duv);
+  return [D65_UV[0]+tgt[0]-ref[0], D65_UV[1]+tgt[1]-ref[1]];
+}
+function cat16ToK(K,duv){ return cat16RGB(xyzOfUV(D65_UV), xyzOfUV(wbTargetUV(K,duv||0))); }
+function wbKofTemp(temp){ return 1e6/(1e6/NEUTRAL_K + (temp||0)/100*TEMP_MIRED); }
+function wbDuvOfTint(tint){ return -(tint||0)/100*TINT_DUV; }
+
+/* 一個 sec 嘅線性段。冇嘢做就返 null（=> 像素 byte-for-byte 同舊版一樣） */
+function linPlan(s){
+  const st=(s&&s.exp||0)/100*EXP_STOPS, tm=(s&&s.temp)||0, tn=(s&&s.tint)||0;
+  if(Math.abs(st)<1e-9 && !tm && !tn) return null;
+  const k=Math.pow(2,st);
+  const W=(tm||tn)? cat16ToK(wbKofTemp(tm),wbDuvOfTint(tn)) : [[1,0,0],[0,1,0],[0,0,1]];
+  const M=W.map(r=>r.map(v=>v*k));
+  /* 每個通道自己嘅 shoulder 上限 = 輸入 [0,1]³ 時呢個通道最大可能值 */
+  const kc=M.map(r=>Math.max(0,r[0])+Math.max(0,r[1])+Math.max(0,r[2]));
+  return {stops:st,k,M,kc,temp:tm,tint:tn,K:wbKofTemp(tm),duv:wbDuvOfTint(tn)};
+}
+/* 精確版（.cube / finishRGB 用）：輸入 0..255 浮點，輸出 0..1 編碼值 */
+function linApply(r,g,b,lp){
+  const R=lin01(r/255),G=lin01(g/255),B=lin01(b/255), M=lp.M, out=[0,0,0];
+  const white=(r>=255&&g>=255&&b>=255);
+  for(let c=0;c<3;c++){
+    let x=M[c][0]*R+M[c][1]*G+M[c][2]*B;
+    x=ldShoulder(x<0?0:x, lp.kc[c]);
+    let e=enc01(x);
+    if(!white && e>254/255) e=254/255;
+    out[c]=e;
+  }
+  return out;
+}
+/* 快版（預覽用）：每通道一條「線性 → shoulder → 編碼」LUT，用 sqrt 做 index ——
+   暗部最密，唔會喺陰影整出 banding */
+const LIN_ENC_N=8192;
+function buildLinEncLUT(lp){
+  const T=new Float32Array(LIN_ENC_N*3), rng=[0,0,0];
+  for(let c=0;c<3;c++){
+    const R=Math.max(1,lp.kc[c]); rng[c]=R;
+    for(let i=0;i<LIN_ENC_N;i++){
+      const q=i/(LIN_ENC_N-1), x=q*q*R;
+      T[c*LIN_ENC_N+i]=enc01(ldShoulder(x,lp.kc[c]))*255;
+    }
+  }
+  return {T,rng};
+}
+/* 匯出用：將線性段喺 18% 中灰嗰點嘅效果摺做 CDL Slope（對角近似）。
+   .cube 係精確嘅；.cdl 冇得表達 3×3 同 shoulder，所以只能近似，Description 會講明 */
+function linCdlApprox(s){
+  const lp=linPlan(s); if(!lp) return IDCDL();
+  const g=lp.M.map((r,c)=>enc01(ldShoulder((r[0]+r[1]+r[2])*0.18, lp.kc[c]))/MID_GREY_E);
+  return {s:g,o:[0,0,0],p:[1,1,1],sat:1};
+}
+function exportCdlFor(sec){ const s=sec||S.sec; return composeCdl(linCdlApprox(s), activeCdlFor(s)); }
+const exportCdl=()=>exportCdlFor(S.sec);
+/* 供應商睇嘅文字 */
+function linText(s){
+  const lp=linPlan(s); if(!lp) return [];
+  const out=[], f=v=>(v>0?'+':'')+v.toFixed(2);
+  if(Math.abs(lp.stops)>0.005) out.push('曝光 '+f(lp.stops)+' 級光圈（線性光，18% 中灰為準；高光 shoulder 唔 clamp）');
+  if(lp.temp){
+    const dm=(1e6/lp.K)-(1e6/NEUTRAL_K);
+    out.push('色溫 '+(dm>0?'+':'')+Math.round(dm)+' mired（白點 '+NEUTRAL_K+'K → '+Math.round(lp.K/10)*10+'K，'+(dm>0?'加暖':'偏冷')+'；CAT16 色適應）');
+  }
+  if(lp.tint) out.push('色調 Duv '+(lp.duv>0?'+':'')+lp.duv.toFixed(4)+'（'+(lp.duv<0?'偏洋紅':'偏綠')+'）');
+  return out;
+}
+
+/* ---- CCT / Duv：Ohno 2013（三角 + 拋物線混合法）----
+   之前用 McCamy 1992 —— 2856–6504K 之外誤差會大，而且冇 Duv（綠／洋紅偏色）。 */
+let _OHNO=null;
+function ohnoTable(){
+  if(_OHNO) return _OHNO;
+  const T=[],U=[],V=[];
+  for(let t=1000;t<=15000*1.0001;t*=1.01){ const uv=planckUV(t); T.push(t); U.push(uv[0]); V.push(uv[1]); }
+  return (_OHNO={T,U,V});
+}
+function ohnoUV(u,v){
+  const tb=ohnoTable(), n=tb.T.length;
+  let m=0, best=Infinity;
+  const d=new Float64Array(n);
+  for(let i=0;i<n;i++){ d[i]=Math.hypot(u-tb.U[i], v-tb.V[i]); if(d[i]<best){ best=d[i]; m=i; } }
+  if(m===0||m===n-1) return {cct:tb.T[m], duv:NaN, edge:true};
+  const T0=tb.T[m-1],T1=tb.T[m],T2=tb.T[m+1], d0=d[m-1],d1=d[m],d2=d[m+1];
+  /* 三角法 */
+  const l=Math.hypot(tb.U[m+1]-tb.U[m-1], tb.V[m+1]-tb.V[m-1]);
+  const x=(d0*d0-d2*d2+l*l)/(2*l);
+  const Tt=T0+(T2-T0)*x/l;
+  const vx=tb.V[m-1]+(tb.V[m+1]-tb.V[m-1])*x/l;
+  const duvT=Math.sqrt(Math.max(0,d0*d0-x*x))*Math.sign(v-vx);
+  if(Math.abs(duvT)<0.002) return {cct:Tt, duv:duvT};
+  /* 拋物線法 */
+  const X=(T2-T1)*(T0-T2)*(T1-T0);
+  const a=(T0*(d2-d1)+T1*(d0-d2)+T2*(d1-d0))/X;
+  const b=-(T0*T0*(d2-d1)+T1*T1*(d0-d2)+T2*T2*(d1-d0))/X;
+  const c=-(d0*(T2-T1)*T1*T2+d1*(T0-T2)*T0*T2+d2*(T1-T0)*T0*T1)/X;
+  const Tx=-b/(2*a);
+  return {cct:Tx*0.99991, duv:Math.sign(v-vx)*(a*Tx*Tx+b*Tx+c)};
+}
+function ohnoXY(x,y){ const uv=xyToUV(x,y); return ohnoUV(uv[0],uv[1]); }
+function ohnoLinRGB(R,G,B){
+  const X=0.4124564*R+0.3575761*G+0.1804375*B, Y=0.2126729*R+0.7151522*G+0.0721750*B,
+        Z=0.0193339*R+0.1191920*G+0.9503041*B, s=X+Y+Z;
+  if(!(s>1e-9)) return null;
+  return ohnoXY(X/s, Y/s);
+}
+
 /* ---------- 曲線 ---------- */
 function curveAt(pts,x){
   const n=pts.length;
@@ -1352,13 +1540,19 @@ function curveAt(pts,x){
   if(x<=pts[0][0]) return pts[0][1];
   if(x>=pts[n-1][0]) return pts[n-1][1];
   let i=0; while(i<n-2 && pts[i+1][0]<x) i++;
-  const p0=pts[Math.max(0,i-1)], p1=pts[i], p2=pts[i+1], p3=pts[Math.min(n-1,i+2)];
+  /* v18：端點用「線性外推」嘅幻影點，唔好重複端點。
+     舊寫法 p0=pts[0]、p3=pts[n-1] → 兩點直線 [[0,0],[1,1]] 會變成 S 曲線
+     0.5(t+3t²-2t³)：code 16→9.4（-0.85 stops）、40→28.4、190→201.9。
+     只要郁過任何 CDL 桿，plut 就會套呢條「隱形 S 曲線」—— 即係暗部被壓死。 */
+  const p1=pts[i], p2=pts[i+1];
+  const y0 = i>0    ? pts[i-1][1] : 2*p1[1]-p2[1];
+  const y3 = i+2<n  ? pts[i+2][1] : 2*p2[1]-p1[1];
   const dx=p2[0]-p1[0];
   const t=dx>1e-9? (x-p1[0])/dx : 0;
   const t2=t*t, t3=t2*t;
-  const v=0.5*(2*p1[1] + (-p0[1]+p2[1])*t
-             + (2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*t2
-             + (-p0[1]+3*p1[1]-3*p2[1]+p3[1])*t3);
+  const v=0.5*(2*p1[1] + (-y0+p2[1])*t
+             + (2*y0-5*p1[1]+4*p2[1]-y3)*t2
+             + (-y0+3*p1[1]-3*p2[1]+y3)*t3);
   return v<0?0:(v>1?1:v);
 }
 function buildCurveLUT(pts){
@@ -1429,7 +1623,8 @@ function postProcessRGB(x,cur,protect){
 }
 /* ---------- .cdl（ASC CDL XML）---------- */
 function makeCdlText(){
-  const cdl=activeCdl();
+  const cdl=exportCdl();
+  const _lt=linText(S.sec);
   const it=allItems()[S.active]||{name:'-'};
   const f=v=>{
     let s=(Math.round(v*1000000)/1000000).toFixed(6);
@@ -1453,7 +1648,9 @@ function makeCdlText(){
     '  </ColorDecision>\n'+
     '  <Description>Generated by Look Direction v12 · ref: '+escXml(it.name)+
        ' · chroma '+S.chromaStr+'% tone '+S.toneStr+'%'+
-       (curFlat(S.sec.cur)?'':' · +curve')+'</Description>\n'+
+       (curFlat(S.sec.cur)?'':' · +curve')+
+       (_lt.length? ' · scene-linear stage (exposure/CAT16 white point/highlight shoulder) folded into Slope as an 18%-grey approximation; use the .cube for an exact match':'')+
+       '</Description>\n'+
     '</ColorDecisionList>\n';
 }
 function escXml(s){
@@ -1591,8 +1788,11 @@ function finishRGB(c,sec,opt){
   const _s=sec||S.sec;
   const cdl=activeCdlFor(_s);
   const cur=normCur(_s.cur);
-  if(cdlIsIdentity(cdl) && curFlat(cur) && !opt.protect) return c;
-  const x=applyCdlRGB(c[0],c[1],c[2],cdl);
+  const lp=linPlan(_s);
+  if(!lp && cdlIsIdentity(cdl) && curFlat(cur) && !opt.protect) return c;
+  let r=c[0],g=c[1],b=c[2];
+  if(lp){ const e=linApply(r,g,b,lp); r=e[0]*255; g=e[1]*255; b=e[2]*255; }
+  const x=applyCdlRGB(r,g,b,cdl);
   postProcessRGB(x,cur,!!opt.protect);
   return [clamp(Math.round(x[0]*255),0,255),
           clamp(Math.round(x[1]*255),0,255),
@@ -1627,16 +1827,30 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
   const _s=sec||S.sec;
   const cdl=activeCdlFor(_s);
   const cur=normCur(_s.cur);
-  const need = !cdlIsIdentity(cdl) || !!opt.protect || !curFlat(cur);
+  const lp=linPlan(_s);                                  /* v18 線性光段 */
+  const LE=lp? buildLinEncLUT(lp) : null;
+  const need = !!lp || !cdlIsIdentity(cdl) || !!opt.protect || !curFlat(cur);
   const clut = need? buildCdlLUT(cdl)   : null;
   const plut = need? buildPostLUT(cur, !!opt.protect) : null;
   const sat  = cdl.sat;
+  const LN=LIN_ENC_N-1;
   for(let i=0;i<n;i++){
     const mf=sm?sampleSkin(sm,lab.w,lab.h,i):undefined;
     let q=applyPixel(lab.L[i],lab.a[i],lab.b[i],grade,opt,mf);
     if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProt,mf);
     if(useSec) q=applySec(q[0],q[1],q[2],sec,plan);
     let c=labToRgb(q[0],q[1],q[2]);
+    if(lp){
+      const R=LUT_LIN[c[0]],G=LUT_LIN[c[1]],B=LUT_LIN[c[2]], M=lp.M, T=LE.T;
+      const white=(c[0]===255&&c[1]===255&&c[2]===255);
+      for(let ch=0;ch<3;ch++){
+        let x=M[ch][0]*R+M[ch][1]*G+M[ch][2]*B; if(x<0) x=0;
+        let k=Math.round(Math.sqrt(x/LE.rng[ch])*LN); if(k>LN) k=LN;
+        let v=Math.round(T[ch*LIN_ENC_N+k]);
+        if(v>254 && !white) v=254;            /* 原本唔係白，唔准變白 */
+        c[ch]=v;
+      }
+    }
     if(need){
       let x0=clut[c[0]], x1=clut[256+c[1]], x2=clut[512+c[2]];
       if(sat!==1){
@@ -1718,13 +1932,9 @@ function secSummary(s){
   const out=[];
   const add=(n,v)=>{ if(Math.abs(v)>0.5) out.push(n+fmt1(v)); };
   /* v12：曝光直接用攝影單位（級光圈）講，供應商一睇就明 */
-  if(Math.abs(s.exp)>0.5){
-    const st=s.exp/100*EXP_STOPS;
-    out.push('曝光 '+fmt1(s.exp)+'（'+(st>0?'+':'')+st.toFixed(2)+' 級光圈）');
-  }
+  /* v18：曝光／色溫／色調全部用物理單位（級光圈 / mired / Duv），供應商照數做得返 */
+  linText(s).forEach(t=>out.push(t));
   add('對比',s.con);
-  add('色溫（正=加暖／負=偏藍）',s.temp);
-  add('色調（正=洋紅／負=綠）',s.tint);
   add('飽和度',s.sat);
   add('高光',s.high); add('陰影',s.shad); add('白位',s.white); add('黑位',s.black);
   add('自然飽和',s.vib);
@@ -1744,7 +1954,7 @@ function secSummary(s){
   }
   /* ASC CDL：無論用邊個操作面，出口都係同一套標準值，供應商可以直接 import */
   try{
-    const cd=activeCdlFor(s);
+    const cd=exportCdlFor(s);
     if(!cdlIsIdentity(cd)){
       const f=v=>v.toFixed(4);
       out.push('ASC CDL　Slope '+f(cd.s[0])+' '+f(cd.s[1])+' '+f(cd.s[2])+
@@ -4723,7 +4933,7 @@ $('b-png').onclick=()=>{
 function makeCubeText(){
   if(!S.lastGrade) return null;
   const o=opt(), N=33, sp=buildSecPlan(S.sec), pp=buildPalPlan(S.active);
-  const _c=activeCdl();
+  const _c=exportCdl();
   const _f=v=>v.toFixed(6);
   const L=['# Generated by Look Direction v12 (ASC CDL core)',
            '# ASC CDL  Slope '+_f(_c.s[0])+' '+_f(_c.s[1])+' '+_f(_c.s[2])+
@@ -4731,6 +4941,7 @@ function makeCubeText(){
            '   Power '+_f(_c.p[0])+' '+_f(_c.p[1])+' '+_f(_c.p[2])+
            '   Saturation '+_f(_c.sat),
            '# display-referred (sRGB encoded) — 放喺 Resolve/Nuke 嘅 output 段用',
+           '# v18: exposure / white point are applied in scene-linear (CAT16 + highlight shoulder); this cube is exact, the CDL line above is an 18%-grey approximation',
            '# ref: '+(allItems()[S.active]||{name:'-'}).name+
            ' | chroma '+S.chromaStr+'% tone '+S.toneStr+'%'+
            (sp.active?' | +secondary':''),
@@ -4928,20 +5139,22 @@ function buildSheetCanvas(){
   /* ---- 具體數值（v11）：供應商照住做就得，唔使估 ---- */
   const nums=[];
   const sgn2=v=>(v>0?'+':'')+(Math.abs(v)>=10? v.toFixed(0) : v.toFixed(1));
-  const st=S.sec.exp/100*EXP_STOPS;
-  if(Math.abs(S.sec.exp)>0.5) nums.push('曝光 '+sgn2(st)+' 級光圈');
+  {
+    const lp=linPlan(S.sec);
+    if(lp&&Math.abs(lp.stops)>0.005) nums.push('曝光 '+(lp.stops>0?'+':'')+lp.stops.toFixed(2)+' 級光圈');
+    if(lp&&lp.temp){ const dm=(1e6/lp.K)-(1e6/NEUTRAL_K); nums.push('色溫 '+(dm>0?'+':'')+Math.round(dm)+' mired → '+Math.round(lp.K/10)*10+'K'); }
+    if(lp&&lp.tint) nums.push('色調 Duv '+(lp.duv>0?'+':'')+lp.duv.toFixed(3));
+  }
   if(Math.abs(S.sec.con)>0.5) nums.push('對比 '+sgn2(S.sec.con));
   if(Math.abs(S.sec.high)>0.5) nums.push('高光 '+sgn2(S.sec.high));
   if(Math.abs(S.sec.shad)>0.5) nums.push('陰影 '+sgn2(S.sec.shad));
   if(Math.abs(S.sec.white)>0.5) nums.push('白位 '+sgn2(S.sec.white));
   if(Math.abs(S.sec.black)>0.5) nums.push('黑位 '+sgn2(S.sec.black));
-  if(Math.abs(S.sec.temp)>0.5) nums.push('色溫 b '+sgn2(S.sec.temp));
-  if(Math.abs(S.sec.tint)>0.5) nums.push('色調 a '+sgn2(S.sec.tint));
   if(Math.abs(S.sec.sat)>0.5) nums.push('飽和 '+sgn2(S.sec.sat));
   if(Math.abs(S.sec.vib)>0.5) nums.push('自然飽和 '+sgn2(S.sec.vib));
   /* v12：ASC CDL —— 供應商可以直接 import 落 Resolve / Nuke，唔使逐條桿對 */
   try{
-    const cd=activeCdl();
+    const cd=exportCdl();
     if(!cdlIsIdentity(cd)){
       const f3=v=>v.toFixed(3);
       nums.push('ASC CDL Slope '+cd.s.map(f3).join(' / '));
@@ -5577,17 +5790,14 @@ function modClose(){
    全部估計都帶一致度／置信度：低就明講唔可靠，唔會扮準。
    ============================================================ */
 function s2lin(c){ c=c/255; return c<=0.04045? c/12.92 : Math.pow((c+0.055)/1.055,2.4); }
+/* v18：CCT 由 McCamy 1992 換成 Ohno 2013（全域函數 ohnoLinRGB，見 4d），
+   McCamy 喺 2856–6504K 以外誤差會變大，而且俾唔到 Duv（綠／洋紅偏色）。 */
+var _lastDuv=NaN;
 function cctFromLin(R,G,B){
-  var X=0.4124564*R+0.3575761*G+0.1804375*B;
-  var Y=0.2126729*R+0.7151522*G+0.0721750*B;
-  var Z=0.0193339*R+0.1191920*G+0.9503041*B;
-  var s=X+Y+Z; if(!(s>1e-9)) return null;
-  var x=X/s, y=Y/s, dn=0.1858-y;
-  if(Math.abs(dn)<1e-6) return null;
-  var n=(x-0.3320)/dn;
-  var cct=437*n*n*n+3601*n*n+6861*n+5517;
-  if(!(cct>1200&&cct<25000)) return null;
-  return cct;
+  var o=ohnoLinRGB(R,G,B);
+  if(!o||o.edge||!(o.cct>1000&&o.cct<15000)){ _lastDuv=NaN; return null; }
+  _lastDuv=o.duv;
+  return o.cct;
 }
 function cctFromRGB(r,g,b){ return cctFromLin(s2lin(r),s2lin(g),s2lin(b)); }
 function mired(K){ return 1e6/Math.max(1,K); }
@@ -5622,23 +5832,26 @@ function msCCT(g){
   var sorted=[]; for(i=0;i<n;i++) sorted.push(i);
   sorted.sort(function(a,b){ return lum[b]-lum[a]; });
   var k=Math.max(1,Math.round(n*0.01)), aR=0,aG=0,aB=0, c;
-  for(i=0;i<k;i++){ p=sorted[i]*4; aR+=d[p]; aG+=d[p+1]; aB+=d[p+2]; }
-  var wp=cctFromRGB(aR/k,aG/k,aB/k);
+  /* v18：喺線性光度平均（之前平均編碼值，偏暗而且偏色） */
+  for(i=0;i<k;i++){ p=sorted[i]*4; aR+=s2lin(d[p]); aG+=s2lin(d[p+1]); aB+=s2lin(d[p+2]); }
+  var wp=cctFromLin(aR/k,aG/k,aB/k);
   /* 灰像素：光入面 30% 之中，最低 chroma 嘅 6% */
   var pool=sorted.slice(0,Math.max(2,Math.round(n*0.30)));
   pool.sort(function(a,b){ return ch[a]-ch[b]; });
   k=Math.max(1,Math.round(pool.length*0.06));
   var bR=0,bG=0,bB=0;
-  for(i=0;i<k;i++){ p=pool[i]*4; bR+=d[p]; bG+=d[p+1]; bB+=d[p+2]; }
-  var gp=cctFromRGB(bR/k,bG/k,bB/k);
+  for(i=0;i<k;i++){ p=pool[i]*4; bR+=s2lin(d[p]); bG+=s2lin(d[p+1]); bB+=s2lin(d[p+2]); }
+  var gp=cctFromLin(bR/k,bG/k,bB/k);
+  var gpDuv=_lastDuv;                 /* 灰像素法最接近「白點」，用佢嘅 Duv 講綠／洋紅 */
   var vs=[gw,wp,gp].filter(function(x){ return x; });
   var spread=0;
   if(vs.length>1){
     var ms=vs.map(mired);
     spread=Math.max.apply(null,ms)-Math.min.apply(null,ms);
   }
-  return {gw:gw,wp:wp,gp:gp,spread:spread,
-          mean:vs.length? vs.reduce(function(a,b){return a+b;},0)/vs.length : null};
+  /* v18：平均要喺 mired 做（K 唔係感知均勻：5000→6000K 同 3000→4000K 唔係一樣大嘅差） */
+  return {gw:gw,wp:wp,gp:gp,spread:spread,duv:gpDuv,
+          mean:vs.length? 1e6/(vs.map(mired).reduce(function(a,b){return a+b;},0)/vs.length) : null};
 }
 /* 光向：梯度方向直方圖（主）+ 光暗質心連線（副） */
 function msDir(g){
@@ -5725,6 +5938,8 @@ function msText(m,tK,tClk){
   L.push('【讀圖 — 由完成圖反推現有燈光】');
   L.push('冇 AOV／冇灰球，以下係由單張完成圖推斷。用嚟同供應商對焦，唔係燈光數據。');
   L.push('');
+  if(isFinite(m.cct.duv)) L.push('色偏　Duv '+(m.cct.duv>=0?'+':'')+m.cct.duv.toFixed(4)+
+       (Math.abs(m.cct.duv)<0.003?'（基本冇綠／洋紅偏）':(m.cct.duv>0?'（偏綠）':'（偏洋紅）')));
   L.push('色溫　約 '+(K? Math.round(K/10)*10 : '?')+'K　三法一致度：'+cf.t+
          (m.cct.gw&&m.cct.wp&&m.cct.gp? '（灰世界 '+Math.round(m.cct.gw)+' / 白點 '+Math.round(m.cct.wp)+' / 灰像素 '+Math.round(m.cct.gp)+'）':''));
   L.push('光向　約 '+clockName(c1)+'　置信度：'+dConf+
@@ -5778,6 +5993,8 @@ function msUI(){
   var H='';
   H+='<dl class="ldkv">'+
      '<dt>色溫（推斷）</dt><dd>'+(K? Math.round(K/10)*10+'K' : '—')+'　一致度 '+cf.t+'</dd>'+
+     (isFinite(m.cct.duv)? '<dt>色偏 Duv</dt><dd>'+(m.cct.duv>=0?'+':'')+m.cct.duv.toFixed(4)+
+       (Math.abs(m.cct.duv)<0.003?'　基本中性':(m.cct.duv>0?'　偏綠':'　偏洋紅'))+'</dd>' : '')+
      '<dt>　三法</dt><dd>灰世界 '+(m.cct.gw?Math.round(m.cct.gw):'—')+
        ' / 白點 '+(m.cct.wp?Math.round(m.cct.wp):'—')+
        ' / 灰像素 '+(m.cct.gp?Math.round(m.cct.gp):'—')+' K</dd>'+
@@ -5845,6 +6062,10 @@ window.ldMeasure=msMeasure;
 window.ldMeasureText=msText;
 window.ldModClose=modClose;
 window.ldV17={degToClock:degToClock,ck12:ck12,cctFromRGB:cctFromRGB,              s2lin:s2lin,mired:mired,clockName:clockName,LtoStops:LtoStops};
+window.ldLin={linPlan:linPlan,linApply:linApply,ldShoulder:ldShoulder,planckUV:planckUV,uvToXY:uvToXY,
+              xyToUV:xyToUV,whiteUV:whiteUV,cat16RGB:cat16RGB,cat16ToK:cat16ToK,wbTargetUV:wbTargetUV,
+              ohnoXY:ohnoXY,ohnoUV:ohnoUV,ohnoLinRGB:ohnoLinRGB,exportCdlFor:exportCdlFor,linCdlApprox:linCdlApprox,
+              lin01:lin01,enc01:enc01,m3vec:m3vec,M_RGB2XYZ:M_RGB2XYZ,xyzOfUV:xyzOfUV,D65_UV:D65_UV,linText:linText};
 })();
 </script>
 </body>

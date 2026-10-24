@@ -48,29 +48,34 @@ const INJECT=`
     const cd0=activeCdlFor(z);
     ok('cdlIdentityAtZero', cdlIsIdentity(cd0));
 
-    /* 曝光 +100 → Slope 全部 ×2^1.5 ≈ 2.828；Offset 要係 0（曝光唔准抬黑位） */
+    /* 曝光 +100 → v18 起唔再喺 CDL Slope（舊：Slope ×2^1.5 乘編碼值 = 假級光圈），
+       改喺線性光段做；CDL Slope 要保持 1、Offset 0 */
     const ze=Object.assign(newSec(),{exp:100});
     const cde=splToCdl(ze);
     ok('expSlope', +cde.s[0].toFixed(4));
     ok('expOffsetZero', Math.abs(cde.o[0])<1e-9 && Math.abs(cde.o[2])<1e-9);
+    ok('expNotInCdl', Math.abs(cde.s[0]-1)<1e-9);
+    ok('expInLinear', !!linPlan(ze) && Math.abs(linPlan(ze).stops-EXP_STOPS)<1e-9);
 
-    /* 對比：樞紐點 0.18 一定要唔郁 */
+    /* 對比：樞紐點 = 編碼中灰 CDL_PIVOT（0.4614）一定要唔郁（v18 之前錯咗用 0.18） */
     const zc=Object.assign(newSec(),{con:60});
     const cdc=splToCdl(zc);
-    const pv=[0,1,2].map(i=>0.18*cdc.s[i]+cdc.o[i]);
+    const pv=[0,1,2].map(i=>CDL_PIVOT*cdc.s[i]+cdc.o[i]);
     ok('contrastPivot', +pv[0].toFixed(4));
     ok('contrastPivotSame', Math.abs(pv[0]-pv[1])<1e-9 && Math.abs(pv[1]-pv[2])<1e-9);
+    ok('contrastPivotFixed', Math.abs(pv[0]-CDL_PIVOT)<1e-9);
 
     /* 負對比 → Offset 正（托起黑位）；正對比 → Offset 負 */
     const cdn=splToCdl(Object.assign(newSec(),{con:-60}));
     ok('negContrastOffsetPos', cdn.o[0]>0);
     ok('posContrastOffsetNeg', cdc.o[0]<0);
 
-    /* 色溫：正 = R 升 B 降；色調：正 = G 降（洋紅） */
-    const cdt=splToCdl(Object.assign(newSec(),{temp:100}));
-    ok('tempRup', cdt.s[0]>1); ok('tempBdown', cdt.s[2]<1);
-    const cdi=splToCdl(Object.assign(newSec(),{tint:100}));
-    ok('tintGdown', cdi.s[1]<1 && cdi.s[0]>1);
+    /* 色溫：正 = R 升 B 降；色調：正 = G 降（洋紅）
+       v18 起喺線性光段（CAT16）做，唔再係 CDL Slope —— 量中灰經過線性段之後嘅 RGB */
+    const lt=linApply(118,118,118,linPlan(Object.assign(newSec(),{temp:100})));
+    ok('tempRup', lt[0]>118/255); ok('tempBdown', lt[2]<118/255);
+    const li=linApply(118,118,118,linPlan(Object.assign(newSec(),{tint:100})));
+    ok('tintGdown', li[1]<118/255 && li[0]>li[1]);
 
     /* 飽和：sat +100 → Saturation ≈ 1.9 */
     ok('satVal', +splToCdl(Object.assign(newSec(),{sat:100})).sat.toFixed(3));
