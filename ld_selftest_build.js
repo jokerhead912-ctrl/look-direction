@@ -334,20 +334,33 @@ const INJECT=`
     ok('cdlRatioKept', Math.abs((_m1[1]/_m1[0])-(_m0[1]/_m0[0]))<0.06);
     S.sec.exp=0; render(false);
 
-    /* 真·拖一次曝光桿（pointer 事件），驗證畫面唔會塌做純紅 */
+    /* 真·拖曝光桿：用 slider 自己嘅 API（同 pointer 拖桿行同一條 set() 路徑，
+       但唔依賴 headless layout —— getBoundingClientRect().width 間中係 0，
+       單靠 pointer 事件會「拖咗等於冇拖」，令下面幾條變假綠。 */
+    if(SLIDERS.exp){ SLIDERS.exp.set(56); render(false); }
+    const _m2=_meanRGB();
+    ok('dragExpSec',  S.sec.exp);              /* 要真係改咗值，否則下面係假綠 */
+    ok('dragExpRGB',  _m2.map(v=>Math.round(v)).join(','));
+    ok('dragExpNoRed', _m2[1]>5 && _m2[2]>5);
+    ok('dragExpBrighter', _m2[0] > _m0[0]);    /* 推正曝光 → R 一定要升 */
+    /* 再用真 pointer 事件拖一次（layout 有闊度先斷言） */
     const _sl=document.querySelector('[data-k="exp"]');
     if(_sl){
-      const tr=_sl.querySelector('.sl-tr'), r=tr.getBoundingClientRect();
-      const mk=(t,x)=>new PointerEvent(t,{bubbles:true,cancelable:true,clientX:x,clientY:r.top+8,pointerId:1,isPrimary:true});
-      tr.dispatchEvent(mk('pointerdown', r.left+r.width*0.5));
-      tr.dispatchEvent(mk('pointermove', r.left+r.width*0.78));
-      tr.dispatchEvent(mk('pointerup',   r.left+r.width*0.78));
-      render(false);
-      const _m2=_meanRGB();
-      ok('dragExpSec',  S.sec.exp);            /* 拖完要真係改咗值，否則下面兩條係假綠 */
-      ok('dragExpRGB',  _m2.map(v=>Math.round(v)).join(','));
-      ok('dragExpNoRed', _m2[1]>5 && _m2[2]>5);
-      ok('dragExpBrighter', _m2[0] > _m0[0]);  /* 推正曝光 → R 一定要升 */
+      const tr=_sl.querySelector('.sl-tr');
+      if(tr.scrollIntoView) tr.scrollIntoView();
+      const r=tr.getBoundingClientRect();
+      ok('ptrDragWidth', Math.round(r.width));
+      if(r.width>0){
+        const mk=(t,x)=>new PointerEvent(t,{bubbles:true,cancelable:true,clientX:x,clientY:r.top+8,pointerId:1,isPrimary:true});
+        tr.dispatchEvent(mk('pointerdown', r.left+r.width*0.2));
+        tr.dispatchEvent(mk('pointermove', r.left+r.width*0.45));
+        tr.dispatchEvent(mk('pointerup',   r.left+r.width*0.45));
+        render(false);
+        const _m3=_meanRGB();
+        ok('ptrDragSec',  S.sec.exp);
+        ok('ptrDragRGB',  _m3.map(v=>Math.round(v)).join(','));
+        ok('ptrDragNoRed', _m3[1]>5 && _m3[2]>5);
+      }
     }
 
     ok('OK', true);
