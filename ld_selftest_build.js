@@ -424,6 +424,50 @@ const INJECT=`
     toggleFs(false);
     S.sec.exp=0; S.sec.con=0; syncSecSliders(); render(false);
 
+    /* ---------- 17. 專注調色模式（F 鍵） ---------- */
+    ok('fcDom', !!$('b-focus'));
+    ok('fcBtnWired', typeof $('b-focus').onclick==='function');
+    const _rect=()=>{ const r=$('cv').getBoundingClientRect(); return Math.round(r.width)+'×'+Math.round(r.height); };
+    const _area=()=>{ const r=$('cv').getBoundingClientRect(); return Math.round(r.width*r.height); };
+    toggleFocus(false);
+    ok('fcOffNow', S.focus===false && !document.body.classList.contains('focus'));
+    const _a0=_area(), _r0=_rect();
+    _key('f');
+    ok('fcOnByF', S.focus===true && document.body.classList.contains('focus'));
+    ok('fcLeftHidden', getComputedStyle(document.querySelector('.col-l')).display==='none');
+    ok('fcDockHidden', getComputedStyle(document.querySelector('.dock')).display==='none');
+    ok('fcRightKept',  getComputedStyle(document.querySelector('.col-r')).display!=='none');
+    ok('fcScopesKept', getComputedStyle($('scopes')).display!=='none');
+    const _a1=_area(), _r1=_rect();
+    ok('fcCanvasSize', _r0+' → '+_r1);
+    ok('fcCanvasBigger', _a1 > _a0*1.35);            /* 面積要明顯大咗 */
+    ok('fcGainPct', Math.round((_a1/_a0-1)*100)+'%');
+    ok('fcPersistOn', localStorage.getItem('ld.focus')==='1');
+    /* 專注入面 render + 拖桿都要照行，三通道唔可以塌 */
+    S.sec.exp=20; render(false);
+    if(SLIDERS.con) SLIDERS.con.set(15);
+    render(false);
+    const _fcm=_meanRGB();
+    ok('fcRGB', _fcm.map(v=>Math.round(v)).join(','));
+    ok('fcNoRed', _fcm[1]>5 && _fcm[2]>5);
+    S.sec.exp=0; S.sec.con=0; syncSecSliders(); render(false);
+    /* F 再撳 = 還原 */
+    _key('f');
+    ok('fcOffByF', S.focus===false && !document.body.classList.contains('focus'));
+    ok('fcLeftBack', getComputedStyle(document.querySelector('.col-l')).display!=='none');
+    ok('fcPersistOff', localStorage.getItem('ld.focus')==='0');
+    /* Esc 都要出到去 */
+    _key('f'); ok('fcOnAgain', S.focus===true);
+    _key('Escape'); ok('fcOffByEsc', S.focus===false);
+    /* 全屏同專注唔好疊住：開全屏再開專注 → 全屏要讓位 */
+    toggleFs(true);  ok('fcFsOn', S.fs===true);
+    toggleFocus(true);
+    ok('fcExclusiveFs', S.fs===false && S.focus===true);
+    toggleFocus(false);
+    ok('fcClean', S.focus===false && S.fs===false &&
+                  !document.body.classList.contains('focus') &&
+                  !document.body.classList.contains('fs'));
+
     ok('OK', true);
   }catch(e){
     R.OK=false; R.ERR=(e&&e.message)||String(e); R.STACK=(e&&e.stack||'').split('\\n').slice(0,3).join(' | ');

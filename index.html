@@ -346,6 +346,15 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
 .stage.divider #cv{cursor:col-resize}
 .stage.panning #cv,.stage.panning.divider #cv{cursor:grabbing}
 
+/* ---------- 專注調色模式（F 鍵）----------
+   調色嗰陣左欄「方向文字」同底部來稿／參考條根本用唔著 —— 收埋佢哋，
+   圖即刻大約大一倍，但**右欄控件同示波器照留**，先可以邊睇邊 tune
+   （~ 全屏係「淨留圖」檢查用，唔可以邊睇邊改，兩個模式分工唔同）。 */
+body.focus .main{grid-template-columns:minmax(0,1fr) 300px}
+body.focus .col-l{display:none}
+body.focus .dock{display:none}
+body.focus .col-c{padding:8px 10px}
+
 /* ---------- 全屏檢查（~ 鍵 · Premiere Pro 式）----------
    淨留張圖：header / 左右欄 / 工具列 / 示波器全部收埋，底全黑。 */
 body.fs{overflow:hidden}
@@ -631,6 +640,7 @@ textarea{
           <button type="button" id="z-fit" aria-label="適應視窗">適應</button>
           <button type="button" id="z-100" aria-label="原尺寸 1:1">1:1</button>
         </div>
+        <button class="b sm" id="b-focus" type="button" title="專注調色（F）：收埋方向欄＋底部來稿條，圖放大約一倍，控件照留">專注</button>
         <button class="iconbtn" id="b-fs" type="button" title="全屏檢查（~）" aria-label="全屏檢查">⛶</button>
       </div>
 
@@ -765,6 +775,7 @@ textarea{
   <div class="kr"><b>\</b>A/B 對比（原圖 ↔ LOOK）</div>
   <div class="kr"><b>⇧Z</b>鎖定／解鎖原圖</div>
   <div class="kr"><b>`</b>撳實睇原圖</div>
+  <div class="kr"><b>F</b>專注調色（圖放大，控件照留）</div>
   <div class="kr"><b>~</b>全屏檢查（Esc 離開）</div>
   <div class="kr"><b>B</b>翻轉 before/after</div>
   <div class="kr"><b>1–9</b>揀 look</div>
@@ -1766,8 +1777,11 @@ const S={
   skinProt:100,                            /* 膚色保護力度 %（0=唔保，100=全保） */
   /* v12：調色操作面（簡化/色輪/曲線/數值）、曲線通道、示波器 */
   toneMode:'spl', curCh:'Y', scopeMode:'hist', scopeFold:false,
-  fs:false                                  /* 全屏檢查（~ 鍵）· UI state，唔入 snapshot */
+  fs:false,                                 /* 全屏檢查（~ 鍵）· UI state，唔入 snapshot */
+  focus:false                               /* 專注調色（F 鍵）：收埋方向欄＋底部條，圖放大 */
 };
+try{ const _fc=localStorage.getItem('ld.focus');
+     if(_fc==='1'){ S.focus=true; document.body.classList.add('focus'); } }catch(_){}
 try{ const _tm=localStorage.getItem('ld.tone');
      if(_tm==='spl'||_tm==='wheel'||_tm==='curve'||_tm==='num') S.toneMode=_tm; }catch(_){}
 try{ const _sm=localStorage.getItem('ld.scope');
@@ -5140,6 +5154,27 @@ window.addEventListener('paste',e=>{
   handleFile(f, pasteZone || (S.shots.length? 'ref':'shot'));
 });
 /* ============================================================
+   專注調色模式（F 鍵）
+   調色嗰陣「方向文字」同底部來稿／參考條根本用唔著 —— 收埋佢哋，
+   圖即刻大約大一倍，但右欄控件同示波器照留，先可以邊睇邊 tune。
+   （~ 全屏係「淨留圖」檢查用，兩個模式分工唔同。）
+   ============================================================ */
+function toggleFocus(force){
+  const want=(force===undefined)? !S.focus : !!force;
+  if(want===S.focus) return;
+  if(want && S.fs) toggleFs(false);        /* 全屏同專注唔好疊住 */
+  S.focus=want;
+  document.body.classList.toggle('focus',S.focus);
+  const bf=$('b-focus'); if(bf) bf.classList.toggle('on',S.focus);
+  try{ localStorage.setItem('ld.focus', S.focus?'1':'0'); }catch(_){}
+  applyZoom(); paint();                    /* viewport 大細變咗 → 重新量 + 重畫 */
+  if(typeof drawScopes==='function') drawScopes();
+  toast(S.focus? '專注調色　·　收埋方向欄同底部條（F 還原）' : '離開專注調色');
+}
+(function(){ const b=$('b-focus');
+  if(b){ b.onclick=()=>toggleFocus(); b.classList.toggle('on',!!S.focus); } })();
+
+/* ============================================================
    全屏檢查（~ 鍵 · Premiere Pro 式）
    全屏嗰陣係要「睇真啲」，所以 render 解像度跟螢幕升（封頂 2400×1500）；
    離開就還原 1400×900 —— 費事之後每下 commit 都慢慢拖。
@@ -5199,8 +5234,11 @@ window.addEventListener('keydown',e=>{
   if(e.target&&e.target.closest&&e.target.closest('.sl')) return;
   const t=e.target.tagName;
   if(t==='TEXTAREA'||t==='INPUT') return;
-  /* Esc 離開全屏（Esc 冇 modifier，要放喺 meta/ctrl 檢查之前） */
-  if(e.key==='Escape' && S.fs){ toggleFs(false); e.preventDefault(); return; }
+  /* Esc 離開全屏／專注（Esc 冇 modifier，要放喺 meta/ctrl 檢查之前） */
+  if(e.key==='Escape' && (S.fs||S.focus)){
+    if(S.fs) toggleFs(false); else if(S.focus) toggleFocus(false);
+    e.preventDefault(); return;
+  }
   /* ⌘Z / ⌘⇧Z · Undo / Redo（cross-platform：metaKey Mac, ctrlKey Win） */
   if((e.metaKey||e.ctrlKey) && !e.altKey && (e.key==='z'||e.key==='Z')){
     e.preventDefault();
@@ -5221,6 +5259,8 @@ window.addEventListener('keydown',e=>{
   if(e.key==='\\'){ toggleAB(); e.preventDefault(); return; }   /* \ = A/B 一鍵對比 */
   /* ~ = 全屏檢查（Premiere Pro 式）。Shift+` 同一粒掣：冇 Shift 係「撳實睇原圖」 */
   if(e.key==='~'||(e.code==='Backquote'&&e.shiftKey)){ toggleFs(); e.preventDefault(); return; }
+  /* F = 專注調色：收埋方向欄＋底部條，圖放大，控件照留 */
+  if(e.key==='f'||e.key==='F'){ toggleFocus(); e.preventDefault(); return; }
   if(e.key==='0'){ setZoom(0); e.preventDefault(); return; }
   if(e.key==='-'||e.key==='_'){ zoomStep(-1); e.preventDefault(); return; }
   if(e.key==='='||e.key==='+'){ zoomStep(1); e.preventDefault(); return; }
