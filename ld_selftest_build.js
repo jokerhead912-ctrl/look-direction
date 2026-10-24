@@ -3,7 +3,7 @@
    真跑 CDL 數學、四個操作面、Scopes、.cube / .cdl / 方向紙，
    結果寫落 document.title，headless --dump-dom 捉得出。 */
 const fs=require('fs');
-const P='/Users/kincheung/WorkBuddy/2026-09-01-13-20-32/look-direction/index.html';
+const P=process.argv[2]||'/Users/kincheung/WorkBuddy/2026-09-01-13-20-32/look-direction/index.html';
 const html=fs.readFileSync(P,'utf8');
 const INJECT=`
 <script>
@@ -370,7 +370,16 @@ const INJECT=`
     /* fsFit：全屏要跟螢幕升解像，但唔可以無上限 */
     const _big={width:4000,height:3000};
     const _f1=fsFit(_big), _f0=fitSize(_big,1400,900);
-    ok('fsFitBigger', _f1.w>_f0.w && _f1.h>_f0.h);
+    /* 視口細過 1400×900（例如 headless）嗰陣 fsFit 有 floor，
+       結果會等於普通 fitSize —— 呢個係設計而唔係 bug，
+       所以呢條要跟實際視口計，唔可以硬 assert「一定大過」。 */
+    const _dpr=Math.min(window.devicePixelRatio||1,2);
+    const _mw=Math.max(1400, Math.round(Math.min(window.innerWidth *_dpr, 2400)));
+    const _mh=Math.max(900,  Math.round(Math.min(window.innerHeight*_dpr, 1500)));
+    const _exp=fitSize(_big,_mw,_mh);
+    ok('vp', window.innerWidth+'x'+window.innerHeight);
+    ok('fsFitBigger', _f1.w>=_f0.w && _f1.h>=_f0.h);          /* 起碼唔可以細過普通視圖 */
+    ok('fsFitMatchesViewport', _f1.w===_exp.w && _f1.h===_exp.h);
     ok('fsFitCapped', _f1.w<=2400 && _f1.h<=1500);
     ok('fsFitFinite', isFinite(_f1.w)&&isFinite(_f1.h)&&_f1.w>0&&_f1.h>0);
     /* 細圖唔好無謂升解 */

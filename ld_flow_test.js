@@ -3,7 +3,7 @@
    → 示波器 → 保層次 → 導出 → undo/redo → 全屏/專注，全程捉 JS error，
    每步記 low／mid／high 三區平均 RGB（驗證真係改到嘢、三通道冇塌）。*/
 const fs=require('fs');
-const P='/Users/kincheung/WorkBuddy/2026-09-01-13-20-32/look-direction/index.html';
+const P=process.argv[2]||'/Users/kincheung/WorkBuddy/2026-09-01-13-20-32/look-direction/index.html';
 const html=fs.readFileSync(P,'utf8');
 const INJECT=`
 <script>
