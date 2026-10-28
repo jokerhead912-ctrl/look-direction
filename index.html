@@ -985,7 +985,7 @@ function skinness(L,a,b){
        * cl01((b-2)/8)  *(1-cl01((b-32)/12));
 }
 const MAX_CHROMA=58;
-function applyPixel(L,a,b,g,opt,mf){
+function applyPixel(L,a,b,g,opt){
   const st=opt.strength;
   const ts=opt.toneStrength!==undefined?opt.toneStrength:st;
   if(g.toneMap){
@@ -994,9 +994,8 @@ function applyPixel(L,a,b,g,opt,mf){
     L = L<0?0:(L>100?100:L);
   }
   const da=interpBand(L,g.dA), db=interpBand(L,g.dB), sc=interpBand(L,g.sC);
-  const m=(opt.skinProt)?(mf!==undefined?mf:skinMask(L,a,b)):0;
+  /* v4：呢度唔再做任何膚色判斷 —— 全權交畀 applyLook + polarClamp。 */
   let dx=a*st*(sc-1)+da*st, dy=b*st*(sc-1)+db*st;
-  if(m>0.02){ const sd=skinSafe(a,b,dx,dy,m,opt.skinProt); dx=sd[0]; dy=sd[1]; }
   let na=a+dx, nb=b+dy;
   const cm=Math.hypot(na,nb);
   if(cm>MAX_CHROMA){ na*=MAX_CHROMA/cm; nb*=MAX_CHROMA/cm; }
@@ -1768,16 +1767,399 @@ function sampleSkin(f,w,h,i){
 }
 /* 將 pixel 嘅 ab 推向色板目標色。L 唔郁 —— 光影結構係 vendor 嘅，
    我哋只借參考圖嘅「色」。膚色 mask 核心（1-m）近乎完全擋住推力。 */
+const NBIN=256, SAT_LO=0.55, SAT_HI=1.80, FLESH_FALLBACK=13.1, HUE_GATHER=65, C_REF=7;
+/* 目標表 index = **L**（0..255 ↔ L 0..100），由 palette 嘅 暗/中/亮 三點插值。
+   ── 點解唔再用「hue 場平均」────────────────────────────────
+   實測（shot_17 × 王家衛）：palette hue 係 154° / 199° / 68°，
+   三個方向喺圓周上互相對沖 → 任何 source hue 求出嚟嘅淨旋轉 max 得 **2.17°**，
+   即係成個 look 等於冇落。呢個唔係 bug 係模型錯：palette 得 3 個 hue 覆蓋唔到 360°，
+   「平均」喺大部份角度都啱啱抵消。
+   ── 改做 split-tone（DI 嘅做法）─────────────────────────────
+   每個 L 有一個**明確**目標色（陰影→palette 暗色、高光→palette 亮色），
+   再對嗰個目標做極座標變換：h'=h+Δh·s，C'=C·(1+s(C_t/C-1))。
+   仍然保住 v4 嘅結構性保證：chroma 只乘唔減 → 唔塌；hue 只減細 → 唔穿中性軸。 */
+function buildLookCurves(stops,strength){
+  /* 一定要存 **Cartesian 目標向量**（ta,tb），唔可以存角度。
+     實測：palette 由 L25(a-10.2,b+5.0) 插值去 L55(a-26,b-8.9) 嗰陣，
+     中途會好接近中性軸 → 目標色相喺 ±180° 附近。角度做線性插值會插出垃圾：
+     L=35.79 → 83.4°，L=36.04 → -144.4°（差 0.25 L 就跳 132°）。
+     插值向量就連續；色相喺用嗰陣先 atan2（sin/cos 對分支唔敏感）。 */
+  const ta=new Float32Array(NBIN), tb=new Float32Array(NBIN), chr=new Float32Array(NBIN);
+  const ss=stops.slice().sort((x,y)=>x.L-y.L);
+  let lx=1, ly=0;                       /* 最後一個可靠方向（|t| 太細嗰陣用） */
+  for(let k=0;k<NBIN;k++){
+    const i=k*100/(NBIN-1);
+    let a,b;
+    if(i<=ss[0].L){ a=ss[0].a; b=ss[0].b; }
+    else if(i>=ss[ss.length-1].L){ a=ss[ss.length-1].a; b=ss[ss.length-1].b; }
+    else{
+      a=ss[0].a; b=ss[0].b;
+      for(let k2=0;k2<ss.length-1;k2++){
+        const s0=ss[k2], s1=ss[k2+1];
+        if(i>=s0.L&&i<=s1.L){
+          const t=s1.L>s0.L? (i-s0.L)/(s1.L-s0.L) : 0;
+          a=s0.a+(s1.a-s0.a)*t; b=s0.b+(s1.b-s0.b)*t; break;
+        }
+      }
+    }
+    const m=Math.hypot(a,b);
+    if(m>=0.5){ lx=a/m; ly=b/m; }         /* 方向夠可靠就記低 */
+    const mm=Math.max(m,2.0);             /* 唔好畀目標彩度變 0（方向會失定義） */
+    ta[k]=lx*mm; tb[k]=ly*mm; chr[k]=mm;
+  }
+  return {ta,tb,chr,strength:+strength||0};
+}
+let _lcCache={k:'',cv:null};
+function lookCurvesFor(stops,strength){
+  const k=(+strength||0).toFixed(3)+'|'+
+          stops.map(s=>(+s.L||0).toFixed(1)+','+(+s.a||0).toFixed(2)+','+(+s.b||0).toFixed(2)).join(';');
+  if(_lcCache.k===k) return _lcCache.cv;
+  const cv=buildLookCurves(stops,strength);
+  _lcCache={k:cv?k:'',cv:cv}; return cv;
+}
+/* 按 L 取樣（0..100） */
+function sampleCurve(c,L){
+  let x=L/100*(NBIN-1);
+  if(x<0)x=0; else if(x>NBIN-1)x=NBIN-1;
+  const i0=Math.floor(x), i1=Math.min(NBIN-1,i0+1), t=x-i0;
+  return c[i0]*(1-t)+c[i1]*t;
+}
+/* ── 記憶色鉗（memory-colour polar clamp）──────────────────────
+   無論變換係追色定色板，都拆做「轉咗幾多度 Δh」＋「縮放咗幾多 s」，
+   再按 gate 按比例收返：h'=h0+Δh·(1-g)，C'=C0·(1+(s-1)(1-g))。
+   結構上：g=1 → 色相彩度還原原圖（只剩 tonal 變化）；
+           C1=0（塌 chroma）→ s_damped=g → 永遠唔會塌到 0；
+           Δh 只係減細，永遠唔會反號 → 唔會穿中性軸。 */
+function fleshGate(hd,fl){
+  let dh=hd-fl[0];
+  while(dh>180)dh-=360; while(dh<-180)dh+=360;
+  const t=dh/fl[1];
+  return Math.exp(-0.5*t*t);
+}
+function polarClamp(a0,b0,a1,b1,g){
+  const C0=Math.hypot(a0,b0);
+  if(C0<1e-4) return [a1,b1];
+  const h0=Math.atan2(b0,a0), C1=Math.hypot(a1,b1), k=1-g;
+  if(C1<1e-4) return [C0*g*Math.cos(h0), C0*g*Math.sin(h0)];
+  let dh=Math.atan2(b1,a1)-h0;
+  while(dh>Math.PI)dh-=2*Math.PI; while(dh<-Math.PI)dh+=2*Math.PI;
+  const s=1+k*(C1/C0-1), h2=h0+dh*k, C2=C0*s;
+  return [C2*Math.cos(h2), C2*Math.sin(h2)];
+}
+/* flesh line 由 plate 量（同 Python flesh_hue_of 一致）：
+   chroma 加權圓形平均 → 唔係算術平均（唔會喺 0/360 邊界爆）。
+   skinOnly=true 嗰陣淨收 skinness>0.25 嘅像素（全圖兜路用）。 */
+function fleshHueOf(lab,x0,y0,x1,y1,skinOnly){
+  let vx=0,vy=0,sw=0,n=0;
+  x0=Math.max(0,x0|0); y0=Math.max(0,y0|0);
+  x1=Math.min(lab.w,x1|0); y1=Math.min(lab.h,y1|0);
+  for(let y=y0;y<y1;y+=2) for(let x=x0;x<x1;x+=2){
+    const i=y*lab.w+x, L=lab.L[i], a=lab.a[i], b=lab.b[i];
+    const C=Math.hypot(a,b);
+    if(C<=4||L<=25||L>=88) continue;
+    if(skinOnly && skinness(L,a,b)<0.25) continue;
+    const h=Math.atan2(b,a);
+    vx+=C*Math.cos(h); vy+=C*Math.sin(h); sw+=C; n++;
+  }
+  if(n<50||sw<1e-9) return null;
+  const mu=Math.atan2(vy,vx), R=Math.hypot(vx,vy)/sw;
+  const sd=Math.sqrt(Math.max(-2*Math.log(Math.max(R,1e-9)),0));
+  return [mu*180/Math.PI, Math.min(40,Math.max(12,sd*180/Math.PI))];
+}
+/* plate 膚軸快取：每張圖（+每次改 key）量一次 */
+let _fleshLab=null,_fleshKey='',_flesh=[FLESH_FALLBACK,26];
+function plateFlesh(lab){
+  if(!lab||!lab.w) return _flesh;
+  const kk=S.skinKey?S.skinKey.join(','):'';
+  if(lab===_fleshLab && kk===_fleshKey) return _flesh;
+  _fleshLab=lab; _fleshKey=kk;
+  const r=S.skinKey;
+  let f=null;
+  if(r) f=fleshHueOf(lab,Math.round(r[0]*lab.w),Math.round(r[1]*lab.h),
+                          Math.round(r[2]*lab.w),Math.round(r[3]*lab.h),false);
+  if(!f) f=fleshHueOf(lab,0,0,lab.w,lab.h,true);
+  if(f) _flesh=f;
+  return _flesh;
+}
+const FL=()=>plateFlesh(S.vendorLabQuick||S.vendorLabFull);
+/* explicit skin key：矩形 + smoothstep 羽化（0..1）。rect 係像素座標 */
+function makeKeyField(w,h,rect,feather){
+  if(!rect) return null;
+  const m=new Float32Array(w*h);
+  const x0=rect[0],y0=rect[1],x1=rect[2],y1=rect[3], f=feather||30;
+  const ss=(e0,e1,x)=>{ let t=(x-e0)/(e1-e0); t=t<0?0:(t>1?1:t); return t*t*(3-2*t); };
+  const mx=new Float32Array(w);
+  for(let x=0;x<w;x++) mx[x]=Math.min(ss(x0-f,x0,x), ss(x1+f,x1,x));
+  for(let y=0;y<h;y++){
+    const row=Math.min(ss(y0-f,y0,y), ss(y1+f,y1,y)), off=y*w;
+    for(let x=0;x<w;x++) m[off+x]=mx[x]*row;
+  }
+  return m;
+}
+/* S.skinKey 存 **歸一化** 0..1（唔理 quick/full 解像度都啱用） */
+function keyFieldFor(lab){
+  if(!S.skinKey) return null;
+  const w=lab.w,h=lab.h;
+  const r=[S.skinKey[0]*w,S.skinKey[1]*h,S.skinKey[2]*w,S.skinKey[3]*h];
+  return makeKeyField(w,h,r,Math.max(6,0.025*Math.min(w,h)));
+}
+/* 自動框：粗格 skinness → 閾值 → **最大連通塊**（唔係全圖 bbox）。
+   第一版用全圖 bbox，實測 shot_17 框咗 94%×63% 出嚟 —— 即係成幅圖當咗皮膚，
+   保護變咗「乜都唔好郁」。連通塊先係搵「一個人」嘅正確做法。 */
+function autoSkinKey(){
+  const lab=S.vendorLabQuick||S.vendorLabFull;
+  if(!lab||!lab.w){ toast('未入來稿'); return false; }
+  const GW=64,GH=44, N=GW*GH;
+  const acc=new Float32Array(N), cnt=new Float32Array(N);
+  const st=Math.max(1,Math.floor(Math.min(lab.w/GW,lab.h/GH)/2));
+  for(let y=0;y<lab.h;y+=st) for(let x=0;x<lab.w;x+=st){
+    const i=y*lab.w+x;
+    const v=skinness(lab.L[i],lab.a[i],lab.b[i]);
+    if(v<=0.10) continue;
+    const gx=Math.min(GW-1,(x*GW/lab.w)|0), gy=Math.min(GH-1,(y*GH/lab.h)|0);
+    acc[gy*GW+gx]+=v; cnt[gy*GW+gx]++;
+  }
+  const val=new Float32Array(N);
+  let mx=0;
+  for(let i=0;i<N;i++){ val[i]=cnt[i]?acc[i]/cnt[i]:0; if(val[i]>mx)mx=val[i]; }
+  if(mx<0.22){ toast('搵唔到膚色區'); return false; }
+  const th=Math.max(0.30,0.60*mx);
+  const on=new Uint8Array(N);
+  for(let i=0;i<N;i++) if(val[i]>=th) on[i]=1;
+  const lab2=new Int32Array(N).fill(-1), comps=[], stack=new Int32Array(N);
+  for(let i=0;i<N;i++){
+    if(!on[i]||lab2[i]>=0) continue;
+    const id=comps.length; let sp=0; stack[sp++]=i; lab2[i]=id;
+    const cells=[];
+    while(sp>0){
+      const j=stack[--sp]; cells.push(j);
+      const gx=j%GW, gy=(j/GW)|0;
+      const nb=[gx>0?j-1:-1, gx<GW-1?j+1:-1, gy>0?j-GW:-1, gy<GH-1?j+GW:-1];
+      for(const k of nb) if(k>=0&&on[k]&&lab2[k]<0){ lab2[k]=id; stack[sp++]=k; }
+    }
+    let w=0; for(const c of cells) w+=val[c];
+    let X0=GW,X1=-1,Y0=GH,Y1=-1;
+    for(const c of cells){ const gx=c%GW, gy=(c/GW)|0;
+      if(gx<X0)X0=gx; if(gx>X1)X1=gx; if(gy<Y0)Y0=gy; if(gy>Y1)Y1=gy; }
+    comps.push({n:cells.length,w:w,X0:X0,X1:X1,Y0:Y0,Y1:Y1});
+  }
+  if(!comps.length){ toast('搵唔到膚色區'); return false; }
+  const area=c=>Math.max(1,(c.X1-c.X0+1)*(c.Y1-c.Y0+1))/(GW*GH);
+  let cand=comps.filter(c=>area(c)>=0.02&&area(c)<=0.34);
+  if(!cand.length) cand=comps.slice();
+  cand.sort((x,y)=>y.w-x.w);
+  const c=cand[0];
+  const px=1/GW, py=1/GH, padX=0.03, padY=0.05;
+  const r=[clamp(c.X0*px-padX,0,1), clamp(c.Y0*py-padY,0,1),
+           clamp((c.X1+1)*px+padX,0,1), clamp((c.Y1+1)*py+padY,0,1)];
+  if(r[2]-r[0]<0.02||r[3]-r[1]<0.02){ toast('膚色區太細'); return false; }
+  S.skinKey=r;
+  _fleshLab=null;
+  const f=FL();
+  toast('key 框好：'+Math.round(r[0]*100)+'%,'+Math.round(r[1]*100)+'% → '+
+        Math.round(r[2]*100)+'%,'+Math.round(r[3]*100)+'%　·　佔 '+
+        Math.round(area(c)*100)+'%　·　膚軸 '+f[0].toFixed(1)+'° ±'+f[1].toFixed(0)+'°');
+  updKeyLabel();
+  return true;
+}
+/* 拖框 key：DI 嘅做法係「有 key 就用 key」—— 自動框只係起步點，
+   導演自己喺預覽圖拉一拉先係最準（同 Baselight 畫 matte 一樣）。 */
+function setKeyDraw(on){
+  S.keyDraw=!!on;
+  const b=$('bkeydrag');
+  if(b){ b.classList.toggle('on',S.keyDraw);
+         b.style.borderColor=S.keyDraw?'#7c8cf0':''; b.style.color=S.keyDraw?'#9aa6ff':''; }
+  const c=$('cv'); if(c) c.style.cursor=S.keyDraw?'crosshair':'';
+  if(S.keyDraw) toast('喺圖上拖一個框做膚色 key');
+}
+let _keyDrag=null;
+function keyDrawStart(e){
+  if(!S.keyDraw||!S.vendorImg) return;
+  e.preventDefault(); e.stopPropagation();
+  _keyDrag={x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY};
+  let ov=$('keyrb');
+  if(!ov){ ov=document.createElement('div'); ov.id='keyrb'; ov.hidden=true;
+    ov.style.cssText='position:fixed;z-index:9999;border:1.5px dashed #ff5a5a;'+
+                     'background:rgba(255,90,90,.10);pointer-events:none';
+    document.body.appendChild(ov); }
+  window.addEventListener('pointermove',keyDrawMove);
+  window.addEventListener('pointerup',keyDrawEnd);
+}
+function keyDrawMove(e){
+  if(!_keyDrag) return;
+  _keyDrag.x=e.clientX; _keyDrag.y=e.clientY;
+  const ov=$('keyrb'); if(!ov) return;
+  ov.hidden=false;
+  ov.style.left=Math.min(_keyDrag.x0,_keyDrag.x)+'px';
+  ov.style.top =Math.min(_keyDrag.y0,_keyDrag.y)+'px';
+  ov.style.width =Math.abs(_keyDrag.x-_keyDrag.x0)+'px';
+  ov.style.height=Math.abs(_keyDrag.y-_keyDrag.y0)+'px';
+}
+function keyDrawEnd(){
+  window.removeEventListener('pointermove',keyDrawMove);
+  window.removeEventListener('pointerup',keyDrawEnd);
+  const ov=$('keyrb'); if(ov) ov.hidden=true;
+  const k=_keyDrag; _keyDrag=null;
+  if(!k) return;
+  const c=$('cv'); if(!c) return;
+  const r=c.getBoundingClientRect();
+  if(!(r.width>0&&r.height>0)){ toast('預覽圖未準備好'); return; }
+  const x0=clamp((Math.min(k.x0,k.x)-r.left)/r.width,0,1),
+        x1=clamp((Math.max(k.x0,k.x)-r.left)/r.width,0,1),
+        y0=clamp((Math.min(k.y0,k.y)-r.top )/r.height,0,1),
+        y1=clamp((Math.max(k.y0,k.y)-r.top )/r.height,0,1);
+  if(x1-x0<0.01||y1-y0<0.01){ toast('框太細'); return; }
+  S.skinKey=[x0,y0,x1,y1]; _fleshLab=null;
+  const f=FL();
+  toast('key 框好：'+Math.round(x0*100)+'%,'+Math.round(y0*100)+'% → '+
+        Math.round(x1*100)+'%,'+Math.round(y1*100)+'%　·　膚軸 '+
+        f[0].toFixed(1)+'° ±'+f[1].toFixed(0)+'°');
+  updKeyLabel(); setKeyDraw(false);
+  S.pvKey++; S.pvCache.clear(); scheduleRender();
+}
+/* cv 係下面先 declare 嘅 const（TDZ），所以呢度要用 getElementById 唔可以直接寫 cv */
+try{ const _cve=document.getElementById('cv');
+     if(_cve) _cve.addEventListener('pointerdown',keyDrawStart,true); }catch(_){}
+function updKeyLabel(){
+  const el=$('keylb'); if(!el) return;
+  el.textContent = S.skinKey
+    ? 'key '+Math.round(S.skinKey[0]*100)+','+Math.round(S.skinKey[1]*100)+' → '+
+      Math.round(S.skinKey[2]*100)+','+Math.round(S.skinKey[3]*100)+' %'
+    : 'key 未框（淨用 hue gate）';
+}
+/* chroma prewash：L 導引 edge-aware，淨磨 a/b（grade 之前行 → NR before look） */
+const _pwBuf={n:0,a:null,b:null};
+function chromaPrewash(lab,radius){
+  const n=lab.n,w=lab.w,h=lab.h,r=radius||1;
+  if(_pwBuf.n!==n){ _pwBuf.a=new Float32Array(n); _pwBuf.b=new Float32Array(n); _pwBuf.n=n; }
+  const A=_pwBuf.a,B=_pwBuf.b;
+  const L=lab.L,a=lab.a,b=lab.b;
+  const ls=6.0, ss=1.6;
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      let sa=0,sb=0,sw=0;
+      for(let dy=-r;dy<=r;dy++){
+        let yy=y+dy; if(yy<0)yy=0; else if(yy>=h)yy=h-1;
+        for(let dx=-r;dx<=r;dx++){
+          let xx=x+dx; if(xx<0)xx=0; else if(xx>=w)xx=w-1;
+          const j=yy*w+xx, dL=L[j]-L[y*w+x];
+          const wt=Math.exp(-0.5*(dL/ls)*(dL/ls))*Math.exp(-0.5*(dx*dx+dy*dy)/(ss*ss));
+          sa+=wt*a[j]; sb+=wt*b[j]; sw+=wt;
+        }
+      }
+      const i=y*w+x; A[i]=sa/sw; B[i]=sb/sw;
+    }
+  }
+  return {L:L,a:A,b:B,w:w,h:h,n:n};
+}
+/* 施法：極座標（旋轉 + 縮放）。cv = L 索引目標表；
+   L 保持唔變（tonal 交返畀追色 / 二次創作），淨動 a/b。 */
+function applyLook(L,a,b,cv){
+  const C=Math.hypot(a,b);
+  if(C<1e-4) return [L,a,b];
+  const st=cv.strength;
+  if(st<=0) return [L,a,b];
+  const hd=Math.atan2(b,a)*180/Math.PI;
+  const ht=Math.atan2(sampleCurve(cv.tb,L),sampleCurve(cv.ta,L))*180/Math.PI;
+  const ct=sampleCurve(cv.chr,L);
+  let dh=ht-hd; while(dh>180)dh-=360; while(dh<-180)dh+=360;
+  /* ── 兩條數學上必需嘅修正（兩個都係實測撞板撞出嚟）─────────────
+     (1) 旋轉量用 sin 而唔係 dh*strength。
+         「旋向目標色相」喺對極（dh=±180）一定有分支切：dh 由 +179 跳去 -179，
+         Δh 就跟住由 +179s 跳去 -179s。實測 33^3 LUT 嗰度出現 **168/255 硬跳**。
+         任何「圓 → 旋轉量」嘅連續奇映射都一定要喺對極為 0
+         （Δh(180) = -Δh(-180) = -Δh(180) ⇒ Δh(180)=0）。
+         Δh = K·sin(dh) 係最簡單而且 C¹ 連續嘅解。
+     (2) 低 chroma 嗰陣方向要收去 **目標** 色相，唔可以跟來源 hue。
+         C' = C(1-s) + s·Ct —— 即係 C→0 嗰陣 chroma 會被抬去 s·Ct（約 20），
+         而方向如果仲用 hd（中性軸上未定義）→ 跨過中性軸就成個輸出翻轉。
+         實測呢個先係 114/255 硬跳嘅真正元兇（改完 sin 都仲喺度）。
+         用 w = smoothstep(0, C_REF, C) 喺「來源方向」同「目標方向」之間插值：
+         C→0 → w→0 → 輸出方向 = ht；C≥C_REF → w=1 → 正常旋轉。連續。 */
+  const sh=(HUE_GATHER*st)*Math.sin(dh*Math.PI/180);
+  const w=C>=C_REF?1:(()=>{const t=C/C_REF;return t*t*(3-2*t);})();
+  let dv=(hd+sh)-ht; while(dv>180)dv-=360; while(dv<-180)dv+=360;
+  const C2=C+st*(ct-C);                    /* 展開之後係線性，唔會爆 */
+  const h2=(ht+w*dv)*Math.PI/180;
+  return [L,C2*Math.cos(h2),C2*Math.sin(h2)];
+}
+
+/* 拖框 key：DI 嘅做法係「有 key 就用 key」—— 自動框只係起步點，
+   導演自己喺預覽圖拉一拉先係最準（同 Baselight 畫 matte 一樣）。 */
+function setKeyDraw(on){
+  S.keyDraw=!!on;
+  const b=$('bkeydrag');
+  if(b){ b.classList.toggle('on',S.keyDraw);
+         b.style.borderColor=S.keyDraw?'#7c8cf0':''; b.style.color=S.keyDraw?'#9aa6ff':''; }
+  const c=$('cv'); if(c) c.style.cursor=S.keyDraw?'crosshair':'';
+  if(S.keyDraw) toast('喺圖上拖一個框做膚色 key');
+}
+let _kd=null;
+function keyDrawStart(e){
+  if(!S.keyDraw||!S.vendorImg) return;
+  e.preventDefault(); e.stopPropagation();
+  _kd={x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY};
+  let ov=$('keyrb');
+  if(!ov){ ov=document.createElement('div'); ov.id='keyrb'; ov.hidden=true;
+    ov.style.cssText='position:fixed;z-index:9999;border:1.5px dashed #ff5a5a;'+
+                     'background:rgba(255,90,90,.10);pointer-events:none';
+    document.body.appendChild(ov); }
+  window.addEventListener('pointermove',keyDrawMove);
+  window.addEventListener('pointerup',keyDrawEnd);
+}
+function keyDrawMove(e){
+  if(!_kd) return;
+  _kd.x=e.clientX; _kd.y=e.clientY;
+  const ov=$('keyrb'); if(!ov) return;
+  ov.hidden=false;
+  ov.style.left=Math.min(_kd.x0,_kd.x)+'px';
+  ov.style.top =Math.min(_kd.y0,_kd.y)+'px';
+  ov.style.width =Math.abs(_kd.x-_kd.x0)+'px';
+  ov.style.height=Math.abs(_kd.y-_kd.y0)+'px';
+}
+function keyDrawEnd(){
+  window.removeEventListener('pointermove',keyDrawMove);
+  window.removeEventListener('pointerup',keyDrawEnd);
+  const ov=$('keyrb'); if(ov) ov.hidden=true;
+  const k=_kd; _kd=null;
+  if(!k) return;
+  const c=$('cv'); if(!c) return;
+  const r=c.getBoundingClientRect();
+  if(!(r.width>0&&r.height>0)){ toast('預覽圖未準備好'); return; }
+  const x0=clamp((Math.min(k.x0,k.x)-r.left)/r.width,0,1),
+        x1=clamp((Math.max(k.x0,k.x)-r.left)/r.width,0,1),
+        y0=clamp((Math.min(k.y0,k.y)-r.top )/r.height,0,1),
+        y1=clamp((Math.max(k.y0,k.y)-r.top )/r.height,0,1);
+  if(x1-x0<0.01||y1-y0<0.01){ toast('框太細'); return; }
+  S.skinKey=[x0,y0,x1,y1]; _fleshLab=null;
+  const f=FL();
+  toast('key 框好：'+Math.round(x0*100)+'%,'+Math.round(y0*100)+'% → '+
+        Math.round(x1*100)+'%,'+Math.round(y1*100)+'%　·　膚軸 '+
+        f[0].toFixed(1)+'° ±'+f[1].toFixed(0)+'°');
+  updKeyLabel(); setKeyDraw(false);
+  S.pvKey++; S.pvCache.clear(); scheduleRender();
+}
+/* cv 係下面先 declare 嘅 const（TDZ），所以呢度要用 getElementById 唔可以直接寫 cv */
+try{ const _cve=document.getElementById('cv');
+     if(_cve) _cve.addEventListener('pointerdown',keyDrawStart,true); }catch(_){}
+
+
+/* 色板／導演注入嘅力度：直接用「融合」桿（0 = 原圖） */
+const palStrength=()=>clamp((+S.sec.palBlend||0)/100,0,1);
+/* stops → 曲線 plan。所有 palette 入口（主 render／牆格／導演格）都行呢度，
+   保證「睇到嘅預覽」同「出嘅 LUT」係同一條數學。 */
+function cvPlan(stops){
+  if(!stops||!stops.length) return null;
+  const cv=lookCurvesFor(stops,palStrength());
+  return cv?{cv:cv}:null;
+}
 function applyPal(L,a,b,pal,skinProt,mf){
+  /* v4：pal 係 {cv}（L 索引目標表）。舊嘅「推向目標 ab」會塌 chroma／穿中性軸，換咗。 */
+  if(pal&&pal.cv) return applyLook(L,a,b,pal.cv);
+  if(!pal||!pal.blend) return [L,a,b];
   const bi=L<0?0:(L>100?100:Math.round(L));
   const w=pal.blend;
-  if(w<=0) return [L,a,b];
-  let dx=(pal.lutA[bi]-a)*w, dy=(pal.lutB[bi]-b)*w;
-  if(skinProt){
-    const m=(mf!==undefined?mf:skinMask(L,a,b));
-    if(m>0.02){ const sd=skinSafe(a,b,dx,dy,m,skinProt); dx=sd[0]; dy=sd[1]; }
-  }
-  let na=a+dx, nb=b+dy;
+  let na=a+(pal.lutA[bi]-a)*w, nb=b+(pal.lutB[bi]-b)*w;
   const cm=Math.hypot(na,nb);
   if(cm>MAX_CHROMA){ na*=MAX_CHROMA/cm; nb*=MAX_CHROMA/cm; }
   return [L,na,nb];
@@ -1819,8 +2201,15 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
     return out;
   }
   const useSec = plan&&plan.active;
-  /* 膚色 mask 場（整個 render 計一次，空間平滑 —— 消走逐 pixel 判定嘅斑點） */
-  const sm=(opt.skinProt&&(pal||grade))?buildSkinField(lab):null;
+  /* ── v4 膚色管線 ───────────────────────────────────────────────
+     1) NR before look：L 導引 edge-aware 色度降噪（淨磨 a/b）→ 消斑點
+     2) skin key 場（用家框／自動框），冇框就退回純 hue gate
+     3) 記憶色鉗 polarClamp：收返「追色 + 色板」加埋嘅總色偏 */
+  const kp=+opt.skinProt||0;
+  const nrOn = kp>0 && S.chrNR!==false && (!$('chrnr')||$('chrnr').checked);
+  const src = nrOn ? chromaPrewash(lab,1) : lab;
+  const kf  = (kp>0 && S.skinKey) ? keyFieldFor(lab) : null;
+  const fl  = kp>0 ? FL() : null;
   /* v12：CDL + 曲線 + 保層次 全部喺 RGB 度做。
      逐通道部分預先拆成 LUT（256 格），每粒 pixel 淨係 3 次查表 + 一次 luma 混合，
      所以即使多咗 CDL 同曲線，全解 render 都唔會慢。 */
@@ -1835,9 +2224,16 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
   const sat  = cdl.sat;
   const LN=LIN_ENC_N-1;
   for(let i=0;i<n;i++){
-    const mf=sm?sampleSkin(sm,lab.w,lab.h,i):undefined;
-    let q=applyPixel(lab.L[i],lab.a[i],lab.b[i],grade,opt,mf);
-    if(pal) q=applyPal(q[0],q[1],q[2],pal,opt.skinProt,mf);
+    const a0=src.a[i], b0=src.b[i];
+    let q=applyPixel(src.L[i],a0,b0,grade,opt);
+    if(pal&&pal.cv) q=applyLook(q[0],q[1],q[2],pal.cv);
+    if(fl){
+      let g=0;
+      if(Math.hypot(a0,b0)>2) g=fleshGate(Math.atan2(b0,a0)*180/Math.PI,fl);
+      if(kf){ const gk=kf[i]; if(gk>g) g=gk; }
+      g*=kp;
+      if(g>0.002){ const pc=polarClamp(a0,b0,q[1],q[2],g); q[1]=pc[0]; q[2]=pc[1]; }
+    }
     if(useSec) q=applySec(q[0],q[1],q[2],sec,plan);
     let c=labToRgb(q[0],q[1],q[2]);
     if(lp){
@@ -2026,6 +2422,8 @@ const S={
      palSel 係色板 view 揀緊邊個位（暗/中/亮）—— 兩個都係 UI state，唔入 snapshot */
   palPlan:null, palView:'wall', palSel:'mid', palWallMode:'color', dirQ:'',
   skinProt:100,                            /* 膚色保護力度 %（0=唔保，100=全保） */
+  skinKey:null,                            /* 歸一化 [x0,y0,x1,y1] 0..1 · null = 淨用 hue gate */
+  keyDraw:false, chrNR:true,               /* 拖框模式 · NR before look */
   /* v12：調色操作面（簡化/色輪/曲線/數值）、曲線通道、示波器 */
   toneMode:'spl', curCh:'Y', scopeMode:'hist', scopeFold:false,
   fs:false,                                 /* 全屏檢查（~ 鍵）· UI state，唔入 snapshot */
@@ -2164,8 +2562,7 @@ function buildPalPlan(idx){
   if(!S.sec.palOn) return null;
   const stops=palStopsFor(idx);
   if(!stops) return null;
-  const lut=buildPalLut(stops);
-  return {lutA:lut.lutA, lutB:lut.lutB, blend:clamp((S.sec.palBlend||0)/100,0,1)};
+  return cvPlan(stops);
 }
 const labCss=(L,a,b)=>'rgb('+labToRgb(L,a,b).join(',')+')';
 
@@ -2206,8 +2603,8 @@ function paintDirTile(c,d){
   if(S.vendorImg&&S.active>=0){
     const cov=imgToCanvasCover(S.vendorImg,c.width,c.height);
     const cid=cov.getContext('2d').getImageData(0,0,c.width,c.height);
-    const st=dirStops(d), lut=buildPalLut([st[0],st[1],st[2]]);
-    const plan={lutA:lut.lutA,lutB:lut.lutB,blend:clamp((S.sec.palBlend||70)/100,0,1)};
+    const st=dirStops(d);
+    const plan=cvPlan([st[0],st[1],st[2]]);
     const ts=Object.assign({},S.sec,{palOn:1,palOv:dirOv(d)});
     const out=imageDataFrom(labOf(cid),gradeFor(S.active),opt(),ts,
       (typeof buildSecPlan==='function'?buildSecPlan(ts):null),plan,true);
@@ -2403,8 +2800,7 @@ function palPlanForTile(d){
     if(!pal||!pal.length) return null;
     stops=pal.map(c=>({L:c.L,a:c.a,b:c.b}));
   }
-  const lut=buildPalLut(stops);
-  return {lutA:lut.lutA, lutB:lut.lutB, blend:clamp((S.sec.palBlend||0)/100,0,1)};
+  return cvPlan(stops);
 }
 function paintPalTile(c,d){
   const x=c.getContext('2d');
@@ -3363,6 +3759,30 @@ function buildLeftPanel(){
      配合【保護膚色】checkbox 用 —— checkbox 關就當 0。 */
   makeSlider(g1b.body,'skinProt',{label:'膚保',min:0,max:100,def:100,value:S.skinProt,unit:'%',
     onInput:v=>{S.skinProt=v;},onCommit:()=>{S.pvKey++;S.pvCache.clear();scheduleRender();}});
+  /* ── 膚色 key ── DI 嘅做法：有 key 就用 key；自動框只係起步點 ── */
+  const kr=document.createElement('div');
+  kr.className='checks';
+  kr.style.cssText='display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0 8px';
+  const klb=document.createElement('span');
+  klb.id='keylb'; klb.style.cssText='font-size:11px;opacity:.6;flex:1 1 100%;margin-bottom:2px';
+  kr.appendChild(klb);
+  [['拖框 key',()=>{ setKeyDraw(!S.keyDraw); }],
+   ['自動框 key',()=>{ if(autoSkinKey()){ S.pvKey++; S.pvCache.clear(); scheduleRender(); } }],
+   ['清 key',   ()=>{ S.skinKey=null; _fleshLab=null; updKeyLabel();
+                      S.pvKey++; S.pvCache.clear(); scheduleRender(); }]
+  ].forEach(([lb,fn])=>{
+    const b=document.createElement('button'); b.type='button'; b.className='b sm';
+    if(lb==='拖框 key') b.id='bkeydrag';
+    b.textContent=lb; b.onclick=fn; kr.appendChild(b);
+  });
+  const lbn=document.createElement('label'); lbn.className='chk'; lbn.style.marginLeft='4px';
+  lbn.innerHTML='<input type="checkbox" id="chrnr" checked> 色度降噪';
+  lbn.querySelector('input').addEventListener('change',e=>{
+    S.chrNR=e.target.checked; S.pvKey++; S.pvCache.clear(); scheduleRender();
+  });
+  kr.appendChild(lbn);
+  g1b.body.appendChild(kr);
+  updKeyLabel();
   g1b.secKeys=null;
   refreshPalUI();
 
@@ -4930,9 +5350,11 @@ $('b-png').onclick=()=>{
 /* .cube 內文（b-cube 同「導出全套」共用）
    一定要即場計：S.secPlan 係上一次 render 嘅快照，用家啱啱拖完條桿
    但 render 仲喺 rAF 排緊隊嗰陣會攞到舊嘢，出嚟嘅 LUT 會漏咗手動微調。 */
-function makeCubeText(){
+const asciiCube=s=>String(s==null?'':s).replace(/[^\x20-\x7E]/g,'').trim();
+function makeCubeText(N){
   if(!S.lastGrade) return null;
-  const o=opt(), N=33, sp=buildSecPlan(S.sec), pp=buildPalPlan(S.active);
+  N=N||33;
+  const o=opt(), sp=buildSecPlan(S.sec), pp=buildPalPlan(S.active);
   const _c=exportCdl();
   const _f=v=>v.toFixed(6);
   const L=['# Generated by Look Direction v12 (ASC CDL core)',
@@ -4942,7 +5364,8 @@ function makeCubeText(){
            '   Saturation '+_f(_c.sat),
            '# display-referred (sRGB encoded) — 放喺 Resolve/Nuke 嘅 output 段用',
            '# v18: exposure / white point are applied in scene-linear (CAT16 + highlight shoulder); this cube is exact, the CDL line above is an 18%-grey approximation',
-           '# ref: '+(allItems()[S.active]||{name:'-'}).name+
+           '# NOTE: skin key / chroma NR are spatial ops and CANNOT live in a 3D LUT.',
+           '# ref: '+asciiCube((allItems()[S.active]||{name:'-'}).name)+
            ' | chroma '+S.chromaStr+'% tone '+S.toneStr+'%'+
            (sp.active?' | +secondary':''),
            'TITLE "LookDirection"','LUT_3D_SIZE '+N,''];
@@ -4950,7 +5373,8 @@ function makeCubeText(){
     const q=gradeRGB(ri/(N-1)*255, gi/(N-1)*255, bi/(N-1)*255, S.lastGrade, o, S.sec, sp, pp);
     L.push((q[0]/255).toFixed(6)+' '+(q[1]/255).toFixed(6)+' '+(q[2]/255).toFixed(6));
   }
-  return L.join('\n');
+  /* .cube 係 ASCII 格式：註釋有中文會令非 Resolve/Nuke 嘅 parser 爆 */
+  return L.map(x=>x.charAt(0)==='#'?('# '+asciiCube(x.slice(1))):x).join('\n');
 }
 $('b-cube').onclick=()=>{
   const txt=makeCubeText();
