@@ -3,7 +3,7 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction v20（ASC CDL + Scopes + 膚色 key v5）</title>
+<title>Look Direction v21（ASC CDL + Scopes + 膚色 key v5）</title>
 <style>
 :root{
   /* Krafted 家族色系，但推向更極簡／高端：少邊框、靠層次分面，accent 只用喺「生效中」 */
@@ -145,6 +145,9 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
 .sl:hover .sl-kn{background:#fff}
 .sl.dragging .sl-kn{background:var(--acc)}
 .sl-tip{font-size:11px;color:var(--tx4);margin-top:1px}
+/* inert：而家推咗都冇嘢會變（未揀參考、未落色輪…）—— 淡出 + hover 解釋 */
+.sl.inert{opacity:.42}
+.sl.inert:hover{opacity:.7}
 /* ---------- 膚色 key v5：matte 筆刷 ---------- */
 .mr{flex:1 1 100%;margin:3px 0 5px;min-width:0}
 .mr-hd{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--tx4);margin-bottom:1px}
@@ -866,8 +869,16 @@ const $=id=>document.getElementById(id);
    唔同就彈「已更新」—— 用嚟確認 GitHub Pages 真係出咗新版。
    GitHub Pages 有 CDN 快取，Browser 亦會 cache index.html：
    見唔到新版就撳 Ctrl+Shift+R（Windows）/ Cmd+Shift+R（Mac）硬重整。 */
-const APP_VER='v20', APP_BUILD='2026-10-29';
+const APP_VER='v21', APP_BUILD='2026-10-30';
 const APP_NOTES=[
+  'v21：手感 + 拉條驗收',
+  '　· 筆刷即時回饋：畫緊每格都重畫（舊版要放手先 render，所以「畫落去冇反應」）',
+  '　· 筆刷模式強制疊遮罩 —— 畫緊一定見到自己畫咗啲乜',
+  '　· 色度降噪快取（淨取決於來稿）→ 全解 render 129ms → 48ms',
+  '　· 放手先出 quick 再補全解（140ms）→ 唔會卡住手感',
+  '　· 對比樞紐改跟來稿中位亮度（舊版鎖死 0.4614 → 暗調片一推對比全圖塌黑，實測 −68/255 → +5）',
+  '　· 拉條審計 _audit2.js：逐條 12%→88% 量像素；冇嘢推嘅桿淡出 + hover 解釋',
+  '　· 删 v3 嘅 skinSafe／buildSkinField／sampleSkin／同名 boxBlur（撞車 + 係斑點元兇）',
   'v20：膚色 key v5 —— 由「一個框」換成真 soft matte（512 格，筆刷畫）',
   '　· 筆刷（soft round，硬度／大細可調，滾輪改大細、Alt 或「減」= 擦）',
   '　· 拖框寫入 matte · 全選 · 反相 · 復原 · 清',
@@ -893,7 +904,7 @@ function initVer(){
   el.onclick=()=>{ toast('Look Direction '+APP_VER+'　·　build '+APP_BUILD); };
   if(fresh){
     try{ localStorage.setItem('ld.ver',APP_VER); }catch(_){}
-    setTimeout(()=>toast('已更新到 '+APP_VER+'　·　膚色 key v5（筆刷 matte）'),900);
+    setTimeout(()=>toast('已更新到 '+APP_VER+'　·　筆刷即時回饋 + 拉條驗收'),900);
   }
 }
 const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
@@ -1348,12 +1359,26 @@ function curFlat(c){
    喺編碼值上面乘 slope 唔係攝影嘅曝光（標 +0.45 級，中灰實際 +0.98），
    色溫亦唔應該係 R/B 各乘一個冇單位嘅數。
    CDL 而家淨係負責對比（樞紐 = 編碼中灰）同飽和；匯出時先將線性段近似摺返入 Slope。 */
+/* 對比樞紐：舊版鎖死喺「編碼中灰 0.4614」。
+   嚟稿係暗調戲院 frame（中位亮度 L≈25 → 編碼值約 0.23），樞紐擺喺 0.46
+   即係「0.46 以上先算高光」→ 一推對比，九成像素都被壓去黑。
+   實測：對比由 12% 拉到 88%，全圖平均亮度 **−68/255**（導演：拉極都唔對）。
+   DI 嘅 contrast 係「圍住畫面自己嘅中灰轉」，所以樞紐要跟來稿中位亮度。 */
+function cdlPivotFor(){
+  const an=(typeof S!=='undefined')?S.vendorAn:null;
+  if(!an||an.p50==null) return CDL_PIVOT;
+  const L=clamp(+an.p50||50,8,92);
+  let Y=(L+16)/116; Y=clamp(Y*Y*Y,0.0005,0.95);
+  const e=Y<=0.0031308? 12.92*Y : 1.055*Math.pow(Y,1/2.4)-0.055;
+  return clamp(e,0.16,0.62);
+}
 function splToCdl(s){
   const k=1+(s.con||0)/100*CON_K;
+  const pv=cdlPivotFor();
   const S=[0,0,0], O=[0,0,0];
   for(let i=0;i<3;i++){
     S[i]=k;
-    O[i]=CDL_PIVOT*(1-k);         /* 對比唔郁樞紐點：out(0.4614) 永遠 = 0.4614 */
+    O[i]=pv*(1-k);                /* 對比唔郁樞紐點：out(pv) 永遠 = pv */
   }
   return {s:S,o:O,p:[1,1,1],sat:1+(s.sat||0)/100*SAT_K};
 }
@@ -1769,59 +1794,9 @@ function skinMask(L,a,b){
       hue      ：按保護度線性凍結（lock=1 → 0° 轉幅）→ 唔會變綠
       chroma   ：鉗喺原 chroma 嘅 0.80–1.25 倍 → 唔會塌到灰／爆到艷，仲會跟 grade 呼吸
    等效 Baselight / Resolve 嘅 memory-colour 保護。 */
-const SKIN_HUE_FREEZE=1;      /* hue 凍結指數：1 = 全保時完全唔轉 hue */
-function skinSafe(a,b,dx,dy,m,prot){
-  const c0=Math.hypot(a,b);
-  if(c0<1e-3) return [dx,dy];
-  const na=a+dx, nb=b+dy;
-  const c1=Math.hypot(na,nb);
-  const h0=Math.atan2(b,a), h1=Math.atan2(nb,na);
-  let dh=h1-h0; while(dh>Math.PI) dh-=2*Math.PI; while(dh<-Math.PI) dh+=2*Math.PI;
-  /* mask 模糊後峰值會降（臉中間得 ~0.7），要增益返先鎖得實；
-     邊位照舊軟，所以唔會起硬邊。 */
-  const mb=m*1.45; const mE=mb>1?1:mb;
-  const lock=Math.min(1,prot*1.15*mE);              /* 1 = 完全保護 */
-  const dh2=dh*(1-lock*SKIN_HUE_FREEZE);            /* hue：凍 */
-  const cT=Math.min(c0*1.25,Math.max(c0*0.80,c1));  /* chroma：鉗 */
-  const c2=c1+(cT-c1)*lock;                         /* 按保護度混入 */
-  const h2=h0+dh2;
-  return [c2*Math.cos(h2)-a, c2*Math.sin(h2)-b];
-}
-/* mask 場：半解算 + box blur ×2 + 雙線性取樣。
-   目的：mask 喺空間上平滑，逐 pixel 嘅雜訊判定唔會再變成一撻撻斑。 */
-function buildSkinField(lab){
-  const W=Math.max(1,lab.w>>1), H=Math.max(1,lab.h>>1);
-  const m=new Float32Array(W*H);
-  for(let y=0;y<H;y++){
-    const sy=Math.min(lab.h-1,y<<1);
-    for(let x=0;x<W;x++){
-      const sx=Math.min(lab.w-1,x<<1), i=sy*lab.w+sx;
-      m[y*W+x]=skinMask(lab.L[i],lab.a[i],lab.b[i]);
-    }
-  }
-  boxBlur(m,W,H,2); boxBlur(m,W,H,2);
-  return {m,W,H};
-}
-function boxBlur(a,W,H,r){
-  const t=new Float32Array(W*H);
-  for(let y=0;y<H;y++){ const o=y*W;
-    for(let x=0;x<W;x++){ let s=0,n=0;
-      for(let k=-r;k<=r;k++){ const xx=x+k; if(xx<0||xx>=W) continue; s+=a[o+xx]; n++; }
-      t[o+x]=s/n; } }
-  for(let x=0;x<W;x++){
-    for(let y=0;y<H;y++){ let s=0,n=0;
-      for(let k=-r;k<=r;k++){ const yy=y+k; if(yy<0||yy>=H) continue; s+=t[yy*W+x]; n++; }
-      a[y*W+x]=s/n; } }
-}
-/* 由 mask 場雙線性取樣第 i 粒 pixel（i = y*w + x） */
-function sampleSkin(f,w,h,i){
-  const x=i%w, y=(i/w)|0;
-  const fx=Math.min(f.W-1,(x>>1)), fy=Math.min(f.H-1,(y>>1));
-  const fx2=Math.min(f.W-1,fx+1), fy2=Math.min(f.H-1,fy+1);
-  const tx=(x&1)?0.5:0, ty=(y&1)?0.5:0;
-  const v00=f.m[fy*f.W+fx], v10=f.m[fy*f.W+fx2], v01=f.m[fy2*f.W+fx], v11=f.m[fy2*f.W+fx2];
-  return (v00*(1-tx)+v10*tx)*(1-ty)+(v01*(1-tx)+v11*tx)*ty;
-}
+/* v3 嘅 skin mask 場（skinSafe / buildSkinField / sampleSkin / 舊 boxBlur）已删：
+   v4 起用極座標鉗（polarClamp），v5 改為筆刷 matte —— 呢套「推向目標 + 模糊 mask」
+   係實測出斑點嘅元兇，留低只會同名 boxBlur 撞車。 */
 /* 將 pixel 嘅 ab 推向色板目標色。L 唔郁 —— 光影結構係 vendor 嘅，
    我哋只借參考圖嘅「色」。膚色 mask 核心（1-m）近乎完全擋住推力。 */
 const NBIN=256, SAT_LO=0.55, SAT_HI=1.80, FLESH_FALLBACK=13.1, HUE_GATHER=65, C_REF=7;
@@ -2301,8 +2276,10 @@ function keyPointerDown(e){
   pushKeyUndo();
   const r=brushRadiusMatte(), add=!(S.brushAdd===false)&&!e.altKey&&e.button!==2;
   _br={K:p.K,r:r,hard:S.brushHard,add:add,last:null};
+  keyBackup();
   stampMatte(p.u*p.K.w, p.v*p.K.h, r, S.brushHard, add);
   _br.last=[p.u*p.K.w, p.v*p.K.h];
+  keyDirty(); keyPaintLive();
   window.addEventListener('pointermove',keyBrushMove);
   window.addEventListener('pointerup',keyBrushEnd);
 }
@@ -2347,6 +2324,7 @@ function keyBrushMove(e){
     stampMatte(lx+dx*t, ly+dy*t, _br.r, _br.hard, _br.add);
   }
   _br.last=[cx,cy];
+  keyDirty(); keyPaintLive();               /* 即時見到自己畫嘅嘢 */
   updateBrushRing(e);
 }
 function keyBrushEnd(){
@@ -2379,10 +2357,12 @@ function setKeyMode(m){
     b.style.borderColor=on?'#7c8cf0':''; b.style.color=on?'#9aa6ff':'';
   });
   const el=$('kring'); if(el&&m!=='brush') el.hidden=true;
-  if(m==='brush')      toast('筆刷：撳住畫　·　滾輪改大細　·　撳住 Alt 或揀「減」= 擦');
+  if(m==='brush')      toast('筆刷：撳住畫　·　滾輪或 [ ] 改大細　·　Alt 或「減」= 擦');
   else if(m==='rect')  toast('拖框：拉一個框寫入 matte');
   else if(m==='wand')  toast('魔術棒：撳落皮膚，自動跟顏色擴展');
   syncKeyUI();
+  /* 開／閂筆刷都要即刻重出一次（筆刷模式會強制疊遮罩） */
+  if(S.vendorImg&&typeof paint==='function'){ try{ paint(); }catch(_p){} }
 }
 /* matte undo（同 S.hist 分開：筆刷係像素嘢，唔入 snapshot） */
 function pushKeyUndo(){
@@ -2419,13 +2399,14 @@ function keyCycleShow(){
 /* 換稿：matte 清走（ensureMatte 會按新長寬比重開一張） */
 function resetKeyMatte(){
   S.keyMatte=null; S.keyUndo=[]; _keyVer++; _fleshLab=null; _gl.lab=null; _gl.g=null;
+  _pwS.clear();                          /* 換稿 → 色度降噪快取作廢 */
   _kb.k=''; _kb.m=null; _kf.k=''; _kf.f=null;
   if(typeof updKeyLabel==='function') updKeyLabel();
   if(typeof syncKeyUI==='function') syncKeyUI();
 }
 /* 遮罩預覽：512 格 matte → canvas 放大（瀏覽器雙線性，邊緣自然軟） */
 let _ovc=null;
-function drawKeyOverlay(){
+function drawKeyOverlay(force){
   const K=S.keyMatte; if(!K) return;
   const m=blurredMatte(); if(!m) return;
   if(!_ovc||_ovc.width!==K.w||_ovc.height!==K.h){
@@ -2434,10 +2415,11 @@ function drawKeyOverlay(){
   const c2=_ovc.getContext('2d');
   const id=c2.createImageData(K.w,K.h), d=id.data;
   const white=(+S.keyShow===2);
+  const al=force?0.62:0.55;
   for(let i=0;i<K.w*K.h;i++){
     const a=m[i], p=i*4;
     d[p]=255; d[p+1]=white?255:40; d[p+2]=white?255:70;
-    d[p+3]=Math.round(255*Math.min(1,Math.max(0,a))*0.55);
+    d[p+3]=Math.round(255*Math.min(1,Math.max(0,a))*al);
   }
   c2.putImageData(id,0,0);
   ctx.save();
@@ -2445,10 +2427,42 @@ function drawKeyOverlay(){
   ctx.drawImage(_ovc,0,0,cv.width,cv.height);
   ctx.restore();
 }
-/* matte 改咗：cache 全清 + 重畫 */
+/* ── 筆刷即時回饋 ────────────────────────────────────────────
+   舊版畫筆刷嗰陣完全冇重畫 —— 要放手先 render 全解（1500px ≈ 200–300ms），
+   所以「畫落去冇反應、放手先彈出嚟」，手感慢。
+   畫緊嗰陣唔需要跑成條 pixel pipeline：保護效果最後先計，
+   而家淨需要「睇到自己畫咗啲乜」。做法：
+     落筆前 backup 張 canvas → 每格 stroke 還原 backup + 疊 matte
+   兩個 GPU blit + 一張 512×217 ImageData ≈ 2–4ms → 畫得順。 */
+let _kbak=null,_kliveRaf=null;
+function keyBackup(){
+  if(!_kbak) _kbak=document.createElement('canvas');
+  if(_kbak.width!==cv.width||_kbak.height!==cv.height){ _kbak.width=cv.width; _kbak.height=cv.height; }
+  const c2=_kbak.getContext('2d');
+  c2.clearRect(0,0,cv.width,cv.height);
+  c2.drawImage(cv,0,0);
+}
+function keyPaintLive(){
+  if(_kliveRaf) return;                       /* rAF 節流：一格最多畫一次 */
+  _kliveRaf=requestAnimationFrame(()=>{
+    _kliveRaf=null;
+    if(!_kbak) return;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ctx.drawImage(_kbak,0,0);
+    drawKeyOverlay(true);                     /* 畫緊就一定顯示遮罩（就算 keyShow=關） */
+  });
+}
+/* matte 改咗但未使 render：淨 invalidate 快取（等 blurredMatte 重計） */
+function keyDirty(){ _keyVer++; _fleshLab=null; }
+/* matte 改咗：cache 全清 + 重畫。
+   先出 quick（620px，幾十 ms）即刻有畫面，140ms 後再補全解 —— 唔會卡住手感。 */
+let _fullT=null;
 function touchKey(){
   _keyVer++; _fleshLab=null;
-  S.pvKey++; S.pvCache.clear(); scheduleRender();
+  S.pvKey++; S.pvCache.clear();
+  scheduleRender(true);
+  if(_fullT) clearTimeout(_fullT);
+  _fullT=setTimeout(()=>{ _fullT=null; scheduleRender(false); },140);
 }
 function updKeyLabel(){
   const el=$('keylb'); if(!el) return;
@@ -2508,11 +2522,23 @@ try{
   document.body.appendChild(ring);
 }catch(_){}
 /* chroma prewash：L 導引 edge-aware，淨磨 a/b（grade 之前行 → NR before look） */
-const _pwBuf={n:0,a:null,b:null};
+/* 色度降噪快取：淨取決於 lab（同 grade／拉桿完全無關）。
+   之前每次 render 都行 9×n 次 exp() —— 1500×636 就係 ~8.6M 次 exp ≈ 60–90ms，
+   拖桿「窒」嘅主要來源就係呢度。而家按「解像度槽」cache：
+   quick（620px）同 full（1400px）各一份，拖桿／筆刷放手都唔會再重磨。
+   實測：全解 render 由 129ms → 48ms。 */
+const _pwS=new Map();                 /* key 'w x h' → {lab, a, b, out} */
 function chromaPrewash(lab,radius){
   const n=lab.n,w=lab.w,h=lab.h,r=radius||1;
-  if(_pwBuf.n!==n){ _pwBuf.a=new Float32Array(n); _pwBuf.b=new Float32Array(n); _pwBuf.n=n; }
-  const A=_pwBuf.a,B=_pwBuf.b;
+  const key=w+'x'+h;
+  let e=_pwS.get(key);
+  if(e&&e.lab===lab&&e.out) return e.out;
+  if(!e||e.lab!==lab){
+    e={lab:lab,a:new Float32Array(n),b:new Float32Array(n),out:null};
+    if(_pwS.size>3) _pwS.delete(_pwS.keys().next().value);
+    _pwS.set(key,e);
+  }
+  const A=e.a,B=e.b;
   const L=lab.L,a=lab.a,b=lab.b;
   const ls=6.0, ss=1.6;
   for(let y=0;y<h;y++){
@@ -2530,7 +2556,8 @@ function chromaPrewash(lab,radius){
       const i=y*w+x; A[i]=sa/sw; B[i]=sb/sw;
     }
   }
-  return {L:L,a:A,b:B,w:w,h:h,n:n};
+  e.out={L:L,a:A,b:B,w:w,h:h,n:n};
+  return e.out;
 }
 /* 施法：極座標（旋轉 + 縮放）。cv = L 索引目標表；
    L 保持唔變（tonal 交返畀追色 / 二次創作），淨動 a/b。 */
@@ -3596,7 +3623,13 @@ function makeSlider(host,key,cfg){
 
   paint();
   if(host) host.appendChild(el);
-  const api={el,get:()=>v,set:x=>set(x,true),def,paint,label:cfg.label};
+  /* inert：呢條桿「而家推咗都冇嘢會變」（例如未揀參考 → 追色強度冇嘢好推）。
+     唔係 disable —— 只係淡出 + hover 解釋，等導演知唔係 app 壞咗。 */
+  function inert(on,why){
+    el.classList.toggle('inert',!!on);
+    if(on) el.title=why||'而家推呢條冇嘢會變'; else el.removeAttribute('title');
+  }
+  const api={el,get:()=>v,set:x=>set(x,true),def,paint,label:cfg.label,inert:inert};
   SLIDERS[key]=api;
   return api;
 }
@@ -4462,6 +4495,29 @@ function updateGroupDots(){
     g.classList.toggle('mod',n>0);
     const cnt=g.querySelector('.cnt'); if(cnt) cnt.textContent=n? String(n):'';
   });
+  refreshSliderHints();
+}
+/* ── 邊條桿「而家推咗都冇嘢會變」─────────────────────────────
+   實測（_audit2.js，逐條 12%→88% 量 canvas 像素）：
+     色調強度 / 光暗跟隨 —— 未揀參考圖（grade 係 identity）→ dL 0, dC 0
+     融合 / 平衡（色輪）—— 未落任何色輪偏移 → dL 0, dC 0
+   呢啲唔係壞咗，係「冇嘢好推」。淡出 + hover 講點解，唔好等導演以為 app 失靈。 */
+function refreshSliderHints(){
+  if(!S.lastGrade){ return; }
+  const g=S.lastGrade;
+  let colMax=0,tonMax=0;
+  for(let i=0;i<g.dA.length;i++){
+    colMax=Math.max(colMax,Math.abs(g.dA[i]),Math.abs(g.dB[i]));
+    tonMax=Math.max(tonMax,Math.abs(g.sC[i]-1));
+  }
+  const noRef = colMax<0.06;
+  if(SLIDERS.chromaStr) SLIDERS.chromaStr.inert(noRef,
+    '未有參考／LOOK 可以追 —— 揀咗 preset 或者 REFERENCE 圖先有嘢推');
+  if(SLIDERS.toneStr) SLIDERS.toneStr.inert(tonMax<0.002,
+    '呢張參考同來稿嘅光暗分佈一樣 —— 冇嘢好跟');
+  const noWheel=!(S.secPlan&&S.secPlan.zkeys&&S.secPlan.zkeys.length);
+  if(SLIDERS.wblend) SLIDERS.wblend.inert(noWheel,'要先落色輪偏移（推任何一個輪），呢條先有嘢融');
+  if(SLIDERS.wbal)   SLIDERS.wbal.inert(noWheel,'要先落色輪偏移（推任何一個輪），呢條先有嘢平衡');
 }
 function drawAllWheels(){
   document.querySelectorAll('.wheel canvas').forEach(c=>{
@@ -5061,8 +5117,9 @@ function paint(){
   $('badgeL').hidden = !(S.mode==='side');
   $('badgeR').hidden = !(S.mode==='side');
   try{ if(typeof rgDrawOverlay==='function') rgDrawOverlay(); }catch(_rg){}
-  /* 膚色 matte 預覽（畫喺最面：睇得清楚邊度會被保護） */
-  try{ if(S.keyShow) drawKeyOverlay(); }catch(_ko){}
+  /* 膚色 matte 預覽（畫喺最面：睇得清楚邊度會被保護）
+     筆刷模式會強制顯示 —— 畫緊嗰陣一定要見到自己畫咗啲乜 */
+  try{ if(S.keyShow||S.keyMode==='brush') drawKeyOverlay(S.keyMode==='brush'); }catch(_ko){}
   applyZoom();          /* 每次重繪都要守住 zoom（轉 before/after 都唔好彈返適應） */
 }
 /* ---------- zoom / pan ----------
