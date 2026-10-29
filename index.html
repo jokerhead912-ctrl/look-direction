@@ -3,7 +3,7 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction v19（ASC CDL + Scopes + 膚色 v4）</title>
+<title>Look Direction v20（ASC CDL + Scopes + 膚色 key v5）</title>
 <style>
 :root{
   /* Krafted 家族色系，但推向更極簡／高端：少邊框、靠層次分面，accent 只用喺「生效中」 */
@@ -145,6 +145,19 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
 .sl:hover .sl-kn{background:#fff}
 .sl.dragging .sl-kn{background:var(--acc)}
 .sl-tip{font-size:11px;color:var(--tx4);margin-top:1px}
+/* ---------- 膚色 key v5：matte 筆刷 ---------- */
+.mr{flex:1 1 100%;margin:3px 0 5px;min-width:0}
+.mr-hd{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--tx4);margin-bottom:1px}
+.mr-hd b{color:var(--tx2);font-weight:500;font-variant-numeric:tabular-nums}
+.mr input[type=range]{display:block;width:100%;height:14px;margin:0;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
+.mr input[type=range]::-webkit-slider-runnable-track{height:2px;background:var(--raise);border-radius:2px}
+.mr input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:10px;height:10px;margin-top:-4px;border-radius:50%;background:#cfd4dd;border:0}
+.mr input[type=range]:hover::-webkit-slider-thumb{background:#fff}
+.mr input[type=range]::-moz-range-track{height:2px;background:var(--raise);border-radius:2px}
+.mr input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radius:50%;background:#cfd4dd}
+#kring{position:fixed;z-index:9998;border:1.5px solid rgba(124,140,240,.95);border-radius:50%;
+       pointer-events:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.45),0 0 6px rgba(0,0,0,.45)}
+#keyrb{position:fixed;z-index:9999;border:1.5px dashed #ff5a5a;background:rgba(255,90,90,.10);pointer-events:none}
 
 /* ---------- 摺疊群組 ---------- */
 .grp{border-top:1px solid var(--line);padding:7px 0 2px}
@@ -853,8 +866,14 @@ const $=id=>document.getElementById(id);
    唔同就彈「已更新」—— 用嚟確認 GitHub Pages 真係出咗新版。
    GitHub Pages 有 CDN 快取，Browser 亦會 cache index.html：
    見唔到新版就撳 Ctrl+Shift+R（Windows）/ Cmd+Shift+R（Mac）硬重整。 */
-const APP_VER='v19', APP_BUILD='2026-10-29';
+const APP_VER='v20', APP_BUILD='2026-10-29';
 const APP_NOTES=[
+  'v20：膚色 key v5 —— 由「一個框」換成真 soft matte（512 格，筆刷畫）',
+  '　· 筆刷（soft round，硬度／大細可調，滾輪改大細、Alt 或「減」= 擦）',
+  '　· 拖框寫入 matte · 全選 · 反相 · 復原 · 清',
+  '　· 自動 matte：逐格 skinness → 軟閾值 → 最大連通塊（出「皮膚形狀」唔係四方形）',
+  '　· 魔術棒：撳一吓跟 Lab 相似度 flood fill（容差可調）',
+  '　· 全域羽化 · 遮罩預覽（紅／白）· 膚軸改用 matte 加權量',
   'v19：膚色 v4 —— 變換唔係推（極座標 look + 記憶色鉗 polarClamp）',
   '　· 拖框／自動框 skin key、色度降噪（NR before look）',
   '　· L 索引目標表：修好「palette hue 互相對沖」令 look 冇落到（ΔEab 0.87→10.13）',
@@ -864,7 +883,7 @@ const APP_NOTES=[
 ];
 function initVer(){
   const el=$('ver'); if(!el) return;
-  el.innerHTML='<b>'+APP_VER+'</b> · skin v4';
+  el.innerHTML='<b>'+APP_VER+'</b> · skin key v5';
   let prev=null; try{ prev=localStorage.getItem('ld.ver'); }catch(_){}
   const fresh = prev!==APP_VER;
   if(fresh) el.classList.add('new');
@@ -874,7 +893,7 @@ function initVer(){
   el.onclick=()=>{ toast('Look Direction '+APP_VER+'　·　build '+APP_BUILD); };
   if(fresh){
     try{ localStorage.setItem('ld.ver',APP_VER); }catch(_){}
-    setTimeout(()=>toast('已更新到 '+APP_VER+'　·　膚色 v4（拖框 key + 記憶色鉗）'),900);
+    setTimeout(()=>toast('已更新到 '+APP_VER+'　·　膚色 key v5（筆刷 matte）'),900);
   }
 }
 const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
@@ -1904,167 +1923,590 @@ function fleshHueOf(lab,x0,y0,x1,y1,skinOnly){
   const sd=Math.sqrt(Math.max(-2*Math.log(Math.max(R,1e-9)),0));
   return [mu*180/Math.PI, Math.min(40,Math.max(12,sd*180/Math.PI))];
 }
-/* plate 膚軸快取：每張圖（+每次改 key）量一次 */
-let _fleshLab=null,_fleshKey='',_flesh=[FLESH_FALLBACK,26];
+/* v5：matte 版 flesh line —— 淨收 matte>0.35 嘅像素，權重再乘 matte。
+   框版嘅問題係「框入面乜都算」，背景一入框就把條膚軸拉歪。 */
+function fleshHueMasked(lab,m,KW,KH){
+  let vx=0,vy=0,sw=0,n=0;
+  const st=Math.max(1,Math.floor(Math.min(lab.w/220,lab.h/220)));
+  for(let y=0;y<lab.h;y+=st) for(let x=0;x<lab.w;x+=st){
+    const i=y*lab.w+x;
+    const gx=Math.min(KW-1,(x*KW/lab.w)|0), gy=Math.min(KH-1,(y*KH/lab.h)|0);
+    const w=m[gy*KW+gx]; if(w<0.35) continue;
+    const L=lab.L[i], a=lab.a[i], b=lab.b[i], C=Math.hypot(a,b);
+    if(C<=4||L<=25||L>=88) continue;                 /* 太暗／太光／近中性軸都唔可靠 */
+    if(skinness(L,a,b)<0.10) continue;               /* 框入面嘅非皮膚再篩一次 */
+    const h=Math.atan2(b,a), ww=C*w;
+    vx+=ww*Math.cos(h); vy+=ww*Math.sin(h); sw+=ww; n++;
+  }
+  if(n<20||sw<1e-9) return null;
+  const mu=Math.atan2(vy,vx), R=Math.hypot(vx,vy)/sw;
+  const sd=Math.sqrt(Math.max(-2*Math.log(Math.max(R,1e-9)),0));
+  return [mu*180/Math.PI, Math.min(40,Math.max(12,sd*180/Math.PI))];
+}
+/* plate 膚軸快取：每張圖（+每次改 matte）量一次 */
+let _fleshLab=null,_fleshKey=-1,_flesh=[FLESH_FALLBACK,26];
 function plateFlesh(lab){
   if(!lab||!lab.w) return _flesh;
-  const kk=S.skinKey?S.skinKey.join(','):'';
-  if(lab===_fleshLab && kk===_fleshKey) return _flesh;
-  _fleshLab=lab; _fleshKey=kk;
-  const r=S.skinKey;
+  if(lab===_fleshLab && _fleshKey===_keyVer) return _flesh;
+  _fleshLab=lab; _fleshKey=_keyVer;
   let f=null;
-  if(r) f=fleshHueOf(lab,Math.round(r[0]*lab.w),Math.round(r[1]*lab.h),
-                          Math.round(r[2]*lab.w),Math.round(r[3]*lab.h),false);
+  const K=S.keyMatte, m=K?blurredMatte():null;
+  if(K&&m) f=fleshHueMasked(lab,m,K.w,K.h);
   if(!f) f=fleshHueOf(lab,0,0,lab.w,lab.h,true);
   if(f) _flesh=f;
   return _flesh;
 }
 const FL=()=>plateFlesh(S.vendorLabQuick||S.vendorLabFull);
-/* explicit skin key：矩形 + smoothstep 羽化（0..1）。rect 係像素座標 */
-function makeKeyField(w,h,rect,feather){
-  if(!rect) return null;
-  const m=new Float32Array(w*h);
-  const x0=rect[0],y0=rect[1],x1=rect[2],y1=rect[3], f=feather||30;
-  const ss=(e0,e1,x)=>{ let t=(x-e0)/(e1-e0); t=t<0?0:(t>1?1:t); return t*t*(3-2*t); };
-  const mx=new Float32Array(w);
-  for(let x=0;x<w;x++) mx[x]=Math.min(ss(x0-f,x0,x), ss(x1+f,x1,x));
-  for(let y=0;y<h;y++){
-    const row=Math.min(ss(y0-f,y0,y), ss(y1+f,y1,y)), off=y*w;
-    for(let x=0;x<w;x++) m[off+x]=mx[x]*row;
+/* ══════════════════════════════════════════════════════════════════
+   膚色 key v5 —— 真 matte（筆刷），唔再係一個矩形框
+   ────────────────────────────────────────────────────────────────
+   v4 淨得一個框。塊面根本唔係矩形：框大咗連背景都保（look 走唔郁），
+   框細咗額頭／頸甩出嚟 —— 所以點框都 weird。
+   v5 改成 DI 真正用嘅嘢：一張 **soft matte**（512 格正則網格，0..1），
+   筆刷 / 拖框 / 自動 / 魔術棒 全部寫入同一張 matte，
+   再統一做全域羽化 → 雙線性放大去來稿解像度。
+   matte 同來稿解像度脫鈎（永遠 512 闊），所以 quick/full 預覽用同一張。
+   ══════════════════════════════════════════════════════════════════ */
+const KEYW=512;                      /* matte 正則網格闊度 */
+let _keyVer=0;                       /* matte 一改就 ++ → 所有快取失效 */
+function matteDims(){
+  const lab=S.vendorLabFull||S.vendorLabQuick;
+  if(!lab||!lab.w) return {w:KEYW,h:288};
+  return {w:KEYW,h:Math.max(32,Math.min(KEYW,Math.round(KEYW*lab.h/lab.w)))};
+}
+function ensureMatte(){
+  const d=matteDims(), K=S.keyMatte;
+  if(K&&K.w===d.w&&K.h===d.h) return K;
+  const m=new Float32Array(d.w*d.h);
+  if(K&&K.m) resampleInto(K.m,K.w,K.h,m,d.w,d.h);   /* 換圖／換長寬比：舊 matte 縮放搬過去 */
+  S.keyMatte={w:d.w,h:d.h,m:m}; _keyVer++;
+  return S.keyMatte;
+}
+/* 雙線性重採樣（src → dst），邊沿用 clamp（唔會黑邊） */
+function resampleInto(om,ow,oh,m,w,h){
+  const xs=new Int32Array(w), tx=new Float32Array(w);
+  for(let x=0;x<w;x++){
+    const fx=(x+0.5)*ow/w-0.5; let i0=Math.floor(fx), t=fx-i0;
+    if(i0<0){ i0=0; t=0; } if(i0>ow-1){ i0=ow-1; t=0; }
+    xs[x]=i0; tx[x]=t;
   }
-  return m;
+  for(let y=0;y<h;y++){
+    const fy=(y+0.5)*oh/h-0.5; let j0=Math.floor(fy), ty=fy-j0;
+    if(j0<0){ j0=0; ty=0; } if(j0>oh-1){ j0=oh-1; ty=0; }
+    const r0=j0*ow, r1=Math.min(oh-1,j0+1)*ow, off=y*w;
+    for(let x=0;x<w;x++){
+      const i0=xs[x], i1=i0<ow-1?i0+1:i0, t=tx[x];
+      const v0=om[r0+i0]*(1-t)+om[r0+i1]*t;
+      const v1=om[r1+i0]*(1-t)+om[r1+i1]*t;
+      m[off+x]=v0*(1-ty)+v1*ty;
+    }
+  }
 }
-/* S.skinKey 存 **歸一化** 0..1（唔理 quick/full 解像度都啱用） */
+/* 全域羽化：3 pass box ≈ Gaussian。淨喺 512 格網格上面做 → 極平（~1ms） */
+let _kb={k:'',m:null};
+function blurredMatte(){
+  const K=S.keyMatte; if(!K) return null;
+  const f=Math.max(0,Math.round(+S.keyFeath||0));
+  const key=K.w+'x'+K.h+'|'+f+'|'+_keyVer;
+  if(_kb.k===key&&_kb.m) return _kb.m;
+  _kb={k:key,m:(f>0? boxBlur(K.m,K.w,K.h,f,3) : K.m)};
+  return _kb.m;
+}
+function boxBlur(src,w,h,r,pass){
+  let cur=Float32Array.from(src); const tmp=new Float32Array(w*h);
+  const nrm=1/(2*r+1), cl=(x,mx)=>x<0?0:(x>mx?mx:x);
+  for(let p=0;p<pass;p++){
+    for(let y=0;y<h;y++){
+      const o=y*w; let acc=0;
+      for(let x=-r;x<=r;x++) acc+=cur[o+cl(x,w-1)];
+      for(let x=0;x<w;x++){
+        tmp[o+x]=acc*nrm;
+        acc+=cur[o+cl(x+r+1,w-1)]-cur[o+cl(x-r,w-1)];
+      }
+    }
+    for(let x=0;x<w;x++){
+      let acc=0;
+      for(let y=-r;y<=r;y++) acc+=tmp[cl(y,h-1)*w+x];
+      for(let y=0;y<h;y++){
+        cur[y*w+x]=acc*nrm;
+        acc+=tmp[cl(y+r+1,h-1)*w+x]-tmp[cl(y-r,h-1)*w+x];
+      }
+    }
+  }
+  return cur;
+}
+/* matte → 來稿解像度嘅 key 場（0..1） */
+let _kf={k:'',f:null};
 function keyFieldFor(lab){
-  if(!S.skinKey) return null;
-  const w=lab.w,h=lab.h;
-  const r=[S.skinKey[0]*w,S.skinKey[1]*h,S.skinKey[2]*w,S.skinKey[3]*h];
-  return makeKeyField(w,h,r,Math.max(6,0.025*Math.min(w,h)));
+  const K=S.keyMatte; if(!K) return null;
+  const m=blurredMatte(); if(!m) return null;
+  const key=lab.w+'x'+lab.h+'|'+K.w+'x'+K.h+'|'+_kb.k;
+  if(_kf.k===key&&_kf.f) return _kf.f;
+  const f=new Float32Array(lab.n);
+  resampleInto(m,K.w,K.h,f,lab.w,lab.h);
+  _kf={k:key,f:f}; return f;
 }
-/* 自動框：粗格 skinness → 閾值 → **最大連通塊**（唔係全圖 bbox）。
-   第一版用全圖 bbox，實測 shot_17 框咗 94%×63% 出嚟 —— 即係成幅圖當咗皮膚，
-   保護變咗「乜都唔好郁」。連通塊先係搵「一個人」嘅正確做法。 */
-function autoSkinKey(){
+function hasKey(){
+  const K=S.keyMatte; if(!K) return false;
+  const m=K.m;
+  for(let i=0;i<m.length;i++) if(m[i]>0.02) return true;
+  return false;
+}
+function keyCoverage(){
+  const K=S.keyMatte; if(!K) return 0;
+  const m=K.m; let n=0;
+  for(let i=0;i<m.length;i++) if(m[i]>0.5) n++;
+  return n/m.length;
+}
+/* 網格平均 Lab（自動 matte / 魔術棒都要用）—— 512 格嘅低通，天然抗噪 */
+let _gl={lab:null,K:null,g:null};
+function gridLab(lab){
+  const K=ensureMatte();
+  if(_gl.lab===lab&&_gl.K===K&&_gl.g) return _gl.g;
+  const N=K.w*K.h, L=new Float32Array(N), A=new Float32Array(N), B=new Float32Array(N);
+  const st=Math.max(1,Math.floor(lab.w/K.w));
+  for(let gy=0;gy<K.h;gy++){
+    const y0=Math.min(lab.h-1,Math.round(gy*lab.h/K.h)), y1=Math.min(lab.h,y0+st);
+    for(let gx=0;gx<K.w;gx++){
+      const x0=Math.min(lab.w-1,Math.round(gx*lab.w/K.w)), x1=Math.min(lab.w,x0+st);
+      let sL=0,sa=0,sb=0,c=0;
+      for(let y=y0;y<y1;y++) for(let x=x0;x<x1;x++){
+        const i=y*lab.w+x; sL+=lab.L[i]; sa+=lab.a[i]; sb+=lab.b[i]; c++;
+      }
+      const i2=gy*K.w+gx, k=c||1;
+      L[i2]=sL/k; A[i2]=sa/k; B[i2]=sb/k;
+    }
+  }
+  _gl={lab:lab,K:K,g:{L:L,a:A,b:B,w:K.w,h:K.h}}; return _gl.g;
+}
+/* mask 形態學：dilate（外擴）/ erode（內收）。方形窗口 → 可分離，好快。 */
+function morphPass(src,w,h,r,maxNotMin){
+  const tmp=new Uint8Array(w*h), out=new Uint8Array(w*h);
+  for(let y=0;y<h;y++){
+    const o=y*w;
+    for(let x=0;x<w;x++){
+      let v=src[o+x];
+      for(let d=1;d<=r;d++){
+        const a=src[o+Math.max(0,x-d)], b=src[o+Math.min(w-1,x+d)];
+        v = maxNotMin? Math.max(v,a,b) : Math.min(v,a,b);
+      }
+      tmp[o+x]=v;
+    }
+  }
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      let v=tmp[y*w+x];
+      for(let d=1;d<=r;d++){
+        const a=tmp[Math.max(0,y-d)*w+x], b=tmp[Math.min(h-1,y+d)*w+x];
+        v = maxNotMin? Math.max(v,a,b) : Math.min(v,a,b);
+      }
+      out[y*w+x]=v;
+    }
+  }
+  return out;
+}
+function dilateMask(m,w,h,r){ return morphPass(m,w,h,r,true); }
+/* 增長／收縮：直接喺 matte 上面做 max／min（軟邊都食到，之後羽化會再抳順） */
+function morphMatte(delta){
+  const K=ensureMatte(); if(!delta) return;
+  pushKeyUndo();
+  const r=Math.abs(Math.round(delta)), m=K.m, N=K.w*K.h;
+  const tmp=new Float32Array(N), out=new Float32Array(N);
+  const mx=(a,b)=>a>b?a:b, mn=(a,b)=>a<b?a:b, op=delta>0?mx:mn;
+  for(let y=0;y<K.h;y++){
+    const o=y*K.w;
+    for(let x=0;x<K.w;x++){
+      let v=m[o+x];
+      for(let d=1;d<=r;d++) v=op(v,op(m[o+Math.max(0,x-d)],m[o+Math.min(K.w-1,x+d)]));
+      tmp[o+x]=v;
+    }
+  }
+  for(let y=0;y<K.h;y++){
+    for(let x=0;x<K.w;x++){
+      let v=tmp[y*K.w+x];
+      for(let d=1;d<=r;d++) v=op(v,op(tmp[Math.max(0,y-d)*K.w+x],tmp[Math.min(K.h-1,y+d)*K.w+x]));
+      out[y*K.w+x]=v;
+    }
+  }
+  K.m.set(out);
+  touchKey(); updKeyLabel(); syncKeyUI();
+  toast((delta>0?'增長 ':'收縮 ')+r+' 格　·　覆蓋 '+(keyCoverage()*100).toFixed(1)+'%');
+}
+/* ── 自動 matte：逐格 skinness → 軟閾值 → 最大連通塊（一個人）→ 外擴 2 格 ──
+   框版淨會出一個四方形；呢個出嘅係「皮膚形狀」嘅遮罩。
+   注意：暗調／低飽和嘅 frame（例如 shot_17）膚色本身就弱，
+   自動只係「起步點」—— 跟手用筆刷／魔術棒修先係 DI 嘅做法。 */
+function autoSkinMatte(){
   const lab=S.vendorLabQuick||S.vendorLabFull;
   if(!lab||!lab.w){ toast('未入來稿'); return false; }
-  const GW=64,GH=44, N=GW*GH;
-  const acc=new Float32Array(N), cnt=new Float32Array(N);
-  const st=Math.max(1,Math.floor(Math.min(lab.w/GW,lab.h/GH)/2));
-  for(let y=0;y<lab.h;y+=st) for(let x=0;x<lab.w;x+=st){
-    const i=y*lab.w+x;
-    const v=skinness(lab.L[i],lab.a[i],lab.b[i]);
-    if(v<=0.10) continue;
-    const gx=Math.min(GW-1,(x*GW/lab.w)|0), gy=Math.min(GH-1,(y*GH/lab.h)|0);
-    acc[gy*GW+gx]+=v; cnt[gy*GW+gx]++;
-  }
-  const val=new Float32Array(N);
-  let mx=0;
-  for(let i=0;i<N;i++){ val[i]=cnt[i]?acc[i]/cnt[i]:0; if(val[i]>mx)mx=val[i]; }
-  if(mx<0.22){ toast('搵唔到膚色區'); return false; }
-  const th=Math.max(0.30,0.60*mx);
-  const on=new Uint8Array(N);
-  for(let i=0;i<N;i++) if(val[i]>=th) on[i]=1;
-  const lab2=new Int32Array(N).fill(-1), comps=[], stack=new Int32Array(N);
+  const K=ensureMatte(), g=gridLab(lab), N=K.w*K.h;
+  /* 先做一次 box blur：塊面嘅皮膚會被眼／鼻／鬚割開，
+     唔 blur 就散成十幾嚿碎，永遠揀唔中「個人」。 */
+  const raw=new Float32Array(N);
+  for(let i=0;i<N;i++) raw[i]=skinness(g.L[i],g.a[i],g.b[i]);
+  const sm=boxBlur(raw,K.w,K.h,5,1);
+  let mx=0; for(let i=0;i<N;i++) if(sm[i]>mx) mx=sm[i];
+  if(mx<0.14){ toast('搵唔到膚色區'); return false; }
+  const th=Math.max(0.08,0.30*mx);
+  const lo=th*0.45, hi=th*1.45, sp=Math.max(1e-6,hi-lo);
+  const soft=new Float32Array(N), on=new Uint8Array(N);
   for(let i=0;i<N;i++){
-    if(!on[i]||lab2[i]>=0) continue;
-    const id=comps.length; let sp=0; stack[sp++]=i; lab2[i]=id;
+    let t=(sm[i]-lo)/sp; t=t<0?0:(t>1?1:t); soft[i]=t*t*(3-2*t);
+    if(sm[i]>=th) on[i]=1;
+  }
+  /* 外擴 4 格先做連通塊 —— 等額頭／面珠／頸呢幾嚿連得埋。
+     連通只係用嚟「揀邊嚿」，最後 keep 會再同原始皮膚位相交，
+     所以 matte 唔會因為呢下外擴脹大。 */
+  const onRaw=Uint8Array.from(on);
+  on.set(dilateMask(on,K.w,K.h,4));
+  const cid=new Int32Array(N).fill(-1), comps=[], stack=new Int32Array(N);
+  for(let i=0;i<N;i++){
+    if(!on[i]||cid[i]>=0) continue;
+    const id=comps.length; let sp2=0; stack[sp2++]=i; cid[i]=id;
     const cells=[];
-    while(sp>0){
-      const j=stack[--sp]; cells.push(j);
-      const gx=j%GW, gy=(j/GW)|0;
-      const nb=[gx>0?j-1:-1, gx<GW-1?j+1:-1, gy>0?j-GW:-1, gy<GH-1?j+GW:-1];
-      for(const k of nb) if(k>=0&&on[k]&&lab2[k]<0){ lab2[k]=id; stack[sp++]=k; }
+    while(sp2>0){
+      const j=stack[--sp2]; cells.push(j);
+      const gx=j%K.w, gy=(j/K.w)|0;
+      const nb=[gx>0?j-1:-1, gx<K.w-1?j+1:-1, gy>0?j-K.w:-1, gy<K.h-1?j+K.w:-1];
+      for(let q=0;q<4;q++){ const k=nb[q]; if(k>=0&&on[k]&&cid[k]<0){ cid[k]=id; stack[sp2++]=k; } }
     }
-    let w=0; for(const c of cells) w+=val[c];
-    let X0=GW,X1=-1,Y0=GH,Y1=-1;
-    for(const c of cells){ const gx=c%GW, gy=(c/GW)|0;
-      if(gx<X0)X0=gx; if(gx>X1)X1=gx; if(gy<Y0)Y0=gy; if(gy>Y1)Y1=gy; }
-    comps.push({n:cells.length,w:w,X0:X0,X1:X1,Y0:Y0,Y1:Y1});
+    let ws=0, X0=K.w,X1=-1,Y0=K.h,Y1=-1;
+    for(let q=0;q<cells.length;q++){
+      const c=cells[q]; ws+=sm[c];
+      const gx=c%K.w, gy=(c/K.w)|0;
+      if(gx<X0)X0=gx; if(gx>X1)X1=gx; if(gy<Y0)Y0=gy; if(gy>Y1)Y1=gy;
+    }
+    comps.push({cells:cells,w:ws,X0:X0,X1:X1,Y0:Y0,Y1:Y1});
   }
   if(!comps.length){ toast('搵唔到膚色區'); return false; }
-  const area=c=>Math.max(1,(c.X1-c.X0+1)*(c.Y1-c.Y0+1))/(GW*GH);
-  let cand=comps.filter(c=>area(c)>=0.02&&area(c)<=0.34);
+  const area=c=>Math.max(1,(c.X1-c.X0+1)*(c.Y1-c.Y0+1))/N;
+  let cand=comps.filter(c=>area(c)>=0.004&&area(c)<=0.45);
   if(!cand.length) cand=comps.slice();
-  cand.sort((x,y)=>y.w-x.w);
-  const c=cand[0];
-  const px=1/GW, py=1/GH, padX=0.03, padY=0.05;
-  const r=[clamp(c.X0*px-padX,0,1), clamp(c.Y0*py-padY,0,1),
-           clamp((c.X1+1)*px+padX,0,1), clamp((c.Y1+1)*py+padY,0,1)];
-  if(r[2]-r[0]<0.02||r[3]-r[1]<0.02){ toast('膚色區太細'); return false; }
-  S.skinKey=r;
-  _fleshLab=null;
+  cand.sort((p,q)=>q.w-p.w);
+  const comp=cand[0];
+  /* keep = 嗰嚿連通塊 ∩ 原始皮膚位外擴 2 格 —— 淨保「真皮膚附近」，
+     唔會因為橋接嗰下外擴而連埋背景。 */
+  const inComp=new Uint8Array(N);
+  for(let q=0;q<comp.cells.length;q++) inComp[comp.cells[q]]=1;
+  const near=dilateMask(onRaw,K.w,K.h,2);
+  pushKeyUndo();
+  const m=K.m;
+  for(let i=0;i<N;i++) m[i]=(inComp[i]&&near[i])? soft[i] : 0;
+  S.keyFeath=Math.max(3,Math.round(K.w*0.012));
+  touchKey();
   const f=FL();
-  toast('key 框好：'+Math.round(r[0]*100)+'%,'+Math.round(r[1]*100)+'% → '+
-        Math.round(r[2]*100)+'%,'+Math.round(r[3]*100)+'%　·　佔 '+
-        Math.round(area(c)*100)+'%　·　膚軸 '+f[0].toFixed(1)+'° ±'+f[1].toFixed(0)+'°');
-  updKeyLabel();
+  toast('自動 matte：覆蓋 '+(keyCoverage()*100).toFixed(1)+'%　·　膚軸 '+
+        f[0].toFixed(1)+'° ±'+f[1].toFixed(0)+'°　·　跟手用筆刷／魔術棒修');
+  updKeyLabel(); syncKeyUI();
   return true;
 }
-/* 拖框 key：DI 嘅做法係「有 key 就用 key」—— 自動框只係起步點，
-   導演自己喺預覽圖拉一拉先係最準（同 Baselight 畫 matte 一樣）。 */
-function setKeyDraw(on){
-  S.keyDraw=!!on;
-  const b=$('bkeydrag');
-  if(b){ b.classList.toggle('on',S.keyDraw);
-         b.style.borderColor=S.keyDraw?'#7c8cf0':''; b.style.color=S.keyDraw?'#9aa6ff':''; }
-  const c=$('cv'); if(c) c.style.cursor=S.keyDraw?'crosshair':'';
-  if(S.keyDraw) toast('喺圖上拖一個框做膚色 key');
+/* ── 魔術棒：由撳落嗰點做 Lab 相似度 flood fill ──
+   塊面嘅膚色唔均勻（陰影／反光），框同自動都唔夠貼；
+   撳一吓面珠，跟住顏色爬，先係 DI 畫 matte 嘅正常速度。 */
+function wandMatte(u,v){
+  const lab=S.vendorLabQuick||S.vendorLabFull;
+  if(!lab||!lab.w){ toast('未入來稿'); return false; }
+  const K=ensureMatte(), g=gridLab(lab), N=K.w*K.h;
+  const gx=clamp(Math.round(u*K.w),0,K.w-1), gy=clamp(Math.round(v*K.h),0,K.h-1);
+  const s0=gy*K.w+gx, L0=g.L[s0], A0=g.a[s0], B0=g.b[s0];
+  const t=+S.wandTol||10, dL=t*1.6, dab=t;
+  /* 淨靠顏色爬一定會漏（陰影一路漸變落背景）。
+     加多一道 skinness 閘：py 膚色嘅先收 —— 呢個先係「skin」wand 唔係「color」wand。 */
+  const sk=new Float32Array(N);
+  let skMax=0;
+  for(let i=0;i<N;i++){ sk[i]=skinness(g.L[i],g.a[i],g.b[i]); if(sk[i]>skMax) skMax=sk[i]; }
+  const gate=skMax>0.30? Math.min(0.18,skMax*0.35) : 0;
+  const seen=new Uint8Array(N), st=new Int32Array(N);
+  let sp=0; st[sp++]=s0; seen[s0]=1;
+  const cells=[], cap=Math.floor(N*0.45);
+  while(sp>0&&cells.length<cap){
+    const j=st[--sp]; cells.push(j);
+    const x=j%K.w, y=(j/K.w)|0;
+    const nb=[x>0?j-1:-1, x<K.w-1?j+1:-1, y>0?j-K.w:-1, y<K.h-1?j+K.w:-1];
+    for(let q=0;q<4;q++){
+      const k=nb[q]; if(k<0||seen[k]) continue;
+      if(gate&&sk[k]<gate) continue;
+      const dl=(g.L[k]-L0)/dL, da=(g.a[k]-A0)/dab, db=(g.b[k]-B0)/dab;
+      if(dl*dl+da*da+db*db>1) continue;
+      seen[k]=1; st[sp++]=k;
+    }
+  }
+  if(cells.length<8){ toast('揀唔到嘢 —— 放寬「容差」或者轉用筆刷'); return false; }
+  pushKeyUndo();
+  const m=K.m, add=S.brushAdd!==false;
+  for(let q=0;q<cells.length;q++){ const c=cells[q]; m[c]=add?1:0; }
+  touchKey();
+  toast('魔術棒：'+(100*cells.length/N).toFixed(1)+'%　·　覆蓋 '+(keyCoverage()*100).toFixed(1)+'%');
+  updKeyLabel(); syncKeyUI();
+  return true;
 }
-let _keyDrag=null;
-function keyDrawStart(e){
-  if(!S.keyDraw||!S.vendorImg) return;
+/* 筆刷：soft round dab（hardness=0 全軟，1 全硬） */
+function stampMatte(cx,cy,r,hard,add){
+  const K=S.keyMatte||ensureMatte(), m=K.m, W=K.w, H=K.h;
+  if(!(r>0.5)) return;
+  const a=1-clamp(hard,0,0.98);
+  const x0=Math.max(0,Math.floor(cx-r)), x1=Math.min(W-1,Math.ceil(cx+r));
+  const y0=Math.max(0,Math.floor(cy-r)), y1=Math.min(H-1,Math.ceil(cy+r));
+  const r2=r*r;
+  for(let y=y0;y<=y1;y++){
+    const dy=y-cy, off=y*W;
+    for(let x=x0;x<=x1;x++){
+      const dx=x-cx, d2=dx*dx+dy*dy;
+      if(d2>r2) continue;
+      const t=Math.sqrt(d2)/r;
+      let val;
+      if(t<=a) val=1;
+      else { const s=(t-a)/Math.max(1e-6,1-a); val=1-s*s*(3-2*s); }
+      if(val<=0.002) continue;
+      const i=off+x;
+      if(add){ if(val>m[i]) m[i]=val; }
+      else   { const nv=m[i]*(1-val); m[i]=nv<0?0:nv; }
+    }
+  }
+}
+/* ── 互動：筆刷 / 拖框 / 魔術棒 ── */
+function clientToMatte(e){
+  const c=$('cv'); if(!c) return null;
+  const r=c.getBoundingClientRect();
+  if(!(r.width>0&&r.height>0)) return null;
+  const K=ensureMatte();
+  return {u:clamp((e.clientX-r.left)/r.width,0,1), v:clamp((e.clientY-r.top)/r.height,0,1),
+          K:K, disp:r.width};
+}
+function brushRadiusMatte(){
+  const lab=S.vendorLabFull||S.vendorLabQuick;
+  const K=S.keyMatte||ensureMatte();
+  const lw=(lab&&lab.w)?lab.w:K.w;
+  return Math.max(0.6,(+S.brushR||40)*(K.w/lw));
+}
+let _kd=null, _br=null;
+function keyPointerDown(e){
+  const m=S.keyMode;
+  if(!m||!S.vendorImg) return;
   e.preventDefault(); e.stopPropagation();
-  _keyDrag={x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY};
-  let ov=$('keyrb');
-  if(!ov){ ov=document.createElement('div'); ov.id='keyrb'; ov.hidden=true;
-    ov.style.cssText='position:fixed;z-index:9999;border:1.5px dashed #ff5a5a;'+
-                     'background:rgba(255,90,90,.10);pointer-events:none';
-    document.body.appendChild(ov); }
-  window.addEventListener('pointermove',keyDrawMove);
-  window.addEventListener('pointerup',keyDrawEnd);
+  const p=clientToMatte(e); if(!p) return;
+  if(m==='wand'){
+    wandMatte(p.u,p.v); setKeyMode(null); return;
+  }
+  if(m==='rect'){
+    _kd={x:e.clientX,y:e.clientY,x0:e.clientX,y0:e.clientY,p:p};
+    let ov=$('keyrb');
+    if(!ov){ ov=document.createElement('div'); ov.id='keyrb'; ov.hidden=true;
+             document.body.appendChild(ov); }
+    window.addEventListener('pointermove',keyRectMove);
+    window.addEventListener('pointerup',keyRectEnd);
+    return;
+  }
+  /* brush */
+  pushKeyUndo();
+  const r=brushRadiusMatte(), add=!(S.brushAdd===false)&&!e.altKey&&e.button!==2;
+  _br={K:p.K,r:r,hard:S.brushHard,add:add,last:null};
+  stampMatte(p.u*p.K.w, p.v*p.K.h, r, S.brushHard, add);
+  _br.last=[p.u*p.K.w, p.v*p.K.h];
+  window.addEventListener('pointermove',keyBrushMove);
+  window.addEventListener('pointerup',keyBrushEnd);
 }
-function keyDrawMove(e){
-  if(!_keyDrag) return;
-  _keyDrag.x=e.clientX; _keyDrag.y=e.clientY;
+function keyRectMove(e){
+  if(!_kd) return;
+  _kd.x=e.clientX; _kd.y=e.clientY;
   const ov=$('keyrb'); if(!ov) return;
   ov.hidden=false;
-  ov.style.left=Math.min(_keyDrag.x0,_keyDrag.x)+'px';
-  ov.style.top =Math.min(_keyDrag.y0,_keyDrag.y)+'px';
-  ov.style.width =Math.abs(_keyDrag.x-_keyDrag.x0)+'px';
-  ov.style.height=Math.abs(_keyDrag.y-_keyDrag.y0)+'px';
+  ov.style.left=Math.min(_kd.x0,_kd.x)+'px';
+  ov.style.top =Math.min(_kd.y0,_kd.y)+'px';
+  ov.style.width =Math.abs(_kd.x-_kd.x0)+'px';
+  ov.style.height=Math.abs(_kd.y-_kd.y0)+'px';
 }
-function keyDrawEnd(){
-  window.removeEventListener('pointermove',keyDrawMove);
-  window.removeEventListener('pointerup',keyDrawEnd);
+function keyRectEnd(){
+  window.removeEventListener('pointermove',keyRectMove);
+  window.removeEventListener('pointerup',keyRectEnd);
   const ov=$('keyrb'); if(ov) ov.hidden=true;
-  const k=_keyDrag; _keyDrag=null;
+  const k=_kd; _kd=null;
   if(!k) return;
-  const c=$('cv'); if(!c) return;
-  const r=c.getBoundingClientRect();
-  if(!(r.width>0&&r.height>0)){ toast('預覽圖未準備好'); return; }
-  const x0=clamp((Math.min(k.x0,k.x)-r.left)/r.width,0,1),
-        x1=clamp((Math.max(k.x0,k.x)-r.left)/r.width,0,1),
-        y0=clamp((Math.min(k.y0,k.y)-r.top )/r.height,0,1),
-        y1=clamp((Math.max(k.y0,k.y)-r.top )/r.height,0,1);
-  if(x1-x0<0.01||y1-y0<0.01){ toast('框太細'); return; }
-  S.skinKey=[x0,y0,x1,y1]; _fleshLab=null;
-  const f=FL();
-  toast('key 框好：'+Math.round(x0*100)+'%,'+Math.round(y0*100)+'% → '+
-        Math.round(x1*100)+'%,'+Math.round(y1*100)+'%　·　膚軸 '+
-        f[0].toFixed(1)+'° ±'+f[1].toFixed(0)+'°');
-  updKeyLabel(); setKeyDraw(false);
+  const p2=clientToMatte({clientX:k.x,clientY:k.y}); if(!p2) return;
+  const u0=Math.min(k.p.u,p2.u), u1=Math.max(k.p.u,p2.u);
+  const v0=Math.min(k.p.v,p2.v), v1=Math.max(k.p.v,p2.v);
+  if((u1-u0)*p2.K.w<3||(v1-v0)*p2.K.h<3){ toast('框太細'); return; }
+  pushKeyUndo();
+  const K=p2.K, m=K.m, add=S.brushAdd!==false && !k.alt;
+  const x0=Math.floor(u0*K.w), x1=Math.ceil(u1*K.w), y0=Math.floor(v0*K.h), y1=Math.ceil(v1*K.h);
+  for(let y=Math.max(0,y0);y<Math.min(K.h,y1);y++)
+    for(let x=Math.max(0,x0);x<Math.min(K.w,x1);x++) m[y*K.w+x]=add?1:0;
+  touchKey();
+  toast('拖框寫入：覆蓋 '+(keyCoverage()*100).toFixed(1)+'%');
+  updKeyLabel(); syncKeyUI(); setKeyMode(null);
+}
+function keyBrushMove(e){
+  if(!_br) return;
+  const p=clientToMatte(e); if(!p) return;
+  const cx=p.u*p.K.w, cy=p.v*p.K.h;
+  const lx=_br.last?_br.last[0]:cx, ly=_br.last?_br.last[1]:cy;
+  const dx=cx-lx, dy=cy-ly, d=Math.hypot(dx,dy);
+  const step=Math.max(0.8,_br.r*0.35), n=Math.min(400,Math.max(1,Math.ceil(d/step)));
+  for(let i=1;i<=n;i++){
+    const t=i/n;
+    stampMatte(lx+dx*t, ly+dy*t, _br.r, _br.hard, _br.add);
+  }
+  _br.last=[cx,cy];
+  updateBrushRing(e);
+}
+function keyBrushEnd(){
+  window.removeEventListener('pointermove',keyBrushMove);
+  window.removeEventListener('pointerup',keyBrushEnd);
+  if(!_br) return;
+  _br=null;
+  touchKey(); updKeyLabel(); syncKeyUI();
+}
+/* 筆刷游標圈 */
+function updateBrushRing(e){
+  const el=$('kring'); if(!el) return;
+  const lab=S.vendorLabFull;
+  if(S.keyMode!=='brush'||!lab){ el.hidden=true; return; }
+  const c=$('cv'); if(!c){ el.hidden=true; return; }
+  const r=c.getBoundingClientRect(); if(!r.width){ el.hidden=true; return; }
+  const d=2*(+S.brushR||40)*(r.width/lab.w);
+  el.hidden=false;
+  el.style.width=d+'px'; el.style.height=d+'px';
+  el.style.left=(e.clientX-d/2)+'px'; el.style.top=(e.clientY-d/2)+'px';
+}
+function setKeyMode(m){
+  if(m&&S.keyMode===m) m=null;                 /* 再撳同一個 = 收工 */
+  S.keyMode=m;
+  const c=$('cv'); if(c) c.style.cursor=m?'crosshair':'';
+  ['bkeybrush','bkeyrect','bkeywand'].forEach(id=>{
+    const b=$(id); if(!b) return;
+    const on=b.dataset.m===m;
+    b.classList.toggle('on',on);
+    b.style.borderColor=on?'#7c8cf0':''; b.style.color=on?'#9aa6ff':'';
+  });
+  const el=$('kring'); if(el&&m!=='brush') el.hidden=true;
+  if(m==='brush')      toast('筆刷：撳住畫　·　滾輪改大細　·　撳住 Alt 或揀「減」= 擦');
+  else if(m==='rect')  toast('拖框：拉一個框寫入 matte');
+  else if(m==='wand')  toast('魔術棒：撳落皮膚，自動跟顏色擴展');
+  syncKeyUI();
+}
+/* matte undo（同 S.hist 分開：筆刷係像素嘢，唔入 snapshot） */
+function pushKeyUndo(){
+  const K=S.keyMatte; if(!K) return;
+  if(!Array.isArray(S.keyUndo)) S.keyUndo=[];
+  S.keyUndo.push(Float32Array.from(K.m));
+  if(S.keyUndo.length>24) S.keyUndo.shift();
+}
+function keyUndo(){
+  const K=S.keyMatte;
+  if(!K||!S.keyUndo||!S.keyUndo.length){ toast('冇得復原'); return; }
+  K.m.set(S.keyUndo.pop());
+  touchKey(); updKeyLabel(); syncKeyUI(); toast('復原 matte');
+}
+function keyFillAll(){
+  const K=ensureMatte(); pushKeyUndo(); K.m.fill(1); touchKey();
+  updKeyLabel(); syncKeyUI();
+}
+function keyInvert(){
+  const K=ensureMatte(); pushKeyUndo();
+  const m=K.m;
+  for(let i=0;i<m.length;i++) m[i]=clamp(1-m[i],0,1);
+  touchKey(); updKeyLabel(); syncKeyUI();
+}
+function keyClear(){
+  const K=S.keyMatte;
+  if(!K||!hasKey()){ toast('未畫 key'); return; }
+  pushKeyUndo(); K.m.fill(0); touchKey(); updKeyLabel(); syncKeyUI();
+}
+function keyCycleShow(){
+  S.keyShow=(+S.keyShow||0)+1; if(S.keyShow>2) S.keyShow=0;
+  syncKeyUI(); scheduleRender();
+}
+/* 換稿：matte 清走（ensureMatte 會按新長寬比重開一張） */
+function resetKeyMatte(){
+  S.keyMatte=null; S.keyUndo=[]; _keyVer++; _fleshLab=null; _gl.lab=null; _gl.g=null;
+  _kb.k=''; _kb.m=null; _kf.k=''; _kf.f=null;
+  if(typeof updKeyLabel==='function') updKeyLabel();
+  if(typeof syncKeyUI==='function') syncKeyUI();
+}
+/* 遮罩預覽：512 格 matte → canvas 放大（瀏覽器雙線性，邊緣自然軟） */
+let _ovc=null;
+function drawKeyOverlay(){
+  const K=S.keyMatte; if(!K) return;
+  const m=blurredMatte(); if(!m) return;
+  if(!_ovc||_ovc.width!==K.w||_ovc.height!==K.h){
+    _ovc=document.createElement('canvas'); _ovc.width=K.w; _ovc.height=K.h;
+  }
+  const c2=_ovc.getContext('2d');
+  const id=c2.createImageData(K.w,K.h), d=id.data;
+  const white=(+S.keyShow===2);
+  for(let i=0;i<K.w*K.h;i++){
+    const a=m[i], p=i*4;
+    d[p]=255; d[p+1]=white?255:40; d[p+2]=white?255:70;
+    d[p+3]=Math.round(255*Math.min(1,Math.max(0,a))*0.55);
+  }
+  c2.putImageData(id,0,0);
+  ctx.save();
+  ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+  ctx.drawImage(_ovc,0,0,cv.width,cv.height);
+  ctx.restore();
+}
+/* matte 改咗：cache 全清 + 重畫 */
+function touchKey(){
+  _keyVer++; _fleshLab=null;
   S.pvKey++; S.pvCache.clear(); scheduleRender();
 }
-/* cv 係下面先 declare 嘅 const（TDZ），所以呢度要用 getElementById 唔可以直接寫 cv */
-try{ const _cve=document.getElementById('cv');
-     if(_cve) _cve.addEventListener('pointerdown',keyDrawStart,true); }catch(_){}
 function updKeyLabel(){
   const el=$('keylb'); if(!el) return;
-  el.textContent = S.skinKey
-    ? 'key '+Math.round(S.skinKey[0]*100)+','+Math.round(S.skinKey[1]*100)+' → '+
-      Math.round(S.skinKey[2]*100)+','+Math.round(S.skinKey[3]*100)+' %'
-    : 'key 未框（淨用 hue gate）';
+  if(!hasKey()){ el.textContent='key 未畫（淨用 hue gate）'; return; }
+  const f=FL();
+  el.textContent='key 覆蓋 '+(keyCoverage()*100).toFixed(1)+'%　·　膚軸 '+
+                 (f?f[0].toFixed(1):'?')+'° ±'+(f?f[1].toFixed(0):'?')+'°';
 }
+function syncKeyUI(){
+  const seg=$('keyaddseg');
+  if(seg) seg.querySelectorAll('button').forEach(b=>{
+    b.classList.toggle('on', (b.dataset.v==='1')===(S.brushAdd!==false));
+  });
+  ['brushR','brushHard','keyFeath','wandTol'].forEach(k=>{
+    const host=document.querySelector('.mr[data-k="'+k+'"]'); if(!host) return;
+    const inp=host.querySelector('input'), out=host.querySelector('b');
+    const sc=+(host.dataset.sc||1);
+    if(inp) inp.value=Math.round((+S[k]||0)/sc);
+    if(out) out.textContent=Math.round((+S[k]||0)/sc)+(host.dataset.unit||'');
+  });
+  const bu=$('bkeyundo'); if(bu) bu.style.opacity=(S.keyUndo&&S.keyUndo.length)?'1':'.45';
+  const bs=$('bkeyshow'); if(bs) bs.textContent='遮罩：'+['關','紅','白'][+S.keyShow||0];
+}
+/* 細滑桿（唔入 S.hist：筆刷設定唔值得佔 undo 位） */
+function mkRange(host,skey,label,min,max,unit,scale){
+  const el=document.createElement('div'); el.className='mr'; el.dataset.k=skey;
+  const sc=scale||1; el.dataset.sc=sc; el.dataset.unit=unit||'';
+  el.innerHTML='<div class="mr-hd"><span></span><b></b></div><input type="range">';
+  el.querySelector('span').textContent=label;
+  const inp=el.querySelector('input'), out=el.querySelector('b');
+  inp.min=min; inp.max=max; inp.step=1; inp.value=Math.round((+S[skey]||0)/sc);
+  out.textContent=inp.value+(unit||'');
+  inp.addEventListener('input',()=>{
+    S[skey]=(+inp.value)*sc;
+    out.textContent=inp.value+(unit||'');
+    if(skey==='keyFeath'){ _keyVer++; S.pvKey++; S.pvCache.clear(); scheduleRender(true); }
+    if(skey==='brushR') updateBrushRing(window.__lastKeyEv||{clientX:-999,clientY:-999});
+  });
+  inp.addEventListener('change',()=>{ if(skey==='keyFeath'){ S.pvKey++; S.pvCache.clear(); scheduleRender(); } });
+  host.appendChild(el); return el;
+}
+/* cv 係下面先 declare 嘅 const（TDZ）→ 呢度要用 getElementById */
+try{
+  const _cve=document.getElementById('cv');
+  if(_cve){
+    _cve.addEventListener('pointerdown',keyPointerDown,true);
+    _cve.addEventListener('pointermove',e=>{ window.__lastKeyEv=e; updateBrushRing(e); });
+    _cve.addEventListener('pointerleave',()=>{ const el=$('kring'); if(el) el.hidden=true; });
+    _cve.addEventListener('wheel',e=>{
+      if(S.keyMode!=='brush') return;
+      e.preventDefault(); e.stopPropagation();
+      S.brushR=clamp(Math.round((+S.brushR||40)*(e.deltaY<0?1.12:1/1.12)),4,600);
+      syncKeyUI(); updateBrushRing(e);
+    },{passive:false,capture:true});
+  }
+  const ring=document.createElement('div'); ring.id='kring'; ring.hidden=true;
+  document.body.appendChild(ring);
+}catch(_){}
 /* chroma prewash：L 導引 edge-aware，淨磨 a/b（grade 之前行 → NR before look） */
 const _pwBuf={n:0,a:null,b:null};
 function chromaPrewash(lab,radius){
@@ -2121,66 +2563,6 @@ function applyLook(L,a,b,cv){
   const h2=(ht+w*dv)*Math.PI/180;
   return [L,C2*Math.cos(h2),C2*Math.sin(h2)];
 }
-
-/* 拖框 key：DI 嘅做法係「有 key 就用 key」—— 自動框只係起步點，
-   導演自己喺預覽圖拉一拉先係最準（同 Baselight 畫 matte 一樣）。 */
-function setKeyDraw(on){
-  S.keyDraw=!!on;
-  const b=$('bkeydrag');
-  if(b){ b.classList.toggle('on',S.keyDraw);
-         b.style.borderColor=S.keyDraw?'#7c8cf0':''; b.style.color=S.keyDraw?'#9aa6ff':''; }
-  const c=$('cv'); if(c) c.style.cursor=S.keyDraw?'crosshair':'';
-  if(S.keyDraw) toast('喺圖上拖一個框做膚色 key');
-}
-let _kd=null;
-function keyDrawStart(e){
-  if(!S.keyDraw||!S.vendorImg) return;
-  e.preventDefault(); e.stopPropagation();
-  _kd={x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY};
-  let ov=$('keyrb');
-  if(!ov){ ov=document.createElement('div'); ov.id='keyrb'; ov.hidden=true;
-    ov.style.cssText='position:fixed;z-index:9999;border:1.5px dashed #ff5a5a;'+
-                     'background:rgba(255,90,90,.10);pointer-events:none';
-    document.body.appendChild(ov); }
-  window.addEventListener('pointermove',keyDrawMove);
-  window.addEventListener('pointerup',keyDrawEnd);
-}
-function keyDrawMove(e){
-  if(!_kd) return;
-  _kd.x=e.clientX; _kd.y=e.clientY;
-  const ov=$('keyrb'); if(!ov) return;
-  ov.hidden=false;
-  ov.style.left=Math.min(_kd.x0,_kd.x)+'px';
-  ov.style.top =Math.min(_kd.y0,_kd.y)+'px';
-  ov.style.width =Math.abs(_kd.x-_kd.x0)+'px';
-  ov.style.height=Math.abs(_kd.y-_kd.y0)+'px';
-}
-function keyDrawEnd(){
-  window.removeEventListener('pointermove',keyDrawMove);
-  window.removeEventListener('pointerup',keyDrawEnd);
-  const ov=$('keyrb'); if(ov) ov.hidden=true;
-  const k=_kd; _kd=null;
-  if(!k) return;
-  const c=$('cv'); if(!c) return;
-  const r=c.getBoundingClientRect();
-  if(!(r.width>0&&r.height>0)){ toast('預覽圖未準備好'); return; }
-  const x0=clamp((Math.min(k.x0,k.x)-r.left)/r.width,0,1),
-        x1=clamp((Math.max(k.x0,k.x)-r.left)/r.width,0,1),
-        y0=clamp((Math.min(k.y0,k.y)-r.top )/r.height,0,1),
-        y1=clamp((Math.max(k.y0,k.y)-r.top )/r.height,0,1);
-  if(x1-x0<0.01||y1-y0<0.01){ toast('框太細'); return; }
-  S.skinKey=[x0,y0,x1,y1]; _fleshLab=null;
-  const f=FL();
-  toast('key 框好：'+Math.round(x0*100)+'%,'+Math.round(y0*100)+'% → '+
-        Math.round(x1*100)+'%,'+Math.round(y1*100)+'%　·　膚軸 '+
-        f[0].toFixed(1)+'° ±'+f[1].toFixed(0)+'°');
-  updKeyLabel(); setKeyDraw(false);
-  S.pvKey++; S.pvCache.clear(); scheduleRender();
-}
-/* cv 係下面先 declare 嘅 const（TDZ），所以呢度要用 getElementById 唔可以直接寫 cv */
-try{ const _cve=document.getElementById('cv');
-     if(_cve) _cve.addEventListener('pointerdown',keyDrawStart,true); }catch(_){}
-
 
 /* 色板／導演注入嘅力度：直接用「融合」桿（0 = 原圖） */
 const palStrength=()=>clamp((+S.sec.palBlend||0)/100,0,1);
@@ -2246,7 +2628,7 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
   const kp=+opt.skinProt||0;
   const nrOn = kp>0 && S.chrNR!==false && (!$('chrnr')||$('chrnr').checked);
   const src = nrOn ? chromaPrewash(lab,1) : lab;
-  const kf  = (kp>0 && S.skinKey) ? keyFieldFor(lab) : null;
+  const kf  = (kp>0 && hasKey()) ? keyFieldFor(lab) : null;
   const fl  = kp>0 ? FL() : null;
   /* v12：CDL + 曲線 + 保層次 全部喺 RGB 度做。
      逐通道部分預先拆成 LUT（256 格），每粒 pixel 淨係 3 次查表 + 一次 luma 混合，
@@ -2460,8 +2842,11 @@ const S={
      palSel 係色板 view 揀緊邊個位（暗/中/亮）—— 兩個都係 UI state，唔入 snapshot */
   palPlan:null, palView:'wall', palSel:'mid', palWallMode:'color', dirQ:'',
   skinProt:100,                            /* 膚色保護力度 %（0=唔保，100=全保） */
-  skinKey:null,                            /* 歸一化 [x0,y0,x1,y1] 0..1 · null = 淨用 hue gate */
-  keyDraw:false, chrNR:true,               /* 拖框模式 · NR before look */
+  /* v5 膚色 key：一張 512 格 soft matte（筆刷畫），唔再係矩形框 */
+  keyMatte:null, keyUndo:[], keyMode:null,  /* null | 'brush' | 'rect' | 'wand' */
+  brushR:48, brushHard:0.55, brushAdd:true, /* 筆刷半徑（圖 px）· 硬度 0..1 · 加/減 */
+  keyFeath:6, wandTol:10, keyShow:0,        /* 全域羽化（matte 格）· 魔術棒容差 · 遮罩顯示 0/1/2 */
+  chrNR:true,                               /* NR before look */
   /* v12：調色操作面（簡化/色輪/曲線/數值）、曲線通道、示波器 */
   toneMode:'spl', curCh:'Y', scopeMode:'hist', scopeFold:false,
   fs:false,                                 /* 全屏檢查（~ 鍵）· UI state，唔入 snapshot */
@@ -3797,30 +4182,70 @@ function buildLeftPanel(){
      配合【保護膚色】checkbox 用 —— checkbox 關就當 0。 */
   makeSlider(g1b.body,'skinProt',{label:'膚保',min:0,max:100,def:100,value:S.skinProt,unit:'%',
     onInput:v=>{S.skinProt=v;},onCommit:()=>{S.pvKey++;S.pvCache.clear();scheduleRender();}});
-  /* ── 膚色 key ── DI 嘅做法：有 key 就用 key；自動框只係起步點 ── */
+  /* ── 膚色 key v5：soft matte（筆刷）───────────────────────────
+     v4 淨得一個矩形框 —— 塊面唔係矩形，點框都唔貼。v5 係一張畫出嚟嘅
+     soft matte：筆刷畫／拖框寫入／自動（皮膚形狀）／魔術棒（跟色擴展）。 */
   const kr=document.createElement('div');
   kr.className='checks';
-  kr.style.cssText='display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0 8px';
+  kr.style.cssText='display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0 6px';
   const klb=document.createElement('span');
   klb.id='keylb'; klb.style.cssText='font-size:11px;opacity:.6;flex:1 1 100%;margin-bottom:2px';
   kr.appendChild(klb);
-  [['拖框 key',()=>{ setKeyDraw(!S.keyDraw); }],
-   ['自動框 key',()=>{ if(autoSkinKey()){ S.pvKey++; S.pvCache.clear(); scheduleRender(); } }],
-   ['清 key',   ()=>{ S.skinKey=null; _fleshLab=null; updKeyLabel();
-                      S.pvKey++; S.pvCache.clear(); scheduleRender(); }]
+  /* 第 1 行：模式 */
+  [['筆刷','bkeybrush','brush'],['拖框','bkeyrect','rect'],['魔術棒','bkeywand','wand']]
+  .forEach(([lb,id,m])=>{
+    const b=document.createElement('button'); b.type='button'; b.className='b sm';
+    b.id=id; b.dataset.m=m; b.textContent=lb;
+    b.onclick=()=>setKeyMode(m);
+    kr.appendChild(b);
+  });
+  /* 第 2 行：加 / 減（筆刷同魔術棒都用） */
+  const aseg=document.createElement('div'); aseg.className='seg'; aseg.id='keyaddseg';
+  aseg.style.cssText='display:inline-flex;flex:0 0 auto;margin:0;border-radius:5px';
+  [[ '加','1'],['減','0']].forEach(([lb,v])=>{
+    const b=document.createElement('button'); b.type='button'; b.dataset.v=v; b.textContent=lb;
+    b.style.cssText='padding:3px 11px;font-size:11.5px';
+    b.onclick=()=>{ S.brushAdd=(v==='1'); syncKeyUI(); };
+    aseg.appendChild(b);
+  });
+  kr.appendChild(aseg);
+  /* 第 3 行：自動 / 全選 / 反相 / 復原 / 清 */
+  [['自動',()=>{ if(autoSkinMatte()){ S.pvKey++; S.pvCache.clear(); scheduleRender(); } }],
+   ['全選',keyFillAll],
+   ['增長',()=>morphMatte(3)],
+   ['收縮',()=>morphMatte(-3)],
+   ['反相',keyInvert],
+   ['復原',keyUndo],
+   ['清',  keyClear]
   ].forEach(([lb,fn])=>{
     const b=document.createElement('button'); b.type='button'; b.className='b sm';
-    if(lb==='拖框 key') b.id='bkeydrag';
+    if(lb==='復原') b.id='bkeyundo';
     b.textContent=lb; b.onclick=fn; kr.appendChild(b);
   });
+  const bs=document.createElement('button'); bs.type='button'; bs.className='b sm';
+  bs.id='bkeyshow'; bs.textContent='遮罩：關';
+  bs.onclick=keyCycleShow; kr.appendChild(bs);
+  g1b.body.appendChild(kr);
+  /* 滑桿（flex:1 1 100% → 自己一行） */
+  const kb=document.createElement('div');
+  kb.style.cssText='display:flex;flex-wrap:wrap;gap:0 10px';
+  mkRange(kb,'brushR',    '筆刷大細',4,400,'px',1);
+  mkRange(kb,'brushHard', '筆刷硬度',0,100,'%',0.01);
+  mkRange(kb,'keyFeath',  '羽化',    0,40,'',1);
+  mkRange(kb,'wandTol',   '魔術棒容差',2,40,'',1);
+  g1b.body.appendChild(kb);
+  const khint=document.createElement('div');
+  khint.style.cssText='font-size:10.5px;opacity:.5;line-height:1.5;margin:-2px 0 8px';
+  khint.textContent='筆刷：撳住畫 · 滾輪或 [ ] 改大細 · Alt 或「減」= 擦 · Esc 退出　｜　'+
+                    '冇 matte 就淨用 hue gate';
+  g1b.body.appendChild(khint);
   const lbn=document.createElement('label'); lbn.className='chk'; lbn.style.marginLeft='4px';
   lbn.innerHTML='<input type="checkbox" id="chrnr" checked> 色度降噪';
   lbn.querySelector('input').addEventListener('change',e=>{
     S.chrNR=e.target.checked; S.pvKey++; S.pvCache.clear(); scheduleRender();
   });
-  kr.appendChild(lbn);
-  g1b.body.appendChild(kr);
-  updKeyLabel();
+  g1b.body.appendChild(lbn);
+  updKeyLabel(); syncKeyUI();
   g1b.secKeys=null;
   refreshPalUI();
 
@@ -4349,6 +4774,7 @@ function replaceShot(file){
     S.vendorLabQuick=labOf(drawTo(im,q.w,q.h));
     S.vendorLabFull =labOf(drawTo(im,f.w,f.h));
     S.vendorOrig    =imgToCanvas(im,f.w,f.h);
+    resetKeyMatte();                       /* v5：換稿 → 舊 matte 唔留 */
     if(sh){ sh.img=im; sh.name=name; sh.an=an; sh.labQuick=S.vendorLabQuick; sh.st=null; }
     URL.revokeObjectURL(url);
     S.pvKey++; S.pvCache.clear();
@@ -4635,6 +5061,8 @@ function paint(){
   $('badgeL').hidden = !(S.mode==='side');
   $('badgeR').hidden = !(S.mode==='side');
   try{ if(typeof rgDrawOverlay==='function') rgDrawOverlay(); }catch(_rg){}
+  /* 膚色 matte 預覽（畫喺最面：睇得清楚邊度會被保護） */
+  try{ if(S.keyShow) drawKeyOverlay(); }catch(_ko){}
   applyZoom();          /* 每次重繪都要守住 zoom（轉 before/after 都唔好彈返適應） */
 }
 /* ---------- zoom / pan ----------
@@ -6031,6 +6459,14 @@ window.addEventListener('keydown',e=>{
   if(e.target&&e.target.closest&&e.target.closest('.sl')) return;
   const t=e.target.tagName;
   if(t==='TEXTAREA'||t==='INPUT') return;
+  /* v5：Esc 先退出 key 模式（筆刷／拖框／魔術棒） */
+  if(e.key==='Escape' && S.keyMode){ setKeyMode(null); e.preventDefault(); return; }
+  /* [ / ] = 筆刷大細（畫 matte 嗰陣手唔使離鍵盤） */
+  if((e.key==='['||e.key===']') && S.keyMode==='brush'){
+    S.brushR=clamp(Math.round((+S.brushR||40)*(e.key===']'?1.2:1/1.2)),4,400);
+    syncKeyUI(); updateBrushRing(window.__lastKeyEv||{clientX:-999,clientY:-999});
+    toast('筆刷 '+S.brushR+'px'); e.preventDefault(); return;
+  }
   /* Esc 離開全屏／專注（Esc 冇 modifier，要放喺 meta/ctrl 檢查之前） */
   if(e.key==='Escape' && (S.fs||S.focus)){
     if(S.fs) toggleFs(false); else if(S.focus) toggleFocus(false);
@@ -6525,6 +6961,12 @@ window.ldMeasure=msMeasure;
 window.ldMeasureText=msText;
 window.ldModClose=modClose;
 window.ldV17={degToClock:degToClock,ck12:ck12,cctFromRGB:cctFromRGB,              s2lin:s2lin,mired:mired,clockName:clockName,LtoStops:LtoStops};
+/* v5：膚色 matte 嘅測試／自動化入口 */
+window.ldKey={ensureMatte:ensureMatte,matteDims:matteDims,hasKey:hasKey,keyCoverage:keyCoverage,
+  keyFieldFor:keyFieldFor,blurredMatte:blurredMatte,boxBlur:boxBlur,gridLab:gridLab,
+  autoSkinMatte:autoSkinMatte,wandMatte:wandMatte,setKeyMode:setKeyMode,keyClear:keyClear,
+  keyFillAll:keyFillAll,keyInvert:keyInvert,keyUndo:keyUndo,stampMatte:stampMatte,
+  fleshHueMasked:fleshHueMasked,FL:FL, get S(){return S;}, get ver(){return _keyVer;}};
 window.ldLin={linPlan:linPlan,linApply:linApply,ldShoulder:ldShoulder,planckUV:planckUV,uvToXY:uvToXY,
               xyToUV:xyToUV,whiteUV:whiteUV,cat16RGB:cat16RGB,cat16ToK:cat16ToK,wbTargetUV:wbTargetUV,
               ohnoXY:ohnoXY,ohnoUV:ohnoUV,ohnoLinRGB:ohnoLinRGB,exportCdlFor:exportCdlFor,linCdlApprox:linCdlApprox,
