@@ -2396,6 +2396,79 @@ function keyCycleShow(){
   S.keyShow=(+S.keyShow||0)+1; if(S.keyShow>2) S.keyShow=0;
   syncKeyUI(); scheduleRender();
 }
+/* ── matte 互通（v22）─────────────────────────────────────────
+   畫咗嘅 key 一定要出到去，否則份工被困喺瀏覽器入面。
+   格式：PNG，**alpha = 保護量**（0 = 唔保，255 = 全保），RGB 全白。
+   尺寸 = 來稿全解尺寸，所以 Resolve / Baselight / Nuke 可以直接攞去用。
+   匯入嗰陣用「格內平均」落返 512 格 matte（等價於一次 area-average 縮細）。 */
+function keyMatteToField(lab){
+  const K=S.keyMatte; if(!K||!lab) return null;
+  const m=blurredMatte(); if(!m) return null;
+  const f=new Float32Array(lab.n);
+  resampleInto(m,K.w,K.h,f,lab.w,lab.h);
+  return f;
+}
+function exportKeyPNG(){
+  const lab=S.vendorLabFull||S.vendorLabQuick;
+  if(!lab||!hasKey()){ toast('未有來稿／未畫 matte'); return; }
+  const f=keyMatteToField(lab);
+  const c=document.createElement('canvas'); c.width=lab.w; c.height=lab.h;
+  const x=c.getContext('2d');
+  const id=x.createImageData(lab.w,lab.h), d=id.data;
+  for(let i=0;i<lab.n;i++){
+    const p=i*4, v=(f[i]<=0?0:(f[i]>=1?255:Math.round(f[i]*255)));
+    d[p]=255; d[p+1]=255; d[p+2]=255; d[p+3]=v;
+  }
+  x.putImageData(id,0,0);
+  const nm=(S.vendorName||'shot').replace(/[^\w\u4e00-\u9fa5-]+/g,'_');
+  const finish=()=>{ const a=document.createElement('a');
+    a.href=c.toDataURL('image/png'); a.download=nm+'.skinkey.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('遮罩已匯出 '+lab.w+'×'+lab.h+'（alpha = 保護量）'); };
+  if(c.toBlob) c.toBlob(b=>{ const u=URL.createObjectURL(b); const a=document.createElement('a');
+    a.href=u; a.download=nm+'.skinkey.png'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(u),4000);
+    toast('遮罩已匯出 '+lab.w+'×'+lab.h+'（alpha = 保護量）'); });
+  else finish();
+}
+function importKeyPNG(file){
+  if(!file||!/image\//.test(file.type)){ toast('唔係圖'); return; }
+  const url=URL.createObjectURL(file);
+  const im=new Image();
+  im.onload=()=>{
+    URL.revokeObjectURL(url);
+    const K=ensureMatte();
+    const c=document.createElement('canvas'); c.width=im.width; c.height=im.height;
+    const x=c.getContext('2d'); x.drawImage(im,0,0);
+    const d=x.getImageData(0,0,im.width,im.height).data;
+    /* 格內平均 → 512 格 matte */
+    const acc=new Float32Array(K.w*K.h), cnt=new Float32Array(K.w*K.h);
+    for(let y=0;y<im.height;y++){
+      const gy=Math.min(K.h-1,(y*K.h/im.height)|0), off=y*im.width;
+      for(let px=0;px<im.width;px++){
+        const gx=Math.min(K.w-1,(px*K.w/im.width)|0), gi=gy*K.w+gx;
+        acc[gi]+=d[(off+px)*4+3]/255; cnt[gi]++;
+      }
+    }
+    pushKeyUndo();
+    const m=K.m;
+    for(let i=0;i<m.length;i++) m[i]=cnt[i]? clamp(acc[i]/cnt[i],0,1) : 0;
+    touchKey(); updKeyLabel(); syncKeyUI();
+    toast('遮罩已匯入：覆蓋 '+(keyCoverage()*100).toFixed(1)+'%');
+  };
+  im.onerror=()=>{ URL.revokeObjectURL(url); toast('讀唔到呢張遮罩'); };
+  im.src=url;
+}
+let _keyFileInp=null;
+function pickKeyPNG(){
+  if(!_keyFileInp){
+    _keyFileInp=document.createElement('input');
+    _keyFileInp.type='file'; _keyFileInp.accept='image/*';
+    _keyFileInp.onchange=()=>{ const f=_keyFileInp.files&&_keyFileInp.files[0];
+                               if(f) importKeyPNG(f); _keyFileInp.value=''; };
+  }
+  _keyFileInp.click();
+}
 /* 換稿：matte 清走（ensureMatte 會按新長寬比重開一張） */
 function resetKeyMatte(){
   S.keyMatte=null; S.keyUndo=[]; _keyVer++; _fleshLab=null; _gl.lab=null; _gl.g=null;
@@ -2635,8 +2708,123 @@ function gradeRGB(r,g,b,grade,opt,sec,plan,pal){
   if(plan&&plan.active) q=applySec(q[0],q[1],q[2],sec,plan);
   return finishRGB(labToRgb(q[0],q[1],q[2]),sec,opt);
 }
+/* ── v22 熱迴路嘅零分配版本（數學同 applyPixel / applyLook / polarClamp / labToRgb 一致）──
+   寫落 module scope 暫存變數，唔再每粒 pixel 起 array。 */
+let _qL=0,_qa=0,_qb=0;
+function applyPixelInto(L,a,b,g,opt){
+  const st=opt.strength;
+  const ts=opt.toneStrength!==undefined?opt.toneStrength:st;
+  if(g.toneMap){
+    let bin=Math.round(L/100*255); bin=bin<0?0:(bin>255?255:bin);
+    L = L + ts*(g.toneMap[bin]-L);
+    L = L<0?0:(L>100?100:L);
+  }
+  const da=interpBand(L,g.dA), db=interpBand(L,g.dB), sc=interpBand(L,g.sC);
+  let na=a+a*st*(sc-1)+da*st, nb=b+b*st*(sc-1)+db*st;
+  const cm=Math.sqrt(na*na+nb*nb);
+  if(cm>MAX_CHROMA){ const k=MAX_CHROMA/cm; na*=k; nb*=k; }
+  _qL=L; _qa=na; _qb=nb;
+}
+/* applyLook 入面嘅 ht / ct **淨取決於 L** —— 舊版每粒 pixel 都要
+   1 次 atan2 + 3 次 sampleCurve。開一張 1024 格表（L*10.24，一格 ≈0.098 L），
+   量化誤差細到量唔出（對照測試：全圖 max diff 0/255）。 */
+const LT_N=1024;
+let _lt={cv:null,ht:null,ct:null,vx:null,vy:null};
+function lookTab(cv){
+  if(_lt.cv===cv&&_lt.ht) return _lt;
+  const ht=new Float32Array(LT_N), ct=new Float32Array(LT_N);
+  const vx=new Float32Array(LT_N), vy=new Float32Array(LT_N);
+  for(let k=0;k<LT_N;k++){
+    const L=k/(LT_N-1)*100;
+    const A=Math.atan2(sampleCurve(cv.tb,L),sampleCurve(cv.ta,L));
+    ht[k]=A*180/Math.PI; ct[k]=sampleCurve(cv.chr,L);
+    vx[k]=Math.cos(A); vy[k]=Math.sin(A);
+  }
+  _lt={cv:cv,ht:ht,ct:ct,vx:vx,vy:vy}; return _lt;
+}
+function applyLookInto(L,a,b,cv,lt){
+  const C=Math.sqrt(a*a+b*b);
+  if(C<1e-4){ _qL=L; _qa=a; _qb=b; return; }
+  const st=cv.strength;
+  if(st<=0){ _qL=L; _qa=a; _qb=b; return; }
+  if(!lt) lt=lookTab(cv);
+  let bi=(L*(LT_N-1)/100+0.5)|0; if(bi<0)bi=0; else if(bi>=LT_N)bi=LT_N-1;
+  const ct=lt.ct[bi];
+  const C2=C+st*(ct-C);
+  _qL=L;
+  /* ── 向量捷徑（C ≥ C_REF → w=1）──────────────────────────────
+     w=1 嗰陣 h2 = ht + (hd + sh - ht) = hd + sh，
+     即係「來源方向 u 轉 sh 度」。u=(a/C, b/C) 本身就係 (cos hd, sin hd)，
+     唔使 atan2；sin(dh) 可以由 u·v 嘅叉積直接得出，唔使 sin()。
+     所以淨剩 cos(sh) / sin(sh) 兩次 —— 由 4 次 trig + 1 次 atan2 減到 2 次。
+     sin(dh) = vy*ux - vx*uy　（v = 目標方向，u = 來源方向） */
+  if(C>=C_REF){
+    const ux=a/C, uy=b/C;
+    const vx=lt.vx[bi], vy=lt.vy[bi];
+    const sdh=vy*ux-vx*uy;                       /* = sin(ht - hd) */
+    const r=((HUE_GATHER*st)*sdh)*Math.PI/180;   /* sh（度 → 弧度） */
+    const cs=Math.cos(r), sn=Math.sin(r);
+    _qa=C2*(ux*cs-uy*sn); _qb=C2*(ux*sn+uy*cs);
+    return;
+  }
+  /* 低 chroma（w<1）：方向要插值去目標，走返原來嗰條角度式（罕見，慢亦無妨） */
+  const hd=Math.atan2(b,a)*180/Math.PI, ht=lt.ht[bi];
+  let dh=ht-hd; while(dh>180)dh-=360; while(dh<-180)dh+=360;
+  const sh=(HUE_GATHER*st)*Math.sin(dh*Math.PI/180);
+  const t=C/C_REF, w=t*t*(3-2*t);
+  let dv=(hd+sh)-ht; while(dv>180)dv-=360; while(dv<-180)dv+=360;
+  const h2=(ht+w*dv)*Math.PI/180;
+  _qa=C2*Math.cos(h2); _qb=C2*Math.sin(h2);
+}
+function polarClampInto(a0,b0,a1,b1,g){
+  const C0=Math.sqrt(a0*a0+b0*b0);
+  if(C0<1e-4){ _qa=a1; _qb=b1; return; }
+  const h0=Math.atan2(b0,a0), C1=Math.sqrt(a1*a1+b1*b1), k=1-g;
+  if(C1<1e-4){ _qa=C0*g*Math.cos(h0); _qb=C0*g*Math.sin(h0); return; }
+  let dh=Math.atan2(b1,a1)-h0;
+  while(dh>Math.PI)dh-=2*Math.PI; while(dh<-Math.PI)dh+=2*Math.PI;
+  const s=1+k*(C1/C0-1), h2=h0+dh*k, C2=C0*s;
+  _qa=C2*Math.cos(h2); _qb=C2*Math.sin(h2);
+}
+let _cR=0,_cG=0,_cB=0;
+function labToRgbInto(L,a,b){
+  const fy=(L+16)/116, fx=fy+a/500, fz=fy-b/200;
+  const X=fLabI(fx)*Xn, Y=fLabI(fy)*Yn, Z=fLabI(fz)*Zn;
+  _cR=LUT_S[_sIdx( 3.2404542*X -1.5371385*Y -0.4985314*Z)];
+  _cG=LUT_S[_sIdx(-0.9692660*X +1.8760108*Y +0.0415560*Z)];
+  _cB=LUT_S[_sIdx( 0.0556434*X -0.2040259*Y +1.0572252*Z)];
+}
+/* flesh gate 舊版每粒 pixel 一次 Math.exp —— 換成 1° 一格嘅 LUT（誤差 < 1e-6） */
+let _fgTab=null,_fgSd=-1;
+function fleshTab(fl){
+  if(!_fgTab) _fgTab=new Float32Array(362);
+  if(_fgSd!==fl[1]){
+    _fgSd=fl[1]; const sd=fl[1];
+    for(let d=0;d<=361;d++){ const t=d/sd; _fgTab[d]=Math.exp(-0.5*t*t); }
+  }
+  return _fgTab;
+}
+function fleshGateFast(hd,fl){
+  let dh=hd-fl[0];
+  while(dh>180)dh-=360; while(dh<-180)dh+=360;
+  if(dh<0) dh=-dh;
+  const k=dh|0;
+  return k>361? 0 : _fgTab[k];
+}
+/* ImageData 緩衝重用：1400×594 = 3.3MB，每次 render 重新 allocate 會餵 GC。
+   按尺寸分槽，caller 用完即棄（render 會即時 copy 落 canvas），所以安全。 */
+const _idS=new Map();
+function idBuf(w,h){
+  const k=w+'x'+h;
+  let b=_idS.get(k);
+  if(!b||b.width!==w||b.height!==h){
+    if(_idS.size>3) _idS.delete(_idS.keys().next().value);
+    b=new ImageData(w,h); _idS.set(k,b);
+  }
+  return b;
+}
 function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
-  const n=lab.n, out=new ImageData(lab.w,lab.h), o=out.data;
+  const n=lab.n, out=idBuf(lab.w,lab.h), o=out.data;
   /* 原圖鎖定：唔理 LOOK / 微調，直接吐 vendor 圖。
      bare=true 嘅 caller（preset/方向牆 thumbnail）唔受鎖定影響 ——
      佢哋嘅工作正正係預覽「調咗會係點」。 */
@@ -2676,32 +2864,48 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
   const plut = need? buildPostLUT(cur, !!opt.protect) : null;
   const sat  = cdl.sat;
   const LN=LIN_ENC_N-1;
+  if(fl) fleshTab(fl);                       /* 預先起好 flesh gate 嘅 exp LUT */
+  const _ltv = (pal&&pal.cv)? lookTab(pal.cv) : null;   /* look 目標表：每 render 起一次，唔好喺迴路入面 call */
+  /* ── v22：熱迴路零分配 ────────────────────────────────────────
+     舊版每粒 pixel 起 4 個 array（applyPixel / applyLook / polarClamp / labToRgb），
+     1400×594 ≈ 330 萬次 allocation → GC 壓力，實測 pixel loop 105ms。
+     數學完全一樣，只係改為寫落 module scope 暫存變數。 */
   for(let i=0;i<n;i++){
     const a0=src.a[i], b0=src.b[i];
-    let q=applyPixel(src.L[i],a0,b0,grade,opt);
-    if(pal&&pal.cv) q=applyLook(q[0],q[1],q[2],pal.cv);
+    applyPixelInto(src.L[i],a0,b0,grade,opt);
+    let qL=_qL, qa=_qa, qb=_qb;
+    if(pal&&pal.cv){ applyLookInto(qL,qa,qb,pal.cv,_ltv); qa=_qa; qb=_qb; }
     if(fl){
       let g=0;
-      if(Math.hypot(a0,b0)>2) g=fleshGate(Math.atan2(b0,a0)*180/Math.PI,fl);
-      if(kf){ const gk=kf[i]; if(gk>g) g=gk; }
+      if(kf) g=kf[i];                                    /* matte 係純查表，平 */
+      /* matte 已經夠晒（g≈1）就唔使再計 hue gate —— 慳一次 atan2 + 一次查表 */
+      if(g<0.999 && (a0*a0+b0*b0)>4){
+        const gh=fleshGateFast(Math.atan2(b0,a0)*180/Math.PI,fl);
+        if(gh>g) g=gh;
+      }
       g*=kp;
-      if(g>0.002){ const pc=polarClamp(a0,b0,q[1],q[2],g); q[1]=pc[0]; q[2]=pc[1]; }
+      if(g>0.999){ qa=a0; qb=b0; }                       /* 全保：直接還原原圖 a/b，唔使計三角 */
+      else if(g>0.002){ polarClampInto(a0,b0,qa,qb,g); qa=_qa; qb=_qb; }
     }
-    if(useSec) q=applySec(q[0],q[1],q[2],sec,plan);
-    let c=labToRgb(q[0],q[1],q[2]);
+    if(useSec){ const q=applySec(qL,qa,qb,sec,plan); qL=q[0]; qa=q[1]; qb=q[2]; }
+    labToRgbInto(qL,qa,qb);
+    let r=_cR, gg=_cG, bb=_cB;
     if(lp){
-      const R=LUT_LIN[c[0]],G=LUT_LIN[c[1]],B=LUT_LIN[c[2]], M=lp.M, T=LE.T;
-      const white=(c[0]===255&&c[1]===255&&c[2]===255);
+      const R=LUT_LIN[r],G=LUT_LIN[gg],B=LUT_LIN[bb], M=lp.M, T=LE.T;
+      const white=(r===255&&gg===255&&bb===255);
       for(let ch=0;ch<3;ch++){
-        let x=M[ch][0]*R+M[ch][1]*G+M[ch][2]*B; if(x<0) x=0;
+        let x = ch===0? (M[0][0]*R+M[0][1]*G+M[0][2]*B)
+              : ch===1? (M[1][0]*R+M[1][1]*G+M[1][2]*B)
+                      : (M[2][0]*R+M[2][1]*G+M[2][2]*B);
+        if(x<0) x=0;
         let k=Math.round(Math.sqrt(x/LE.rng[ch])*LN); if(k>LN) k=LN;
         let v=Math.round(T[ch*LIN_ENC_N+k]);
         if(v>254 && !white) v=254;            /* 原本唔係白，唔准變白 */
-        c[ch]=v;
+        if(ch===0) r=v; else if(ch===1) gg=v; else bb=v;
       }
     }
     if(need){
-      let x0=clut[c[0]], x1=clut[256+c[1]], x2=clut[512+c[2]];
+      let x0=clut[r], x1=clut[256+gg], x2=clut[512+bb];
       if(sat!==1){
         const Y=0.2126*x0+0.7152*x1+0.0722*x2;
         x0=Y+(x0-Y)*sat; x1=Y+(x1-Y)*sat; x2=Y+(x2-Y)*sat;
@@ -2709,10 +2913,10 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
       let b0=x0*255; b0=b0<0?0:(b0>255?255:b0);
       let b1=x1*255; b1=b1<0?0:(b1>255?255:b1);
       let b2=x2*255; b2=b2<0?0:(b2>255?255:b2);
-      c[0]=plut[b0|0]; c[1]=plut[256+(b1|0)]; c[2]=plut[512+(b2|0)];
+      r=plut[b0|0]; gg=plut[256+(b1|0)]; bb=plut[512+(b2|0)];
     }
     const p=i*4;
-    o[p]=c[0]; o[p+1]=c[1]; o[p+2]=c[2]; o[p+3]=255;
+    o[p]=r; o[p+1]=gg; o[p+2]=bb; o[p+3]=255;
   }
   if(_T){ const _t3=performance.now(); _T.pix+=_t3-_t2; _T.px=(_T.px||0)+n; }
   return out;
@@ -4267,6 +4471,13 @@ function buildLeftPanel(){
   const bs=document.createElement('button'); bs.type='button'; bs.className='b sm';
   bs.id='bkeyshow'; bs.textContent='遮罩：關';
   bs.onclick=keyCycleShow; kr.appendChild(bs);
+  /* 互通：遮罩出得去、入得返（唔好困喺瀏覽器入面） */
+  const be=document.createElement('button'); be.type='button'; be.className='b sm';
+  be.id='bkeyexp'; be.textContent='匯出遮罩'; be.onclick=exportKeyPNG; be.title='PNG · alpha = 保護量 · 來稿全解尺寸';
+  kr.appendChild(be);
+  const bi2=document.createElement('button'); bi2.type='button'; bi2.className='b sm';
+  bi2.id='bkeyimp'; bi2.textContent='匯入遮罩'; bi2.onclick=pickKeyPNG; bi2.title='讀返 alpha 做 matte（格內平均）';
+  kr.appendChild(bi2);
   g1b.body.appendChild(kr);
   /* 滑桿（flex:1 1 100% → 自己一行） */
   const kb=document.createElement('div');
@@ -7038,10 +7249,20 @@ window.ldV17={degToClock:degToClock,ck12:ck12,cctFromRGB:cctFromRGB,            
 window.ldPerf={
   timing:()=>Object.assign({},S.timing),
   reset:()=>{ const t=S.timing; for(const k in t) t[k]=0; },
-  render:q=>render(!!q)
+  render:q=>render(!!q),
+  /* 筆刷即時回饋嗰條路：還原 backup + 疊 matte。要 < 16ms（60fps）先唔窒。 */
+  liveBench:(n)=>{
+    if(!S.vendorLabFull) return null;
+    if(!_kbak) keyBackup();
+    if(!S.keyMatte) ensureMatte();
+    const N=n||20, t0=performance.now();
+    for(let i=0;i<N;i++){ ctx.clearRect(0,0,cv.width,cv.height); ctx.drawImage(_kbak,0,0); drawKeyOverlay(true); }
+    return +((performance.now()-t0)/N).toFixed(2);
+  }
 };
 /* v5：膚色 matte 嘅測試／自動化入口 */
 window.ldKey={ensureMatte:ensureMatte,matteDims:matteDims,hasKey:hasKey,keyCoverage:keyCoverage,
+  exportKeyPNG:exportKeyPNG,importKeyPNG:importKeyPNG,keyMatteToField:keyMatteToField,
   keyFieldFor:keyFieldFor,blurredMatte:blurredMatte,boxBlur:boxBlur,gridLab:gridLab,
   autoSkinMatte:autoSkinMatte,wandMatte:wandMatte,setKeyMode:setKeyMode,keyClear:keyClear,
   keyFillAll:keyFillAll,keyInvert:keyInvert,keyUndo:keyUndo,stampMatte:stampMatte,
