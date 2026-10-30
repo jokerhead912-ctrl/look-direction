@@ -2652,11 +2652,17 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
      1) NR before look：L 導引 edge-aware 色度降噪（淨磨 a/b）→ 消斑點
      2) skin key 場（用家框／自動框），冇框就退回純 hue gate
      3) 記憶色鉗 polarClamp：收返「追色 + 色板」加埋嘅總色偏 */
+  /* ── 逐段計時（v22）：perf budget 唔可以靠「覺得順」，要逐段量 ── */
+  const _T=(typeof S!=='undefined'&&S.timing)?S.timing:null;
+  const _t0=_T?performance.now():0;
   const kp=+opt.skinProt||0;
   const nrOn = kp>0 && S.chrNR!==false && (!$('chrnr')||$('chrnr').checked);
   const src = nrOn ? chromaPrewash(lab,1) : lab;
+  const _t1=_T?performance.now():0;
   const kf  = (kp>0 && hasKey()) ? keyFieldFor(lab) : null;
   const fl  = kp>0 ? FL() : null;
+  const _t2=_T?performance.now():0;
+  if(_T){ _T.prewash+=_t1-_t0; _T.key+=_t2-_t1; }
   /* v12：CDL + 曲線 + 保層次 全部喺 RGB 度做。
      逐通道部分預先拆成 LUT（256 格），每粒 pixel 淨係 3 次查表 + 一次 luma 混合，
      所以即使多咗 CDL 同曲線，全解 render 都唔會慢。 */
@@ -2708,6 +2714,7 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
     const p=i*4;
     o[p]=c[0]; o[p+1]=c[1]; o[p+2]=c[2]; o[p+3]=255;
   }
+  if(_T){ const _t3=performance.now(); _T.pix+=_t3-_t2; _T.px=(_T.px||0)+n; }
   return out;
 }
 
@@ -2873,6 +2880,8 @@ const S={
   keyMatte:null, keyUndo:[], keyMode:null,  /* null | 'brush' | 'rect' | 'wand' */
   brushR:48, brushHard:0.55, brushAdd:true, /* 筆刷半徑（圖 px）· 硬度 0..1 · 加/減 */
   keyFeath:6, wandTol:10, keyShow:0,        /* 全域羽化（matte 格）· 魔術棒容差 · 遮罩顯示 0/1/2 */
+  /* v22：逐段計時（prewash / key / pix / blit / paint / total，ms）+ 像素數 */
+  timing:{grade:0,prewash:0,key:0,pix:0,blit:0,paint:0,total:0,n:0,w:0,quick:false},
   chrNR:true,                               /* NR before look */
   /* v12：調色操作面（簡化/色輪/曲線/數值）、曲線通道、示波器 */
   toneMode:'spl', curCh:'Y', scopeMode:'hist', scopeFold:false,
@@ -5053,18 +5062,25 @@ function render(quick){
   const idx = S.hover>=0 ? S.hover : S.active;
   if(idx<0){ S.outCanvas=null; paint(); if($('warnflat')) $('warnflat').hidden=true; return; }
   const t0=performance.now();
+  const T=S.timing; if(T){ T.prewash=0;T.key=0;T.pix=0;T.blit=0;T.paint=0;T.px=0; }
   const g=gradeFor(idx);
   S.lastGrade=g;
+  const tG=performance.now();
   S.secPlan=buildSecPlan(S.sec);
   S.palPlan=buildPalPlan(idx);
   const lab = quick ? S.vendorLabQuick : S.vendorLabFull;
   const o=opt();
   const _id0 = imageDataFrom(lab,g,o,S.sec,S.secPlan,S.palPlan);
+  const tI=performance.now();
   try{ if(typeof applyRegions==='function') applyRegions(_id0); }catch(_rg){}
   S.outCanvas = idToCanvas(_id0);
+  const tB=performance.now();
   invalidateScope();
   if(S.toneMode==="num") updateNumUI();
   paint();
+  const tP=performance.now();
+  if(T){ T.grade=tG-t0; T.blit=tB-tI; T.paint=tP-tB; T.total=tP-t0;
+         T.quick=!!quick; T.n=(lab&&lab.n)||0; T.w=(lab&&lab.w)||0; }
   updateDirection(idx,g);
   if(!quick) updateFlatWarn();
   updateABBadge();   /* v11：A/B badge 要跟住有冇圖 + locked 狀態 */
@@ -7018,6 +7034,12 @@ window.ldMeasure=msMeasure;
 window.ldMeasureText=msText;
 window.ldModClose=modClose;
 window.ldV17={degToClock:degToClock,ck12:ck12,cctFromRGB:cctFromRGB,              s2lin:s2lin,mired:mired,clockName:clockName,LtoStops:LtoStops};
+/* v22：perf / 審計入口（數字先，意見後） */
+window.ldPerf={
+  timing:()=>Object.assign({},S.timing),
+  reset:()=>{ const t=S.timing; for(const k in t) t[k]=0; },
+  render:q=>render(!!q)
+};
 /* v5：膚色 matte 嘅測試／自動化入口 */
 window.ldKey={ensureMatte:ensureMatte,matteDims:matteDims,hasKey:hasKey,keyCoverage:keyCoverage,
   keyFieldFor:keyFieldFor,blurredMatte:blurredMatte,boxBlur:boxBlur,gridLab:gridLab,
