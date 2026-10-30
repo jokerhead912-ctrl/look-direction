@@ -3,7 +3,7 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction v21（ASC CDL + Scopes + 膚色 key v5）</title>
+<title>Look Direction v22（ASC CDL + Scopes + 膚色 key v5）</title>
 <style>
 :root{
   /* Krafted 家族色系，但推向更極簡／高端：少邊框、靠層次分面，accent 只用喺「生效中」 */
@@ -869,8 +869,17 @@ const $=id=>document.getElementById(id);
    唔同就彈「已更新」—— 用嚟確認 GitHub Pages 真係出咗新版。
    GitHub Pages 有 CDN 快取，Browser 亦會 cache index.html：
    見唔到新版就撳 Ctrl+Shift+R（Windows）/ Cmd+Shift+R（Mac）硬重整。 */
-const APP_VER='v21', APP_BUILD='2026-10-30';
+const APP_VER='v22', APP_BUILD='2026-10-31';
 const APP_NOTES=[
+  'v22：分區錨點跟 shot + 軟膝收窄（修「拉條反應唔正確」）',
+  '　· softClip 下膝 0.18 → 0.025：舊版 18 L 單位闊，t=0 已輸出 L 4.5，',
+  '　　即係淨係掂一下分區掣，全圖 L<18（呢張夜景九成 pixel）就無條件被抬起',
+  '　· 分區／調色輪錨點改跟來稿 p10／p50／p90，唔再寫死 0.18／0.50／0.85',
+  '　· 實測（暗部／亮部 luma 變化，掣推到 +100）：',
+  '　　高光 −0.8 → +70.6 選擇性（舊版郁暗部多過亮部）、白位 −4.4 → +32.2',
+  '　　陰影由「假曝光掣」（全圖 +46.9）變回陰影掣（暗部 +58、亮部 −0.4）',
+  '　　黑位加寬度下限（低照度 shot 嘅 p10 太窄會令掣冇力）→ +5.1 → +36.6',
+  '　· 暗／亮串擾歸零：高光白位推到盡，暗部變化 0.00',
   'v21：手感 + 拉條驗收',
   '　· 筆刷即時回饋：畫緊每格都重畫（舊版要放手先 render，所以「畫落去冇反應」）',
   '　· 筆刷模式強制疊遮罩 —— 畫緊一定見到自己畫咗啲乜',
@@ -1135,8 +1144,15 @@ for(let d=0;d<=180;d++){ const q=d/40; GAUSS_LUT[d]=Math.exp(-q*q); }
    上膝必須用 (1+k-t) 而唔係 (1-t)，否則 t=1-k 位會由 0.82 跳去 0.955。 */
 /* 上膝嘅參數：86L 開始收斂，極限 98.5L */
 const SK=0.86, SR=0.125;
+/* 下膝闊度 BKN。舊版用 0.18（18 L 單位）—— 嗰個數望落似「18% 中灰」，
+   但下膝講嘅係「range 嘅底部」，同中灰完全冇關係。結果拋物線頂點喺 t=−0.18，
+   t=0 已經輸出 0.045（L 4.5）、t=0.133 輸出 0.0716（L 7.2），
+   即係分區掣一郁，全圖 L<18 嘅 pixel 就無條件被抬起（實測呢張夜景 90% pixel 中招）。
+   用家報「拉條反應唔正確」——白位掣推到盡，暗部反而升 6.5 luma、亮部只升 2.1，
+   就係呢條膝造成。膝闊收到 2.5 L 單位，純粹做 clamp，唔再改中間調。 */
+const BKN=0.025;
 function softClip(t){
-  const k=0.18;
+  const k=BKN;
   if(t<k) return t<=-k ? 0 : (t+k)*(t+k)/(4*k);        /* 下膝：拋物線，收落 0 */
   /* 上膝改用「指數肩位」而唔係拋物線硬頂。
      拋物線喺 t=1+k 就硬 cut 落 1.0，全部掣推到盡時成幅圖會貼死喺 100L
@@ -1179,16 +1195,43 @@ function budget(v,cap,keep){
   if(v<-cap) return -cap + (v+cap)*keep;
   return v;
 }
+/* v22：分區錨點改由「呢個 shot 自己嘅 p10 / p50 / p90」決定，唔再寫死。
+   舊版陰影寫死 0.02–0.45、高光寫死 0.55–0.98、白位要 L≥70 先郁。
+   對一張 p50=13.3、p90=38.4 嘅低照度夜景：全圖得 2.1% pixel 過到 L=70，
+   white 掣推到盡都冇反應；而 shad 嘅 0.45 上沿覆蓋咗九成 pixel，
+   變成一個假嘅「整體曝光」掣。兩者都係同一類 bug：錨點唔跟 shot。 */
+function zoneAnchors(){
+  const an=(typeof S!=='undefined')?S.vendorAn:null;
+  const D={bk:0.30,shA:0.02,shB:0.45,hiA:0.55,hiB:0.98,whA:0.70,whB:1.00,zS:0.18,zM:0.50,zH:0.85};
+  if(!an||an.p50==null) return D;
+  const p10=clamp(((an.p10!=null?an.p10:an.p50*0.45))/100, 0.02, 0.55);
+  const p90=clamp(((an.p90!=null?an.p90:an.p50+(100-an.p50)*0.55))/100, 0.35, 0.99);
+  const mid=clamp(an.p50/100, Math.min(p10+0.10,0.80), Math.max(p90-0.10,0.20));
+  return {
+    /* black 要有寬度下限：低照度 shot 嘅 p10 可能得 4.7L，直接用會令黑位掣
+       得 5 L 單位咁窄，手感上幾乎冇力（實測淨得 +5 luma，同期 shad 有 +58）。
+       所以 +0.06 再夾落 [0.10, 0.45]，保證任何 shot 都至少有 10 L 單位嘅黑位區。 */
+    bk : clamp(p10+0.06, 0.10, 0.45),                          /* black 衰減到 0 */
+    shA: Math.max(0, p10*0.30),                                /* shad 全效區上沿 */
+    shB: Math.max(0.12, mid),                                  /* shad 衰減到 0   */
+    hiA: Math.min(0.88, mid),                                  /* high 由 0 升    */
+    hiB: Math.min(0.995, Math.max(p90, mid+0.10)),             /* high 全效       */
+    whA: Math.min(0.90, p90),                                  /* white 由 0 升   */
+    whB: Math.min(1, p90+(1-p90)*0.30+0.01),                   /* white 全效      */
+    zS : p10, zM: mid, zH: p90                                 /* 三隻調色輪中心  */
+  };
+}
 /* key 必須係 wsh / wmid / whi —— applySec 用 'w'+w.id.slice(1) 反查，
    大小寫唔啱會令每一粒 pixel throw */
-function buildZoneLUT(s){
+function buildZoneLUT(s,A){
+  A=A||zoneAnchors();
   const N=256, wsh=new Float32Array(N), wmid=new Float32Array(N), whi=new Float32Array(N);
   const sigma=0.13+(s.wblend/100)*0.16, i2s=1/(2*sigma*sigma);
   const bal=s.wbal/100;
   const kS=Math.max(0,1-bal*0.7), kH=Math.max(0,1+bal*0.7);
   for(let i=0;i<N;i++){
     const x=i/(N-1);
-    const dS=x-0.18, dM=x-0.50, dH=x-0.85;
+    const dS=x-A.zS, dM=x-A.zM, dH=x-A.zH;
     wsh[i] =kS*Math.exp(-dS*dS*i2s);
     wmid[i]=    Math.exp(-dM*dM*i2s);
     whi[i] =kH*Math.exp(-dH*dH*i2s);
@@ -1210,10 +1253,12 @@ function buildSecPlan(s){
   p.hasHue = p.hsl.length>0;
   p.zkeys = WHEELS.filter(w=>{const z=s[w.id]; return z&&(z.s>0.5||z.l);});
   if(p.zkeys.length){
-    p.zone=buildZoneLUT(s);
+    p.anch=zoneAnchors();
+    p.zone=buildZoneLUT(s,p.anch);
     for(const w of p.zkeys) p.add[w.id]=wheelAdd(s[w.id]);
   }
   p.active = p.tone||p.wb||p.sv||p.hasHue||p.zkeys.length>0;
+  if(p.tone) p.anch=zoneAnchors();
   return p;
 }
 function applySec(L,a,b,s,p){
@@ -1224,10 +1269,11 @@ function applySec(L,a,b,s,p){
     /* 四個分區掣先夾埋成一個總偏移 d，再過 budget() —— 否則逐個疊加，
        高光位會一次食晒 high+white 兩份，直接爆。 */
     let d = 0;
-    if(s.shad)  d += s.shad/100 *0.30*(1-smoothstep(0.02,0.45,x));
-    if(s.black) d += s.black/100*0.26*(1-smoothstep(0.00,0.30,x));
-    if(s.high)  d += s.high/100 *0.30*smoothstep(0.55,0.98,x);
-    if(s.white) d += s.white/100*0.26*smoothstep(0.70,1.00,x);
+    const A=p.anch||zoneAnchors();
+    if(s.shad)  d += s.shad/100 *0.30*(1-smoothstep(A.shA,A.shB,x));
+    if(s.black) d += s.black/100*0.26*(1-smoothstep(0.00,A.bk,x));
+    if(s.high)  d += s.high/100 *0.30*smoothstep(A.hiA,A.hiB,x);
+    if(s.white) d += s.white/100*0.26*smoothstep(A.whA,A.whB,x);
     x += budget(d,0.30,0.25);
     L = softClip(x)*100;
   }
