@@ -1,5 +1,5 @@
 {
- "ver": "v22",
+ "ver": "v23",
  "frames": {
   "dark": {
    "anchors": {
@@ -39,8 +39,8 @@
      },
      "white": {
       "base": 111.23,
-      "plus": 130.09,
-      "minus": 87.19,
+      "plus": 132.76,
+      "minus": 84.26,
       "pass": true
      }
     },
@@ -89,8 +89,8 @@
      },
      "white": {
       "base": 236.29,
-      "plus": 244.92,
-      "minus": 224.64,
+      "plus": 247.79,
+      "minus": 197.63,
       "pass": true
      }
     },
@@ -139,8 +139,8 @@
      },
      "white": {
       "base": 170.57,
-      "plus": 189.19,
-      "minus": 153.74,
+      "plus": 212.91,
+      "minus": 135.11,
       "pass": true
      }
     },
