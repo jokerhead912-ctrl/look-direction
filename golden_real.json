@@ -1,0 +1,245 @@
+{
+ "ver": "v22",
+ "frames": {
+  "v4_A_none": {
+   "p10": 4.7,
+   "p50": 13.3,
+   "p90": 38.4,
+   "I": {
+    "monotonicContrast": {
+     "sds": [
+      7.32,
+      21.96,
+      36.58,
+      48.03,
+      56.79
+     ],
+     "pass": true
+    },
+    "zoneDirection": {
+     "shad": {
+      "base": 13.95,
+      "plus": 35.75,
+      "minus": 3.05,
+      "pass": true
+     },
+     "black": {
+      "base": 13.95,
+      "plus": 27.69,
+      "minus": 3.16,
+      "pass": true
+     },
+     "high": {
+      "base": 131.55,
+      "plus": 202.19,
+      "minus": 62.87,
+      "pass": true
+     },
+     "white": {
+      "base": 131.55,
+      "plus": 171.09,
+      "minus": 90.89,
+      "pass": true
+     }
+    },
+    "noClipWithProtect": {
+     "min": 18,
+     "max": 241,
+     "pass": true
+    }
+   }
+  },
+  "ref_shot04": {
+   "p10": 1.6,
+   "p50": 11.4,
+   "p90": 29.4,
+   "I": {
+    "monotonicContrast": {
+     "sds": [
+      5.96,
+      17.88,
+      29.83,
+      39.17,
+      45.98
+     ],
+     "pass": true
+    },
+    "zoneDirection": {
+     "shad": {
+      "base": 3.43,
+      "plus": 31.14,
+      "minus": 0.15,
+      "pass": true
+     },
+     "black": {
+      "base": 3.43,
+      "plus": 27.61,
+      "minus": 0.16,
+      "pass": true
+     },
+     "high": {
+      "base": 102.36,
+      "plus": 174.65,
+      "minus": 46.06,
+      "pass": true
+     },
+     "white": {
+      "base": 102.36,
+      "plus": 127.89,
+      "minus": 76.58,
+      "pass": true
+     }
+    },
+    "noClipWithProtect": {
+     "min": 18,
+     "max": 241,
+     "pass": true
+    }
+   }
+  },
+  "ref_shot05": {
+   "p10": 2.7,
+   "p50": 12.5,
+   "p90": 28.6,
+   "I": {
+    "monotonicContrast": {
+     "sds": [
+      5.63,
+      16.88,
+      28.14,
+      37.06,
+      43.36
+     ],
+     "pass": true
+    },
+    "zoneDirection": {
+     "shad": {
+      "base": 6.45,
+      "plus": 32.75,
+      "minus": 0.07,
+      "pass": true
+     },
+     "black": {
+      "base": 6.45,
+      "plus": 27.79,
+      "minus": 0.07,
+      "pass": true
+     },
+     "high": {
+      "base": 96.87,
+      "plus": 167.03,
+      "minus": 45.22,
+      "pass": true
+     },
+     "white": {
+      "base": 96.87,
+      "plus": 116.79,
+      "minus": 75.75,
+      "pass": true
+     }
+    },
+    "noClipWithProtect": {
+     "min": 18,
+     "max": 241,
+     "pass": true
+    }
+   }
+  },
+  "ref_shot06": {
+   "p10": 2,
+   "p50": 10.2,
+   "p90": 25.9,
+   "I": {
+    "monotonicContrast": {
+     "sds": [
+      4.67,
+      14.01,
+      23.34,
+      30.96,
+      35.95
+     ],
+     "pass": true
+    },
+    "zoneDirection": {
+     "shad": {
+      "base": 6.04,
+      "plus": 31.5,
+      "minus": 0.18,
+      "pass": true
+     },
+     "black": {
+      "base": 6.04,
+      "plus": 28,
+      "minus": 0.18,
+      "pass": true
+     },
+     "high": {
+      "base": 78.68,
+      "plus": 143.44,
+      "minus": 37.01,
+      "pass": true
+     },
+     "white": {
+      "base": 78.68,
+      "plus": 87.87,
+      "minus": 69.42,
+      "pass": true
+     }
+    },
+    "noClipWithProtect": {
+     "min": 18,
+     "max": 241,
+     "pass": true
+    }
+   }
+  },
+  "ref_shot08": {
+   "p10": 3.9,
+   "p50": 9,
+   "p90": 23.5,
+   "I": {
+    "monotonicContrast": {
+     "sds": [
+      4.87,
+      14.59,
+      24.31,
+      33.14,
+      39.5
+     ],
+     "pass": true
+    },
+    "zoneDirection": {
+     "shad": {
+      "base": 10.89,
+      "plus": 34.81,
+      "minus": 0.15,
+      "pass": true
+     },
+     "black": {
+      "base": 10.89,
+      "plus": 27.09,
+      "minus": 0.16,
+      "pass": true
+     },
+     "high": {
+      "base": 88.65,
+      "plus": 150.55,
+      "minus": 44.64,
+      "pass": true
+     },
+     "white": {
+      "base": 88.65,
+      "plus": 105.49,
+      "minus": 71.06,
+      "pass": true
+     }
+    },
+    "noClipWithProtect": {
+     "min": 18,
+     "max": 241,
+     "pass": true
+    }
+   }
+  }
+ }
+}

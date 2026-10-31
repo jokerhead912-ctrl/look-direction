@@ -3,7 +3,7 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction v22（ASC CDL + Scopes + 膚色 key v5）</title>
+<title>Look Direction v23（ASC CDL + Scopes + 膚色 key v5）</title>
 <style>
 :root{
   /* Krafted 家族色系，但推向更極簡／高端：少邊框、靠層次分面，accent 只用喺「生效中」 */
@@ -869,8 +869,17 @@ const $=id=>document.getElementById(id);
    唔同就彈「已更新」—— 用嚟確認 GitHub Pages 真係出咗新版。
    GitHub Pages 有 CDN 快取，Browser 亦會 cache index.html：
    見唔到新版就撳 Ctrl+Shift+R（Windows）/ Cmd+Shift+R（Mac）硬重整。 */
-const APP_VER='v22', APP_BUILD='2026-10-31';
+const APP_VER='v23', APP_BUILD='2026-10-31';
 const APP_NOTES=[
+  'v23：matte 逐 shot 記 + 膚色門跟 shot（暗調搵到面）',
+  '　· 膚色 L 門寫死 30–80 → 跟來稿 p10/p90/p99 自適應。暗調夜景塊面喺 L 15–25，',
+  '　　舊版 skinness 直接 = 0 → auto 搵唔到面。真實素材覆蓋率：',
+  '　　v4_A 2.81→8.10%／shot05 2.15→11.84%／shot06 0.50→4.22%／shot08 1.23→4.91%',
+  '　　選中區平均色相離 flesh line 仍然得 1–7°（即係降門檻冇令佢亂揀背景）',
+  '　· matte 逐張 shot 記：畫完切走再切返，key 喺返度（舊版會縮放搬錯位）',
+  '　· 加「套全部」掣：同一 setup 唔使逐張畫，切過去自動就返長寬比',
+  '　· white 起點由 p90 挪前到 p90×0.85 —— 真實素材 ref_shot06 白位淨郁 +6.4 → +9.2 luma',
+  '　· 5 張真實素材 ×（對比單調／分區方向性／保層次）全部 ALL PASS',
   'v22：分區錨點跟 shot + 軟膝收窄（修「拉條反應唔正確」）',
   '　· softClip 下膝 0.18 → 0.025：舊版 18 L 單位闊，t=0 已輸出 L 4.5，',
   '　　即係淨係掂一下分區掣，全圖 L<18（呢張夜景九成 pixel）就無條件被抬起',
@@ -1056,8 +1065,32 @@ function interpBand(L,v){
   return L<BCTR[1] ? v[0]+(v[1]-v[0])*(L-BCTR[0])/(BCTR[1]-BCTR[0])
                    : v[1]+(v[2]-v[1])*(L-BCTR[1])/(BCTR[2]-BCTR[1]);
 }
+/* v23：膚色嘅 L 門跟 shot。舊版寫死 30–80 —— 暗調夜景塊面喺 L 15–25，
+   skinness 直接等於 0，auto 淨搵到 0.6%（實測 shot_17），用家睇落就係「掣冇反應」。
+   同 v22 分區錨點係同一類 bug：絕對閾值唔跟來稿。
+   改由來稿 p10／p90／p99 砌相對窗：暗調片個窗降到 L 13 起，明亮片升上去，
+   兩邊都唔會再「全 0」。色度門（a/b）保持絕對值 —— 膚色嘅 hue/chroma
+   係記憶色，本來就唔應該跟畫面漂移。 */
+let _skW=null,_skK='';
+function skinWin(){
+  const an=(typeof S!=='undefined')?S.vendorAn:null;
+  const k=an?((an.p10|0)+'|'+(an.p90|0)+'|'+(an.p99|0)):'def';
+  if(_skW&&_skK===k) return _skW;
+  let lo=30,hi=80;
+  if(an&&an.p50!=null){
+    const p10=clamp((an.p10!=null?an.p10:an.p50*0.50),0,80);
+    const p90=clamp((an.p90!=null?an.p90:Math.min(96,an.p50*1.5+25)),p10+3,99);
+    const p99=clamp((an.p99!=null?an.p99:Math.min(99,p90+12)),p90,100);
+    lo=clamp(p10+(p90-p10)*0.25, 3, 45);
+    hi=clamp(Math.max(p99*0.92, lo+18), 30, 97);
+  }
+  _skK=k;
+  _skW={lo:lo,hi:hi,wlo:Math.max(4,(hi-lo)*0.14),whi:Math.max(6,(hi-lo)*0.18)};
+  return _skW;
+}
 function skinness(L,a,b){
-  return cl01((L-30)/10)*(1-cl01((L-80)/12))
+  const W=skinWin();
+  return cl01((L-W.lo)/W.wlo)*(1-cl01((L-W.hi)/W.whi))
        * cl01((a-0)/7)  *(1-cl01((a-26)/10))
        * cl01((b-2)/8)  *(1-cl01((b-32)/12));
 }
@@ -1216,7 +1249,10 @@ function zoneAnchors(){
     shB: Math.max(0.12, mid),                                  /* shad 衰減到 0   */
     hiA: Math.min(0.88, mid),                                  /* high 由 0 升    */
     hiB: Math.min(0.995, Math.max(p90, mid+0.10)),             /* high 全效       */
-    whA: Math.min(0.90, p90),                                  /* white 由 0 升   */
+    /* white 要喺 p90 之前少少開始升：最光嗰 10% 嘅「主體」其實坐喺 p90 對上一點點，
+       如果由 p90 先開始升，嗰批 pixel 淨會食到兩成幾權重 —— 真實素材 ref_shot06
+       （p90=25.9）白位推到盡淨郁 +6.4 luma，過唔到「有牙」嗰條 8 luma 門檻。 */
+    whA: clamp(p90*0.85, 0.10, 0.90),                          /* white 由 0 升   */
     whB: Math.min(1, p90+(1-p90)*0.30+0.01),                   /* white 全效      */
     zS : p10, zM: mid, zH: p90                                 /* 三隻調色輪中心  */
   };
@@ -2437,6 +2473,23 @@ function keyClear(){
   const K=S.keyMatte;
   if(!K||!hasKey()){ toast('未畫 key'); return; }
   pushKeyUndo(); K.m.fill(0); touchKey(); updKeyLabel(); syncKeyUI();
+}
+/* v23：同一 setup（鏡位唔郁、塊面喺同一度）唔使逐張畫。
+   將而家呢份 matte 塞落所有 shot 嘅 st.key —— 切過去嗰陣 applyShotState
+   會自動縮放到嗰張嘅長寬比。 */
+function keyApplyAll(){
+  const K=S.keyMatte;
+  if(!K||!K.m||!hasKey()){ toast('未畫 key'); return; }
+  const src={w:K.w,h:K.h,m:Float32Array.from(K.m)};
+  let n=0;
+  for(let i=0;i<S.shots.length;i++){
+    const st=S.shots[i].st||defaultShotState();
+    st.key={w:src.w,h:src.h,m:Float32Array.from(src.m)};
+    S.shots[i].st=st; n++;
+  }
+  saveShotState();
+  updKeyLabel(); syncKeyUI();
+  toast('key 套用咗去 '+n+' 張來稿（切過去會自動就返長寬比）');
 }
 function keyCycleShow(){
   S.keyShow=(+S.keyShow||0)+1; if(S.keyShow>2) S.keyShow=0;
@@ -4508,7 +4561,8 @@ function buildLeftPanel(){
    ['收縮',()=>morphMatte(-3)],
    ['反相',keyInvert],
    ['復原',keyUndo],
-   ['清',  keyClear]
+   ['清',  keyClear],
+   ['套全部',keyApplyAll]
   ].forEach(([lb,fn])=>{
     const b=document.createElement('button'); b.type='button'; b.className='b sm';
     if(lb==='復原') b.id='bkeyundo';
@@ -5011,7 +5065,11 @@ function shotState(){
     active:S.active, chromaStr:S.chromaStr, toneStr:S.toneStr,
     bands:opt().useBands.slice(), tone:$('tone').checked, skin:$('skin').checked,
     protect:!!($('protect')&&$('protect').checked),
-    sec:JSON.parse(JSON.stringify(S.sec))
+    sec:JSON.parse(JSON.stringify(S.sec)),
+    /* v23：matte 逐張 shot 記。舊版 S.keyMatte 係全局一件，換 shot 會
+       （經 ensureMatte）縮放搬過去 —— 即係上一張塊面嘅位置會錯擺落呢張，
+       所以「換 shot 要重畫」。而家每張自己記一份，切返轉頭就喺度。 */
+    key:(S.keyMatte&&S.keyMatte.m)?{w:S.keyMatte.w,h:S.keyMatte.h,m:Float32Array.from(S.keyMatte.m)}:null
   };
 }
 function saveShotState(){
@@ -5024,6 +5082,18 @@ function applyShotState(st){
      slider 都會經 wrapped onCommit push 一筆落 undo 堆：切完 shot 撳 ⌘Z
      會彈出十幾個睇落冇反應嘅 junk entry，仲會順手清走 redo 堆。 */
   applyingHist=true;
+  /* v23：還原呢張 shot 自己嘅 matte。尺寸唔啱（長寬比唔同）就縮放搬過去，
+       呢張未畫過就清空 —— 清空之後 auto 先可以乾乾淨淨咁重新偵測。 */
+  if(typeof matteDims==='function'){
+    const kd=matteDims();
+    if(st.key&&st.key.m&&st.key.w>0&&st.key.h>0){
+      const km=new Float32Array(kd.w*kd.h);
+      if(st.key.w===kd.w&&st.key.h===kd.h) km.set(st.key.m);
+      else if(typeof resampleInto==='function') resampleInto(st.key.m,st.key.w,st.key.h,km,kd.w,kd.h);
+      S.keyMatte={w:kd.w,h:kd.h,m:km};
+    }else S.keyMatte=null;
+    _keyVer++; if(typeof _fleshLab!=='undefined') _fleshLab=null;
+  }
   setCheck('b0',!!st.bands[0]); setCheck('b1',!!st.bands[1]); setCheck('b2',!!st.bands[2]);
   setCheck('tone',!!st.tone);   setCheck('skin',!!st.skin);
   setCheck('protect',!!st.protect);
@@ -5047,7 +5117,7 @@ function defaultShotState(){
      用家拖入第 2、3 張會以為「拉極都冇反應」。
      實際 workflow 係：揀好一張 reference，再逐張 vendor render 擺入嚟對。 */
   return {active:Math.max(0,S.active|0),chromaStr:70,toneStr:45,
-          bands:[true,true,true],tone:true,skin:true,sec:newSec()};
+          bands:[true,true,true],tone:true,skin:true,sec:newSec(),key:null};
 }
 function switchShot(i){
   if(i<0||i>=S.shots.length) return;
