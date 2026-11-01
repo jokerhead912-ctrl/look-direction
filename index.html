@@ -3,7 +3,7 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction v23（ASC CDL + Scopes + 膚色 key v5）</title>
+<title>Look Direction v24（ASC CDL + Scopes + 膚色 key v5）</title>
 <style>
 :root{
   /* Krafted 家族色系，但推向更極簡／高端：少邊框、靠層次分面，accent 只用喺「生效中」 */
@@ -869,8 +869,20 @@ const $=id=>document.getElementById(id);
    唔同就彈「已更新」—— 用嚟確認 GitHub Pages 真係出咗新版。
    GitHub Pages 有 CDN 快取，Browser 亦會 cache index.html：
    見唔到新版就撳 Ctrl+Shift+R（Windows）/ Cmd+Shift+R（Mac）硬重整。 */
-const APP_VER='v23', APP_BUILD='2026-10-31';
+const APP_VER='v24', APP_BUILD='2026-11-01';
 const APP_NOTES=[
+  'v24：key 跨 shot 追蹤（template match on 膚色色度）+ 逐 shot 記／套全部',
+  '　· 「追蹤」掣：喺目標 shot 搵返呢嚿皮膚去咗邊，按位移＋縮放搬 matte 過去',
+  '　· 配對訊號用**色度**（skinChroma）唔係亮度 —— 換 grade／曝光 L 會變、',
+  '　　膚色 hue/chroma 唔會，所以對調色穩健',
+  '　· 已知真值測試（源圖施加已知 scale+位移，睇追蹤反解返）：',
+  '　　縮放 1.18→1.19、0.82→0.83、1.05→1.04（誤差 ≤0.01）',
+  '　　中心誤差 ≤0.007（畫面比例）· 同獨立 auto 嘅 IoU 0.946–0.956',
+  '　· 修：視窗一出框就淘汰 → 會系統性壓細縮放（1.18 估咗做 1.00）；',
+  '　　改為容許局部出框（可見 <50% 先淘汰）後 IoU 0.70→0.95',
+  '　· 修：命中分過低（<0.30）嗰張**唔寫** matte —— 舊版分數 0 都照寫，',
+  '　　會靜靜雞留低一嚿擺錯位嘅 key（實測藍圖目標硬寫咗 1.67%）',
+  '　· 已知限制：只喺「已知變換真值」上驗證過；未喺真實連續鏡頭上驗證',
   'v23：matte 逐 shot 記 + 膚色門跟 shot（暗調搵到面）',
   '　· 膚色 L 門寫死 30–80 → 跟來稿 p10/p90/p99 自適應。暗調夜景塊面喺 L 15–25，',
   '　　舊版 skinness 直接 = 0 → auto 搵唔到面。真實素材覆蓋率：',
@@ -2490,6 +2502,142 @@ function keyApplyAll(){
   saveShotState();
   updKeyLabel(); syncKeyUI();
   toast('key 套用咗去 '+n+' 張來稿（切過去會自動就返長寬比）');
+}
+/* ── v24：key 跨 shot 追蹤 ──────────────────────────────────
+   「套全部」只係原封唔動複製一份 matte —— 鏡位一郁、塊面移位就錯。
+   追蹤要做嘅係：喺目標 shot 度搵返「呢嚿皮膚」去咗邊，再按搵到嘅
+   位移 + 縮放搬個 matte 過去。
+   配對訊號用 **色度**（skinChroma）而唔係亮度：同一個人換個 grade、
+   換個曝光，L 會變但膚色嘅 hue/chroma 唔會 —— 所以對調色穩健。
+   （如果配 L，同一個 shot 換個 look 就已經對唔中。） */
+function skinChroma(a,b){
+  return cl01((a-0)/7)*(1-cl01((a-26)/10))*cl01((b-2)/8)*(1-cl01((b-32)/12));
+}
+function skinFieldFor(lab,W,H){
+  const g=gridLab(lab);                      /* 維度跟目前 matte grid（512×h） */
+  const f=new Float32Array(W*H);
+  for(let y=0;y<H;y++){
+    const gy=Math.min(g.h-1,Math.round(y*g.h/H)), o=gy*g.w;
+    for(let x=0;x<W;x++){
+      const gx=Math.min(g.w-1,Math.round(x*g.w/W));
+      f[y*W+x]=skinChroma(g.a[o+gx],g.b[o+gx]);
+    }
+  }
+  return boxBlur(f,W,H,Math.max(1,Math.round(W/110)),1);
+}
+function normUnit(v){
+  let m=0; for(let i=0;i<v.length;i++) m+=v[i]; m/=v.length;
+  let s=0; for(let i=0;i<v.length;i++){ v[i]-=m; s+=v[i]*v[i]; }
+  s=Math.sqrt(s)||1; for(let i=0;i<v.length;i++) v[i]/=s;
+  return v;
+}
+function winFrom(f,W,H,fx0,fy0,fw,fh,TN,out){
+  for(let j=0;j<TN;j++){
+    const fy=fy0+((j+0.5)/TN)*fh;
+    const y=Math.min(H-1,Math.max(0,Math.round(fy*H))), o=y*W;
+    for(let i=0;i<TN;i++){
+      const fx=fx0+((i+0.5)/TN)*fw;
+      const x=Math.min(W-1,Math.max(0,Math.round(fx*W)));
+      out[j*TN+i]=f[o+x];
+    }
+  }
+  return out;
+}
+let _nccB=null;
+function nccAt(f,W,H,tcx,tcy,fw,fh,tpl,TN){
+  const fx0=tcx-fw/2, fy0=tcy-fh/2;
+  /* 舊版「視窗一出框就 -2 淘汰」會系統性壓細縮放：塊面近邊（實測 T1 真值中心
+     cx=0.882）嗰陣，放大後嘅視窗一定掂到右邊，於是大縮放永遠冇機會當選
+     （實測 1.18 估咗做 1.00）。改為容許局部出框（取樣本身就 clamp 咗），
+     只淘汰「可見部分唔夠一半」嘅極端情況。 */
+  const vx0=Math.max(0,fx0), vy0=Math.max(0,fy0),
+        vx1=Math.min(1,fx0+fw), vy1=Math.min(1,fy0+fh);
+  if(vx1<=vx0||vy1<=vy0) return -2;
+  if(((vx1-vx0)*(vy1-vy0))/(fw*fh) < 0.5) return -2;
+  if(!_nccB||_nccB.length!==TN*TN) _nccB=new Float32Array(TN*TN);
+  normUnit(winFrom(f,W,H,fx0,fy0,fw,fh,TN,_nccB));
+  let d=0; for(let i=0;i<TN*TN;i++) d+=_nccB[i]*tpl[i];
+  return d;
+}
+function sampM(M,u,v){
+  const w=M.w,h=M.h;
+  const x=Math.min(w-1,Math.max(0,u-0.5)), y=Math.min(h-1,Math.max(0,v-0.5));
+  const i0=Math.floor(x), j0=Math.floor(y), tx=x-i0, ty=y-j0;
+  const i1=Math.min(w-1,i0+1), j1=Math.min(h-1,j0+1), o=j0*w, o1=j1*w;
+  return (M.m[o+i0]*(1-tx)+M.m[o+i1]*tx)*(1-ty) + (M.m[o1+i0]*(1-tx)+M.m[o1+i1]*tx)*ty;
+}
+function matteFromXform(src,csx,csy,fw,fh,tcx,tcy,s,W,H){
+  const m=new Float32Array(W*H), bw=s*fw, bh=s*fh;
+  for(let y=0;y<H;y++){
+    const fy=(y+0.5)/H, ly=(fy-tcy)/bh+0.5;
+    if(ly<0||ly>=1) continue;
+    for(let x=0;x<W;x++){
+      const fx=(x+0.5)/W, lx=(fx-tcx)/bw+0.5;
+      if(lx<0||lx>=1) continue;
+      m[y*W+x]=sampM(src, (csx+(lx-0.5)*fw)*src.w, (csy+(ly-0.5)*fh)*src.h);
+    }
+  }
+  return {w:W,h:H,m:m};
+}
+function keyTrackAll(){
+  const src=S.keyMatte;
+  if(!src||!src.m||!hasKey()){ toast('未畫 key'); return null; }
+  const lab0=S.vendorLabQuick||S.vendorLabFull;
+  if(!lab0){ toast('冇來稿'); return null; }
+  const g0=gridLab(lab0), W=g0.w, H=g0.h, TN=40;
+  /* matte 嘅包圍盒（grid 座標 → 分數座標），外擴 15% 做配對模板 */
+  let X0=W,X1=-1,Y0=H,Y1=-1;
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    if(src.m[y*src.w+x]>0.15){ if(x<X0)X0=x; if(x>X1)X1=x; if(y<Y0)Y0=y; if(y>Y1)Y1=y; }
+  }
+  if(X1<0){ toast('未畫 key'); return null; }
+  const px=Math.max(2,Math.round((X1-X0+1)*0.15)), py=Math.max(2,Math.round((Y1-Y0+1)*0.15));
+  X0=Math.max(0,X0-px); Y0=Math.max(0,Y0-py); X1=Math.min(W-1,X1+px); Y1=Math.min(H-1,Y1+py);
+  const fx0=X0/W, fy0=Y0/H, fw=(X1-X0+1)/W, fh=(Y1-Y0+1)/H;
+  const csx=fx0+fw/2, csy=fy0+fh/2;
+  const tpl=normUnit(winFrom(skinFieldFor(lab0,W,H),W,H,fx0,fy0,fw,fh,TN,new Float32Array(TN*TN)));
+  const res=[];
+  for(let i=0;i<S.shots.length;i++){
+    const sh=S.shots[i];
+    if(!sh||!sh.labQuick){ res.push({name:sh?sh.name:'?',skip:true}); continue; }
+    if(i===S.shotIdx){ res.push({name:sh.name,self:true}); continue; }
+    const f=skinFieldFor(sh.labQuick,W,H);
+    let best={sc:-2,cx:csx,cy:csy,s:1};
+    for(const s of [0.7,0.8,0.9,1.0,1.1,1.25,1.4])
+      for(let cy=0.06;cy<=0.941;cy+=0.025)
+        for(let cx=0.06;cx<=0.941;cx+=0.025){
+          const d=nccAt(f,W,H,cx,cy,s*fw,s*fh,tpl,TN);
+          if(d>best.sc) best={sc:d,cx:cx,cy:cy,s:s};
+        }
+    /* 細搜：圍住粗搜嘅最好位，位移 ±0.04（步 0.008）、縮放 ±0.15（步 0.03） */
+    for(let s=Math.max(0.5,best.s-0.15); s<=best.s+0.151; s+=0.03)
+      for(let cy=Math.max(0.04,best.cy-0.04); cy<=Math.min(0.96,best.cy+0.041); cy+=0.008)
+        for(let cx=Math.max(0.04,best.cx-0.04); cx<=Math.min(0.96,best.cx+0.041); cx+=0.008){
+          const d=nccAt(f,W,H,cx,cy,s*fw,s*fh,tpl,TN);
+          if(d>best.sc) best={sc:d,cx:cx,cy:cy,s:s};
+        }
+    const st=sh.st||defaultShotState();
+    if(best.sc<0.30){
+      /* 命中分太低 = 根本對唔中。呢張**唔好寫** —— 否則會靜靜雞留低一嚿擺錯位嘅
+         matte，用家以為追蹤成功、實際全錯（實測：一張完全冇皮膚嘅藍圖目標，
+         分數 0 但硬寫咗 1.67% 落去）。留空 = 用家一望就知要自己畫。 */
+      st.key=null;
+      res.push({name:sh.name,score:+best.sc.toFixed(3),failed:true,
+                cx:+best.cx.toFixed(3),cy:+best.cy.toFixed(3),s:+best.s.toFixed(2)});
+    }else{
+      st.key=matteFromXform(src,csx,csy,fw,fh,best.cx,best.cy,best.s,W,H);
+      res.push({name:sh.name,score:+best.sc.toFixed(3),
+                cx:+best.cx.toFixed(3),cy:+best.cy.toFixed(3),s:+best.s.toFixed(2)});
+    }
+    sh.st=st;
+  }
+  saveShotState(); updKeyLabel(); syncKeyUI();
+  const done=res.filter(r=>r.score!==undefined);
+  const weak=done.filter(r=>r.score<0.30);
+  toast(weak.length
+    ? ('追蹤咗 '+done.length+' 張，其中 '+weak.length+' 張命中分偏低（'+weak.map(r=>r.name+' '+r.score).join('、')+'）→ 建議人手執一執')
+    : ('追蹤咗 '+done.length+' 張 · 命中分 '+Math.min.apply(null,done.map(r=>r.score)).toFixed(2)+'–'+Math.max.apply(null,done.map(r=>r.score)).toFixed(2)));
+  return res;
 }
 function keyCycleShow(){
   S.keyShow=(+S.keyShow||0)+1; if(S.keyShow>2) S.keyShow=0;
@@ -4562,7 +4710,8 @@ function buildLeftPanel(){
    ['反相',keyInvert],
    ['復原',keyUndo],
    ['清',  keyClear],
-   ['套全部',keyApplyAll]
+   ['套全部',keyApplyAll],
+   ['追蹤',keyTrackAll]
   ].forEach(([lb,fn])=>{
     const b=document.createElement('button'); b.type='button'; b.className='b sm';
     if(lb==='復原') b.id='bkeyundo';
