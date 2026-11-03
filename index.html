@@ -3,7 +3,7 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction v25（ASC CDL + Scopes + 膚色 key v5）</title>
+<title>Look Direction v25.1（ASC CDL + Scopes + 膚色 key v5）</title>
 <style>
 :root{
   /* Krafted 家族色系，但推向更極簡／高端：少邊框、靠層次分面，accent 只用喺「生效中」 */
@@ -898,8 +898,16 @@ const $=id=>document.getElementById(id);
    唔同就彈「已更新」—— 用嚟確認 GitHub Pages 真係出咗新版。
    GitHub Pages 有 CDN 快取，Browser 亦會 cache index.html：
    見唔到新版就撳 Ctrl+Shift+R（Windows）/ Cmd+Shift+R（Mac）硬重整。 */
-const APP_VER='v25', APP_BUILD='2026-11-03';
+const APP_VER='v25.1', APP_BUILD='2026-11-03';
 const APP_NOTES=[
+  'v25.1：撳「關」就真係關 —— 修「筆刷模式 force 畫遮罩」',
+  '　· 導演實測：顯示揀咗「關」，層紅仲喺度。根因係三處「畫緊就一定顯示」嘅 force：',
+  '　　paint() 嘅 `||S.keyMode==="brush"`、keyPaintLive()、拖框/魔術棒即時預覽。',
+  '　　三處全部改為統一經 keyOverlayDraw()：「關」= 0 → 一律唔畫。',
+  '　· 改為**入工具時自動轉「填充」，離開還原**（淨限於我自動改過而你冇再手動改嘅情況），',
+  '　　唔再用「force」覆寫你嘅選擇 —— 畫嘢有回饋，但「關」永遠係關。',
+  '　· force 而家淨係提高 alpha（0.5），唔再硬改顯示模式。',
+  '　· 順手修：setKeyMode 用緊 v25 之前嘅 id（bkeybrush），改咗 id 後嗰段變死 code。',
   'v25：遮罩睇得到結果（顯示層）+ 工具欄重做（分組）',
   '　· 舊版得「紅填充 alpha 0.55」一種：遮罩區內局部對比淨返 45%，',
   '　　而且紅同膚色同一 hue 區 —— key 嘅正正係皮膚，根本分唔清邊皮係圖邊皮係遮罩。',
@@ -2491,9 +2499,14 @@ function updateBrushRing(e){
 }
 function setKeyMode(m){
   if(m&&S.keyMode===m) m=null;                 /* 再撳同一個 = 收工 */
+  /* v25.1：入工具嗰陣如果顯示係「關」，自動轉「填充」（畫嘢要有回饋）；
+     離開工具時還原返「關」——但**淨限於我自動改過、而你冇再手動改**嘅情況，
+     否則會覆寫你嘅選擇。舊版做法係「筆刷模式永遠 force 畫」，搞到撳「關」都仲有層紅。 */
+  if(m && !S.keyMode && (+S.keyShow||0)===0){ S.keyShowPrev=0; S.keyShow=2; }
+  else if(!m && S.keyMode && S.keyShowPrev===0 && (+S.keyShow||0)===2){ S.keyShow=0; S.keyShowPrev=null; }
   S.keyMode=m;
   const c=$('cv'); if(c) c.style.cursor=m?'crosshair':'';
-  ['bkeybrush','bkeyrect','bkeywand'].forEach(id=>{
+  ['bkey_brush','bkey_rect','bkey_wand'].forEach(id=>{   /* v25.1：id 跟返新工具欄 */
     const b=$(id); if(!b) return;
     const on=b.dataset.m===m;
     b.classList.toggle('on',on);
@@ -2839,6 +2852,13 @@ function edgeMask(m,w,h,r){
   _ed={k:key,m:e}; return e;
 }
 let _ovc=null;
+/* 顯示遮罩嘅唯一入口：所有「一定要畫」嘅舊邏輯全部收埋喺呢度。
+   v25.1 鐵律：**「關」就係關**。舊版筆刷模式會 force 填充，搞到撳「關」都仲有層紅。 */
+function keyOverlayDraw(){
+  if(S.keyHide||S.hold) return;
+  if(!S.keyShow) return;
+  drawKeyOverlay(S.keyMode==='brush');   /* 畫緊筆刷淨係提高 alpha，唔會改顯示模式 */
+}
 function drawKeyOverlay(force){
   const K=S.keyMatte; if(!K) return;
   const m=blurredMatte(); if(!m) return;
@@ -2849,11 +2869,10 @@ function drawKeyOverlay(force){
   const id=c2.createImageData(K.w,K.h), d=id.data;
   const N=K.w*K.h;
   const white=(+S.keyShow===4);
-  let mode=+S.keyShow||0;
-  if(force) mode=2;                        /* 畫緊筆刷：一定有填充回饋，否則唔知畫咗啲乜 */
+  const mode=+S.keyShow||0;                /* v25.1：force 唔再改模式，淨係加 alpha */
   const col=white?OV_COLS[5]:(OV_COLS[+S.keyOvC||0]||OV_COLS[0]);
   const al=clamp((+S.keyOvA==null?0.35:+S.keyOvA),0,1);
-  const aFill=force?Math.max(al,0.45):al;
+  const aFill=force?Math.max(al,0.5):al;
   if(mode===1){
     /* 描邊：實線 = 0.5 等值線；羽化帶（0.05..0.5）低 alpha 鋪一層 → 睇到邊界有幾軟 */
     const e=edgeMask(m,K.w,K.h,clamp(Math.round(+S.keyEdgeW||2),1,4));
@@ -2906,7 +2925,7 @@ function keyPaintLive(){
     if(!_kbak) return;
     ctx.clearRect(0,0,cv.width,cv.height);
     ctx.drawImage(_kbak,0,0);
-    drawKeyOverlay(true);                     /* 畫緊就一定顯示遮罩（就算 keyShow=關） */
+    keyOverlayDraw();                         /* v25.1：撳咗「關」就真係唔畫 */
   });
 }
 /* matte 改咗但未使 render：淨 invalidate 快取（等 blurredMatte 重計） */
@@ -3485,6 +3504,7 @@ const S={
   /* v25：顯示層參數——全部「淨影響畫面，唔入 grade」，落 grade 時永遠唔計 */
   keyOvA:0.35, keyOvC:0, keyEdgeW:2,        /* overlay 濃度 0..1 · 色 0=紅 1=青 2=綠 3=洋紅 4=黃 5=白 · 描邊粗幼（格） */
   keyBy:false, blink:false, keyHide:false,  /* matte bypass（驗 grade 用）· blink A/B · 撳實收遮罩 */
+  keyShowPrev:null,                        /* v25.1：入工具時自動轉填充前嘅顯示態，離開還原用 */
   /* v22：逐段計時（prewash / key / pix / blit / paint / total，ms）+ 像素數 */
   timing:{grade:0,prewash:0,key:0,pix:0,blit:0,paint:0,total:0,n:0,w:0,quick:false},
   chrNR:true,                               /* NR before look */
@@ -4967,6 +4987,7 @@ function buildLeftPanel(){
   const khint=document.createElement('div');
   khint.style.cssText='font-size:10.5px;opacity:.5;line-height:1.6;margin:0 0 8px';
   khint.innerHTML='筆刷：撳住畫 · 滾輪或 [ ] 改大細 · Alt 或「減」= 擦 · Esc 退出<br>'+
+    '揀工具會自動轉「填充」，離開工具還原返；顯示揀「關」就真係唔畫遮罩<br>'+
     '驗結果：顯示揀<b style="color:#9c9c9c">描邊</b>（唔遮畫面）· 撳實 <b style="color:#9c9c9c">X</b> 收遮罩 · '+
     '<b style="color:#9c9c9c">K</b> bypass matte 再撳 <b style="color:#9c9c9c">V</b> wipe 對比<br>'+
     '冇 matte 就淨用 hue gate';
@@ -5842,9 +5863,7 @@ function paint(){
   try{ if(typeof rgDrawOverlay==='function') rgDrawOverlay(); }catch(_rg){}
   /* 膚色 matte 預覽（畫喺最面：睇得清楚邊度會被保護）
      筆刷模式會強制顯示 —— 畫緊嗰陣一定要見到自己畫咗啲乜 */
-  /* v25：撳實 `（睇原圖）或 X（淨收遮罩）→ 一定唔畫遮罩。
-     舊版連「睇原圖」都照畫層紅上去，根本睇唔到乾淨畫面。 */
-  try{ if(!S.keyHide && !S.hold && (S.keyShow||S.keyMode==='brush')) drawKeyOverlay(S.keyMode==='brush'); }catch(_ko){}
+  try{ keyOverlayDraw(); }catch(_ko){}
   applyZoom();          /* 每次重繪都要守住 zoom（轉 before/after 都唔好彈返適應） */
 }
 /* ---------- zoom / pan ----------
@@ -7768,7 +7787,7 @@ window.ldPerf={
     if(!_kbak) keyBackup();
     if(!S.keyMatte) ensureMatte();
     const N=n||20, t0=performance.now();
-    for(let i=0;i<N;i++){ ctx.clearRect(0,0,cv.width,cv.height); ctx.drawImage(_kbak,0,0); drawKeyOverlay(true); }
+    for(let i=0;i<N;i++){ ctx.clearRect(0,0,cv.width,cv.height); ctx.drawImage(_kbak,0,0); keyOverlayDraw(); }
     return +((performance.now()-t0)/N).toFixed(2);
   }
 };
