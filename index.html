@@ -3,7 +3,7 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction v25.2（ASC CDL + Scopes + 膚色 key v5）</title>
+<title>Look Direction v26（ASC CDL + Scopes + 膚色 key v5）</title>
 <style>
 :root{
   /* Krafted 家族色系，但推向更極簡／高端：少邊框、靠層次分面，accent 只用喺「生效中」 */
@@ -898,8 +898,25 @@ const $=id=>document.getElementById(id);
    唔同就彈「已更新」—— 用嚟確認 GitHub Pages 真係出咗新版。
    GitHub Pages 有 CDN 快取，Browser 亦會 cache index.html：
    見唔到新版就撳 Ctrl+Shift+R（Windows）/ Cmd+Shift+R（Mac）硬重整。 */
-const APP_VER='v25.2', APP_BUILD='2026-11-03';
+const APP_VER='v26', APP_BUILD='2026-11-03';
 const APP_NOTES=[
+  'v26：講清楚 key 保啲乜 —— 加「連二次調色都保」（預設關）',
+  '　· 實測發現兩件事（之前冇喺 UI 講過，會令人以為 key 壞咗）：',
+  '　　① **二次調色完全穿過 key 保護**：`sec.sat=-80` 時 grade 郁咗 22.7/255，',
+  '　　　 但 bypassDiff = 0 —— sat / temp / tint / 曲線 對皮膚一啲都冇被保。',
+  '　　② **key 淨保色度（a/b），亮度 L 照跟 grade**。',
+  '　· ① 而家可以開：新增 checkbox「連二次調色都保」（`S.skinProtSec`，**預設 false**）。',
+  '　　預設關係刻意嘅 —— 二次調色係你自己特登撳出嚟嘅 trim，保咗會以為個掣壞咗。',
+  '　　⚠️ 第一版寫錯咗：喺 Lab 度 applySec 之後再鉗 a/b —— 實測 **bypassDiff = 0（no-op）**，',
+  '　　　 因為 sat / CDL / 曲線 係喺 `if(need)` 嘅 **RGB** 段落，唔係 Lab。已改為：',
+  '　　　 記低入 need 之前嘅 RGB，用 key 權重 kg 喺最終 RGB 度 blend 返去。',
+  '　· ② 唔改數學（保亮度會令皮膚對曝光／對比完全冇反應，多數時候係錯嘅），',
+  '　　改為喺提示講明：「膚保淨保色度，亮度照跟」。',
+  '　· 兩件都係**冇靜默改變你而家嘅 grade**：預設行為同 v25.2 完全一致',
+  '　　（實測 false→true→false 全圖 checksum 一樣）。',
+  '　· 實測（`_v26.js`）：預設關 bypassDiff 0；開咗 auto matte 0.498／',
+  '　　皮膚返向原圖 16.48→14.19；**全選（kg=1）時 26.28/255** → 機制確認有效。',
+  '　　遮罩外面只漏 0.206；開咗 render 31.5→32.2ms（+2%）。',
   'v25.2：移除 key —— 要搵得到、要清得晒',
   '　· 導演：「need have a clean the matte function when i dont need it can remove it」。',
   '　· 問題唔係冇呢個功能，係**收埋咗喺「更多 ▾」入面** → 搵唔到。',
@@ -3340,7 +3357,7 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
   for(let i=0;i<n;i++){
     const a0=src.a[i], b0=src.b[i];
     applyPixelInto(src.L[i],a0,b0,grade,opt);
-    let qL=_qL, qa=_qa, qb=_qb;
+    let qL=_qL, qa=_qa, qb=_qb, kg=0;      /* kg = 呢粒 pixel 嘅 key 權重，v26 收尾 blend 重用 */
     if(pal&&pal.cv){ applyLookInto(qL,qa,qb,pal.cv,_ltv); qa=_qa; qb=_qb; }
     if(fl){
       let g=0;
@@ -3350,7 +3367,7 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
         const gh=fleshGateFast(Math.atan2(b0,a0)*180/Math.PI,fl);
         if(gh>g) g=gh;
       }
-      g*=kp;
+      g*=kp; kg=g;
       if(g>0.999){ qa=a0; qb=b0; }                       /* 全保：直接還原原圖 a/b，唔使計三角 */
       else if(g>0.002){ polarClampInto(a0,b0,qa,qb,g); qa=_qa; qb=_qb; }
     }
@@ -3371,6 +3388,12 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
         if(ch===0) r=v; else if(ch===1) gg=v; else bb=v;
       }
     }
+    /* v26：二次調色（ASC CDL / 飽和度 / 曲線 / 保層次）係喺 **RGB** 呢段落，
+       唔係 Lab —— 所以喺 Lab 度鉗 a/b 係完全冇效（實測 bypassDiff = 0，係個 no-op）。
+       正確做法：記低入嚟之前嘅 RGB，用 key 權重 kg 喺最終 RGB 度 blend 返去。
+       **預設關**：呢段係你特登撳出嚟嘅 trim，保咗會以為個掣壞咗。
+       開咗先跑，平時熱迴路只多一個 `let kg=0` 指派。 */
+    const pr=r, pg=gg, pb=bb;
     if(need){
       let x0=clut[r], x1=clut[256+gg], x2=clut[512+bb];
       if(sat!==1){
@@ -3381,6 +3404,10 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
       let b1=x1*255; b1=b1<0?0:(b1>255?255:b1);
       let b2=x2*255; b2=b2<0?0:(b2>255?255:b2);
       r=plut[b0|0]; gg=plut[256+(b1|0)]; bb=plut[512+(b2|0)];
+    }
+    if(S.skinProtSec && kg>0.002){
+      const t=1-kg;                         /* kg=1（遮罩內）→ 完全唔食二次調色 */
+      r =pr+(r -pr)*t; gg=pg+(gg-pg)*t; bb=pb+(bb-pb)*t;
     }
     const p=i*4;
     o[p]=r; o[p+1]=gg; o[p+2]=bb; o[p+3]=255;
@@ -3555,6 +3582,7 @@ const S={
   keyOvA:0.35, keyOvC:0, keyEdgeW:2,        /* overlay 濃度 0..1 · 色 0=紅 1=青 2=綠 3=洋紅 4=黃 5=白 · 描邊粗幼（格） */
   keyBy:false, blink:false, keyHide:false,  /* matte bypass（驗 grade 用）· blink A/B · 撳實收遮罩 */
   keyShowPrev:null,                        /* v25.1：入工具時自動轉填充前嘅顯示態，離開還原用 */
+  skinProtSec:false,                       /* v26：連二次調色都保（預設 false —— trim 係特登撳嘅） */
   /* v22：逐段計時（prewash / key / pix / blit / paint / total，ms）+ 像素數 */
   timing:{grade:0,prewash:0,key:0,pix:0,blit:0,paint:0,total:0,n:0,w:0,quick:false},
   chrNR:true,                               /* NR before look */
@@ -5051,7 +5079,9 @@ function buildLeftPanel(){
     '揀工具會自動轉「填充」，離開工具還原返；顯示揀「關」就真係唔畫遮罩<br>'+
     '驗結果：顯示揀<b style="color:#9c9c9c">描邊</b>（唔遮畫面）· 撳實 <b style="color:#9c9c9c">X</b> 收遮罩 · '+
     '<b style="color:#9c9c9c">K</b> bypass matte 再撳 <b style="color:#9c9c9c">V</b> wipe 對比<br>'+
-    '冇 matte 就淨用 hue gate';
+    '冇 matte 就淨用 hue gate<br>'+
+    '<b style="color:#9c9c9c">膚保淨保色度（a/b），亮度照跟 grade</b> —— '+
+    '要連亮度都唔跟就要用二次調色嘅分區掣';
   g1b.body.appendChild(khint);
   const lbn=document.createElement('label'); lbn.className='chk'; lbn.style.marginLeft='4px';
   lbn.innerHTML='<input type="checkbox" id="chrnr" checked> 色度降噪';
@@ -5059,6 +5089,17 @@ function buildLeftPanel(){
     S.chrNR=e.target.checked; S.pvKey++; S.pvCache.clear(); scheduleRender();
   });
   g1b.body.appendChild(lbn);
+  /* v26：二次調色保護 —— 預設關（trim 係特登撳嘅），開咗 sat/temp/曲線都會被 key 保住 */
+  const lbp=document.createElement('label'); lbp.className='chk'; lbp.style.marginLeft='4px';
+  lbp.innerHTML='<input type="checkbox" id="skinprotsec"> 連二次調色都保';
+  lbp.title='開咗：sat / temp / tint / 曲線 對皮膚嘅影響都會被 key 保住。'+
+            '預設關 —— 二次調色係你特登撳嘅 trim，保咗會以為個掣壞咗。';
+  lbp.querySelector('input').checked=!!S.skinProtSec;
+  lbp.querySelector('input').addEventListener('change',e=>{
+    S.skinProtSec=e.target.checked; S.pvKey++; S.pvCache.clear(); scheduleRender();
+    toast(S.skinProtSec?'二次調色都會被 key 保住':'二次調色照舊唔保（淨保一次調色）');
+  });
+  g1b.body.appendChild(lbp);
   updKeyLabel(); syncKeyUI();
   g1b.secKeys=null;
   refreshPalUI();
