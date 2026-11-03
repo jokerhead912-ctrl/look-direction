@@ -3,7 +3,7 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction v25.1（ASC CDL + Scopes + 膚色 key v5）</title>
+<title>Look Direction v25.2（ASC CDL + Scopes + 膚色 key v5）</title>
 <style>
 :root{
   /* Krafted 家族色系，但推向更極簡／高端：少邊框、靠層次分面，accent 只用喺「生效中」 */
@@ -898,8 +898,20 @@ const $=id=>document.getElementById(id);
    唔同就彈「已更新」—— 用嚟確認 GitHub Pages 真係出咗新版。
    GitHub Pages 有 CDN 快取，Browser 亦會 cache index.html：
    見唔到新版就撳 Ctrl+Shift+R（Windows）/ Cmd+Shift+R（Mac）硬重整。 */
-const APP_VER='v25.1', APP_BUILD='2026-11-03';
+const APP_VER='v25.2', APP_BUILD='2026-11-03';
 const APP_NOTES=[
+  'v25.2：移除 key —— 要搵得到、要清得晒',
+  '　· 導演：「need have a clean the matte function when i dont need it can remove it」。',
+  '　· 問題唔係冇呢個功能，係**收埋咗喺「更多 ▾」入面** → 搵唔到。',
+  '　　改為放喺狀態列右邊：有 key 就出現「移除」，冇 key 就自動收埋。',
+  '　· 「移除」要撳兩次確認，但**可以撳「復原」攞返**（pushKeyUndo）。',
+  '　· 新增「移除全部 shot」：舊版「套全部」／「追蹤」寫咗 8 張之後想唔要，',
+  '　　要逐張切過去撳一次 —— 而家一下清晒（一樣要撳兩次確認）。',
+  '　· 移除會即刻 saveShotState：舊版清完之後 shot 嘅 st.key 會**殘留一份全 0 嘅 matte**',
+  '　　（實測：舊 code `st.key` 仲喺度，新版係 null）。切走再切返其實唔會復活',
+  '　　（switchShot 離開時會重新 save）—— 但殘留會令「移除全部 shot」點錯數、snapshot 髒。',
+  '　· 空 matte 唔再存落 shot state（全 0 當 null），auto 重生時狀態乾淨。',
+  '　· keyUndo 補 robust：S.keyMatte 係 null 都識重新起返。',
   'v25.1：撳「關」就真係關 —— 修「筆刷模式 force 畫遮罩」',
   '　· 導演實測：顯示揀咗「關」，層紅仲喺度。根因係三處「畫緊就一定顯示」嘅 force：',
   '　　paint() 嘅 `||S.keyMode==="brush"`、keyPaintLive()、拖框/魔術棒即時預覽。',
@@ -2528,10 +2540,21 @@ function pushKeyUndo(){
   if(S.keyUndo.length>24) S.keyUndo.shift();
 }
 function keyUndo(){
-  const K=S.keyMatte;
-  if(!K||!S.keyUndo||!S.keyUndo.length){ toast('冇得復原'); return; }
-  K.m.set(S.keyUndo.pop());
-  touchKey(); updKeyLabel(); syncKeyUI(); toast('復原 matte');
+  if(!S.keyUndo||!S.keyUndo.length){ toast('冇得復原'); return; }
+  /* v25.2：移除／切 shot 之後 S.keyMatte 可能係 null → 要識得重新起返 */
+  let K=S.keyMatte;
+  if(!K){ if(typeof ensureMatte!=='function'){ toast('冇得復原'); return; } K=ensureMatte(); }
+  const kd=(typeof matteDims==='function')?matteDims():{w:K.w,h:K.h};
+  if(kd.w!==K.w||kd.h!==K.h){ S.keyMatte={w:kd.w,h:kd.h,m:new Float32Array(kd.w*kd.h)}; K=S.keyMatte; }
+  const prev=S.keyUndo.pop();
+  if(prev.length===K.m.length) K.m.set(prev);
+  else if(typeof resampleInto==='function'){
+    /* 舊格數嘅長闊：用而家長闊比反推（格數一樣就唔會行到呢度） */
+    const ow=Math.round(Math.sqrt(prev.length*(kd.w/kd.h))), oh=Math.round(prev.length/ow);
+    if(ow>0&&oh>0&&ow*oh===prev.length) resampleInto(prev,ow,oh,K.m,kd.w,kd.h);
+    else { toast('尺寸唔夾，復原唔到'); return; }
+  }
+  saveShotState(); touchKey(); updKeyLabel(); syncKeyUI(); toast('復原 matte');
 }
 function keyFillAll(){
   const K=ensureMatte(); pushKeyUndo(); K.m.fill(1); touchKey();
@@ -2546,7 +2569,28 @@ function keyInvert(){
 function keyClear(){
   const K=S.keyMatte;
   if(!K||!hasKey()){ toast('未畫 key'); return; }
-  pushKeyUndo(); K.m.fill(0); touchKey(); updKeyLabel(); syncKeyUI();
+  pushKeyUndo(); K.m.fill(0);
+  saveShotState();                 /* 唔 save 嘅話切走再切返，舊 matte 會復活 */
+  touchKey(); updKeyLabel(); syncKeyUI(); toast('key 已移除（可撳「復原」攞返）');
+}
+/* v25.2：「套全部」／「追蹤」嘅反向操作。
+   舊版只可以逐張清 —— 套咗 8 張之後想唔要，要逐張切過去撳一次。 */
+function keyClearAll(){
+  let n=0;
+  for(let i=0;i<S.shots.length;i++){
+    const st=S.shots[i].st;
+    if(st&&st.key){ st.key=null; n++; }
+  }
+  if(S.keyMatte&&hasKey()) pushKeyUndo();
+  if(S.keyMatte) S.keyMatte.m.fill(0);
+  saveShotState(); touchKey(); updKeyLabel(); syncKeyUI();
+  toast(n? ('清咗 '+n+' 張來稿嘅 key（而家呢張可撳「復原」攞返）') : '全部來稿本身都冇 key');
+}
+let _clrAllArm=0;
+function keyClearAllArmed(){
+  const now=Date.now();
+  if(now-_clrAllArm<2500){ _clrAllArm=0; keyClearAll(); }
+  else{ _clrAllArm=now; toast('再撳一次「移除全部 shot」確認 —— 會清走 '+(S.shots?S.shots.length:0)+' 張嘅 key'); }
 }
 /* v23：同一 setup（鏡位唔郁、塊面喺同一度）唔使逐張畫。
    將而家呢份 matte 塞落所有 shot 嘅 st.key —— 切過去嗰陣 applyShotState
@@ -2935,6 +2979,10 @@ function keyDirty(){ _keyVer++; _fleshLab=null; }
 let _fullT=null;
 function touchKey(){
   _keyVer++; _fleshLab=null;
+  /* v25.2：touchKey 係「matte 改咗」嘅唯一入口 —— 順手 refresh 狀態列，
+     否則「移除」掣嘅出現／收埋會漏（有啲路徑淨 call touchKey 唔 call updKeyLabel） */
+  if(typeof updKeyLabel==='function') updKeyLabel();
+  if(typeof syncKeyUI==='function') syncKeyUI();
   S.pvKey++; S.pvCache.clear();
   scheduleRender(true);
   if(_fullT) clearTimeout(_fullT);
@@ -2942,7 +2990,9 @@ function touchKey(){
 }
 function updKeyLabel(){
   const el=$('keylb'); if(!el) return;
-  if(!hasKey()){ el.textContent='key 未畫（淨用 hue gate）'; return; }
+  const has=hasKey();
+  const dl=$('bkeydel'); if(dl) dl.hidden=!has;      /* v25.2：冇 key 就唔好show「移除」 */
+  if(!has){ el.textContent='key 未畫（淨用 hue gate）'; return; }
   const f=FL();
   el.textContent='key 覆蓋 '+(keyCoverage()*100).toFixed(1)+'%　·　膚軸 '+
                  (f?f[0].toFixed(1):'?')+'° ±'+(f?f[1].toFixed(0):'?')+'°';
@@ -4871,7 +4921,18 @@ function buildLeftPanel(){
   const mkBtn=(host,lb,cls,tt)=>{ const b=document.createElement('button'); b.type='button';
     b.className=cls||'b low'; b.textContent=lb; if(tt) b.title=tt; host.appendChild(b); return b; };
   const kr=document.createElement('div'); kr.className='keygrp';
-  const klb=document.createElement('span'); klb.id='keylb'; klb.className='klab'; kr.appendChild(klb);
+  /* 狀態列：有 key 先會出現「移除」掣 —— 唔使收埋喺「更多」入面搵 */
+  const kst=document.createElement('div'); kst.className='krow'; kst.style.gap='8px';
+  const klb=document.createElement('span'); klb.id='keylb'; klb.className='klab';
+  klb.style.cssText='flex:1 1 auto;margin:0';
+  kst.appendChild(klb);
+  const krm=document.createElement('button'); krm.type='button';
+  krm.className='b low dgr'; krm.id='bkeydel'; krm.textContent='移除';
+  krm.style.cssText='flex:0 0 auto;width:54px';
+  krm.title='移除呢張嘅 key · 破壞性，要撳兩次確認（可用「復原」攞返）';
+  krm.onclick=keyClearArmed;
+  kst.appendChild(krm);
+  kr.appendChild(kst);
 
   /* ① 工具（三選一 · 46px 高 · 圖示＋字 · 撳選中嗰粒 = 退出） */
   kr.appendChild(mkLbl('工具'));
@@ -4921,13 +4982,13 @@ function buildLeftPanel(){
   kr.appendChild(r3);
   const r3b=document.createElement('div'); r3b.className='more'; r3b.id='keymore';
   bMore.onclick=()=>{ const op=r3b.classList.toggle('open'); bMore.classList.toggle('pri',op); };
-  [['增長',()=>morphMatte(3), '向外擴 3 格','b low'],
+  [   ['增長',()=>morphMatte(3), '向外擴 3 格','b low'],
    ['收縮',()=>morphMatte(-3),'向內收 3 格','b low'],
    ['反相',keyInvert,         '遮罩反轉','b low'],
-   ['復原',keyUndo,           '還原上一步','b low'],
-   ['清除',keyClearArmed,     '清走成個 matte · 破壞性，要撳兩次','b low dgr'],
+   ['復原',keyUndo,           '還原上一步（移除咗都攞得返）','b low'],
    ['套全部',keyApplyAll,     '呢張 key 套去全部 shot','b low'],
-   ['追蹤',keyTrackAll,       '跟住呢張 key 去其他 shot（template match）','b low']
+   ['追蹤',keyTrackAll,       '跟住呢張 key 去其他 shot（template match）','b low'],
+   ['移除全部 shot',keyClearAllArmed,'「套全部」／「追蹤」嘅反向操作 · 要撳兩次','b low dgr']
   ].forEach(([lb,fn,tt,cls])=>{
     const b=mkBtn(r3b,lb,cls,lb+' · '+tt); b.onclick=fn;
     if(lb==='復原') b.id='bkeyundo';
@@ -5469,7 +5530,9 @@ function shotState(){
     /* v23：matte 逐張 shot 記。舊版 S.keyMatte 係全局一件，換 shot 會
        （經 ensureMatte）縮放搬過去 —— 即係上一張塊面嘅位置會錯擺落呢張，
        所以「換 shot 要重畫」。而家每張自己記一份，切返轉頭就喺度。 */
-    key:(S.keyMatte&&S.keyMatte.m)?{w:S.keyMatte.w,h:S.keyMatte.h,m:Float32Array.from(S.keyMatte.m)}:null
+    /* v25.2：空 matte 唔好再存 —— 舊版會寫一份全 0 落去，
+       「移除咗」同「有 key 但全 0」分唔開，auto 重生時狀態唔乾淨 */
+    key:(S.keyMatte&&S.keyMatte.m&&hasKey())?{w:S.keyMatte.w,h:S.keyMatte.h,m:Float32Array.from(S.keyMatte.m)}:null
   };
 }
 function saveShotState(){

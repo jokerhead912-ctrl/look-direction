@@ -151,11 +151,13 @@ const R=await pg.evaluate(async()=>{
   out.ui.afterWandClick = qa('.keygrp button.b.tool').map(e=>e.classList.contains('on')?e.querySelector('span').textContent:null).filter(Boolean);
   q('#bkey_wand').click(); await sleep(120);
   out.ui.afterWandClickAgain = qa('.keygrp button.b.tool').map(e=>e.classList.contains('on')?e.querySelector('span').textContent:null).filter(Boolean);
-  /* 清除要撳兩次 */
+  /* 移除要撳兩次（v25.2 起「移除」掣喺狀態列 #bkeydel，唔再收埋喺「更多」） */
   const covBefore=+(keyCoverage()*100).toFixed(2);
-  qa('#keymore button').find(e=>e.textContent==='清除').click(); await sleep(150);
+  const dl=q('#bkeydel');
+  out.ui.delVisible=!!dl && !dl.hidden;
+  dl.click(); await sleep(150);
   const cov1=+(keyCoverage()*100).toFixed(2);
-  qa('#keymore button').find(e=>e.textContent==='清除').click(); await sleep(250);
+  dl.click(); await sleep(250);
   const cov2=+(keyCoverage()*100).toFixed(2);
   out.ui.clearArmed={before:covBefore, after1:cov1, after2:cov2};
   return out;
