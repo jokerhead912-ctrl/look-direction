@@ -3,7 +3,7 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction v24.1（ASC CDL + Scopes + 膚色 key v5）</title>
+<title>Look Direction v25（ASC CDL + Scopes + 膚色 key v5）</title>
 <style>
 :root{
   /* Krafted 家族色系，但推向更極簡／高端：少邊框、靠層次分面，accent 只用喺「生效中」 */
@@ -538,6 +538,35 @@ button.b:disabled{opacity:.3;cursor:not-allowed}
 button.b:disabled:hover{border-color:var(--line);color:var(--tx2);background:var(--panel2)}
 button.b.sm{padding:3px 8px;font-size:12px}
 button.b.icon{padding:4px 8px;font-size:14px;line-height:1;font-weight:500;min-width:28px;text-align:center}
+/* ---------- v25 遮罩工具欄：分組 · 層次 · 大 hit area ---------- */
+.keygrp{display:flex;flex-direction:column;gap:7px;margin:6px 0 8px}
+.keygrp .krow{display:flex;gap:5px;align-items:center}
+.keygrp .krow>button,.keygrp .krow>.seg2{flex:1 1 0;min-width:0}
+.klab{font-size:11px;color:var(--tx3);letter-spacing:.03em;margin:0;flex:1 1 100%}
+.keygrp .mr{flex:1 1 44%;margin:2px 0 4px}
+.keysep{height:1px;background:var(--line);margin:1px 0;flex:1 1 100%}
+button.b.tool{height:46px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:0 4px}
+button.b.tool svg{width:18px;height:18px;display:block;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+button.b.tool span{font-size:10.5px;line-height:1}
+button.b.tool.on{background:var(--acc-soft);border-color:var(--acc-line);color:var(--tx)}
+button.b.mid{height:34px;padding:0 8px;font-size:12px}
+button.b.low{height:28px;padding:0 8px;font-size:11.5px}
+button.b.dgr:hover{border-color:var(--bad);color:#f0a0a0;background:rgba(217,83,79,.10)}
+button.b:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.seg2,.seg5{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:var(--r);padding:2px;height:32px;gap:2px}
+.seg2 button,.seg5 button{flex:1;min-width:0;height:26px;border:0;background:transparent;color:var(--tx2);font-size:11.5px;border-radius:5px;display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer;transition:.14s;white-space:nowrap;overflow:hidden}
+.seg2 button:hover,.seg5 button:hover{background:var(--panel3);color:var(--tx)}
+.seg2 button.on{background:var(--acc);color:#10121c;font-weight:600}
+.seg2 button.on svg{stroke:#10121c}
+.seg5 button.on{background:var(--acc-soft);color:var(--tx);box-shadow:inset 0 0 0 1px var(--acc-line)}
+.seg5 button svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6}
+.swset{display:flex;gap:5px;align-items:center;flex:0 0 auto}
+.swset i{width:18px;height:18px;border-radius:3px;display:block;cursor:pointer;border:1.5px solid transparent;box-sizing:border-box}
+.swset i:hover{transform:scale(1.08)}
+.swset i.on{border-color:var(--tx)}
+.more{display:none;flex-wrap:wrap;gap:5px}
+.more.open{display:flex}
+.more button{flex:1 1 30%;height:30px;font-size:11.5px}
 
 /* ---------- right ---------- */
 .dirlist{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
@@ -869,8 +898,24 @@ const $=id=>document.getElementById(id);
    唔同就彈「已更新」—— 用嚟確認 GitHub Pages 真係出咗新版。
    GitHub Pages 有 CDN 快取，Browser 亦會 cache index.html：
    見唔到新版就撳 Ctrl+Shift+R（Windows）/ Cmd+Shift+R（Mac）硬重整。 */
-const APP_VER='v24.1', APP_BUILD='2026-11-03';
+const APP_VER='v25', APP_BUILD='2026-11-03';
 const APP_NOTES=[
+  'v25：遮罩睇得到結果（顯示層）+ 工具欄重做（分組）',
+  '　· 舊版得「紅填充 alpha 0.55」一種：遮罩區內局部對比淨返 45%，',
+  '　　而且紅同膚色同一 hue 區 —— key 嘅正正係皮膚，根本分唔清邊皮係圖邊皮係遮罩。',
+  '　· 顯示五態：關／描邊／填充／外暗／白。默認「描邊」＝淨畫邊界＋羽化帶，',
+  '　　完全唔遮內部 → 驗結果嘅主模式。畫緊筆刷會自動轉「填充」因為要有回饋。',
+  '　· 濃度（0–100%，默認 35%）+ 6 粒色片（紅／青／綠／洋紅／黃／白）。',
+  '　　**全部 view-only，落 grade 時永遠唔計。**',
+  '　· 撳實 X = 收遮罩（保留 grade）；撳實 ` = 睇原圖——舊版兩個都照畫層紅上去，已修。',
+  '　· K = bypass matte（淨用 hue gate）→ 再撳 V 用現有 wipe 對比',
+  '　　「同一個 grade，matte 開 vs 關」。呢個先真正答到「個 key 有冇幫到」。',
+  '　· blink A/B：0.8s 交替 matte 開／關，一眼睇到個 key 有冇做嘢。',
+  '　· 工具欄按功能分五組：工具／加·減／編輯／顯示／輸出。',
+  '　　工具掣 46px 高、圖示＋字、三選一（撳選中嗰粒 = 退出）；加／減改 segmented；',
+  '　　「自動」做 CTA；增長／收縮／反相／復原／清除／套全部／追蹤 收埋喺「更多 ▾」',
+  '　　（舊版 14 粒掣同權重平排，「清除」同「全選」隔 6px，太易誤撳）；',
+  '　　清除改為要撳兩次確認。',
   'v24.1：搵得到膚色 key v5 —— 左欄嗰個 group 改名',
   '　· 舊名「方向預覽 DIRECTIONS」完全冇提 key，加埋預設收埋 → 搵唔到 v5。',
   '　· 改叫「方向預覽 · 膚色 key」。撳開呢個 group 就見到全部掣：',
@@ -2643,9 +2688,43 @@ function keyTrackAll(){
     : ('追蹤咗 '+done.length+' 張 · 命中分 '+Math.min.apply(null,done.map(r=>r.score)).toFixed(2)+'–'+Math.max.apply(null,done.map(r=>r.score)).toFixed(2)));
   return res;
 }
-function keyCycleShow(){
-  S.keyShow=(+S.keyShow||0)+1; if(S.keyShow>2) S.keyShow=0;
-  syncKeyUI(); scheduleRender();
+/* 顯示係純 view-only：唔使 invalidate grade cache，淨重畫就得（極平） */
+function keyCycleShow(mode){
+  if(mode!=null) S.keyShow=(+mode)||0;
+  else{ S.keyShow=(+S.keyShow||0)+1; if(S.keyShow>4) S.keyShow=0; }
+  syncKeyUI(); paint();
+}
+/* v25：matte bypass —— 同一個 grade，matte 開 vs 關。
+   呢個先真正答到「個遮罩有冇幫到」：再配現有 wipe / side 對比就得，唔使起新嘅並排。 */
+function invalidateKey(){
+  S.pvKey++; S.pvCache.clear(); scheduleRender(true);
+  if(_fullT) clearTimeout(_fullT);
+  _fullT=setTimeout(()=>{ _fullT=null; scheduleRender(false); },140);
+}
+function setKeyBy(v){
+  S.keyBy=!!v; invalidateKey(); syncKeyUI();
+  toast(S.keyBy?'已 bypass 膚色 matte（淨用 hue gate）· 再撳 K 開返':'膚色 matte 已生效');
+}
+let _blinkT=null;
+function setBlink(v){
+  S.blink=!!v;
+  if(_blinkT){ clearInterval(_blinkT); _blinkT=null; }
+  if(S.blink){
+    _blinkT=setInterval(()=>{
+      S.keyBy=!S.keyBy;
+      S.pvKey++; S.pvCache.clear(); scheduleRender(true);   /* 淨 quick render，唔好 0.8s 一次全解 */
+      syncKeyUI();
+    },800);
+  }
+  syncKeyUI(); toast(S.blink?'blink A/B 開（0.8s 交替 matte 開／關）':'blink A/B 關');
+}
+function stopBlink(){ if(S.blink) setBlink(false); }
+/* v25：清除係破壞性（成張 matte 冇咗）→ 要撳兩次。舊版佢同「全選」隔 6px 平排。 */
+let _clrArm=0;
+function keyClearArmed(){
+  const now=Date.now();
+  if(now-_clrArm<2500){ _clrArm=0; keyClear(); }
+  else{ _clrArm=now; toast('再撳一次「清除」確認（2.5s 內）—— 會清走成個 matte'); }
 }
 /* ── matte 互通（v22）─────────────────────────────────────────
    畫咗嘅 key 一定要出到去，否則份工被困喺瀏覽器入面。
@@ -2729,6 +2808,36 @@ function resetKeyMatte(){
   if(typeof syncKeyUI==='function') syncKeyUI();
 }
 /* 遮罩預覽：512 格 matte → canvas 放大（瀏覽器雙線性，邊緣自然軟） */
+/* ---------- v25 遮罩顯示層 ----------
+   舊版得「紅填充 alpha 0.55」一種：遮罩區內局部對比淨返 45%，而且紅同膚色同一 hue 區
+   —— key 嘅正正係皮膚，根本分唔清邊皮係圖、邊皮係遮罩。
+   而家分五態。鐵律：**下面全部參數淨影響畫面，唔入 grade**。
+     1 描邊 —— 淨畫邊界（＋羽化帶），完全唔遮內部 → 驗結果嘅主模式
+     2 填充 —— 舊行為，畫遮罩時用（要有回饋先畫得準）
+     3 外暗 —— 暗化「非遮罩」區，保住主體（＝皮膚）乾淨
+     4 白   —— 純 matte 值，搵窿用 */
+const OV_COLS=[[255,40,70],[34,211,238],[74,222,128],[244,114,182],[250,204,21],[255,255,255]];
+const OV_CN  =['紅','青','綠','洋紅','黃','白'];
+/* 邊界掩膜：m>=0.5 而 r 格半徑內有 <0.5 → 邊。喺 512 格上面做，有 cache */
+let _ed={k:'',m:null};
+function edgeMask(m,w,h,r){
+  const key=w+'x'+h+'|'+_kb.k+'|'+r;
+  if(_ed.k===key&&_ed.m) return _ed.m;
+  const e=new Uint8Array(w*h);
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const i=y*w+x; if(m[i]<0.5) continue;
+      let hit=0;
+      for(let dy=-r;dy<=r&&!hit;dy++){
+        const yy=y+dy; if(yy<0||yy>=h) continue;
+        const row=yy*w, x0=Math.max(0,x-r), x1=Math.min(w-1,x+r);
+        for(let xx=x0;xx<=x1;xx++) if(m[row+xx]<0.5){ hit=1; break; }
+      }
+      if(hit) e[i]=1;
+    }
+  }
+  _ed={k:key,m:e}; return e;
+}
 let _ovc=null;
 function drawKeyOverlay(force){
   const K=S.keyMatte; if(!K) return;
@@ -2738,12 +2847,36 @@ function drawKeyOverlay(force){
   }
   const c2=_ovc.getContext('2d');
   const id=c2.createImageData(K.w,K.h), d=id.data;
-  const white=(+S.keyShow===2);
-  const al=force?0.62:0.55;
-  for(let i=0;i<K.w*K.h;i++){
-    const a=m[i], p=i*4;
-    d[p]=255; d[p+1]=white?255:40; d[p+2]=white?255:70;
-    d[p+3]=Math.round(255*Math.min(1,Math.max(0,a))*al);
+  const N=K.w*K.h;
+  const white=(+S.keyShow===4);
+  let mode=+S.keyShow||0;
+  if(force) mode=2;                        /* 畫緊筆刷：一定有填充回饋，否則唔知畫咗啲乜 */
+  const col=white?OV_COLS[5]:(OV_COLS[+S.keyOvC||0]||OV_COLS[0]);
+  const al=clamp((+S.keyOvA==null?0.35:+S.keyOvA),0,1);
+  const aFill=force?Math.max(al,0.45):al;
+  if(mode===1){
+    /* 描邊：實線 = 0.5 等值線；羽化帶（0.05..0.5）低 alpha 鋪一層 → 睇到邊界有幾軟 */
+    const e=edgeMask(m,K.w,K.h,clamp(Math.round(+S.keyEdgeW||2),1,4));
+    for(let i=0;i<N;i++){
+      const v=m[i], p=i*4;
+      const a = e[i] ? 1 : ((v>0.05&&v<0.5) ? 0.28 : 0);
+      d[p]=col[0]; d[p+1]=col[1]; d[p+2]=col[2]; d[p+3]=Math.round(255*a);
+    }
+  }else if(mode===3){
+    /* 外暗：暗化非遮罩區，主體（皮膚）保持 100% 乾淨；邊界補條亮線定形 */
+    const e=edgeMask(m,K.w,K.h,1);
+    for(let i=0;i<N;i++){
+      const v=cl01(m[i]), p=i*4;
+      if(e[i]){ d[p]=250; d[p+1]=250; d[p+2]=252; d[p+3]=Math.round(255*0.8); }
+      else{ d[p]=6; d[p+1]=7; d[p+2]=10; d[p+3]=Math.round(255*(1-v)*0.66); }
+    }
+  }else{
+    /* 填充 / 白 */
+    for(let i=0;i<N;i++){
+      const v=cl01(m[i]), p=i*4;
+      d[p]=col[0]; d[p+1]=col[1]; d[p+2]=col[2];
+      d[p+3]=Math.round(255*v*(white?1:aFill));
+    }
   }
   c2.putImageData(id,0,0);
   ctx.save();
@@ -2800,15 +2933,26 @@ function syncKeyUI(){
   if(seg) seg.querySelectorAll('button').forEach(b=>{
     b.classList.toggle('on', (b.dataset.v==='1')===(S.brushAdd!==false));
   });
-  ['brushR','brushHard','keyFeath','wandTol'].forEach(k=>{
+  ['brushR','brushHard','keyFeath','wandTol','keyOvA','keyEdgeW'].forEach(k=>{
     const host=document.querySelector('.mr[data-k="'+k+'"]'); if(!host) return;
     const inp=host.querySelector('input'), out=host.querySelector('b');
     const sc=+(host.dataset.sc||1);
     if(inp) inp.value=Math.round((+S[k]||0)/sc);
     if(out) out.textContent=Math.round((+S[k]||0)/sc)+(host.dataset.unit||'');
   });
+  ['brush','rect','wand'].forEach(m=>{
+    const b=$('bkey_'+m); if(b) b.classList.toggle('on', S.keyMode===m);
+  });
+  const vs=$('keyviewseg'); if(vs) vs.querySelectorAll('button').forEach(b=>{
+    b.classList.toggle('on', (+b.dataset.v)===(+S.keyShow||0));
+  });
+  const sw=$('keyovsw'); if(sw) sw.querySelectorAll('i').forEach(s=>{
+    s.classList.toggle('on', (+s.dataset.i)===(+S.keyOvC||0));
+  });
+  const bb=$('bkeyby'); if(bb){ bb.classList.toggle('pri',S.keyBy); bb.textContent=S.keyBy?'matte：關':'matte：開'; }
+  const bk=$('bkeyblink'); if(bk) bk.classList.toggle('pri',!!S.blink);
   const bu=$('bkeyundo'); if(bu) bu.style.opacity=(S.keyUndo&&S.keyUndo.length)?'1':'.45';
-  const bs=$('bkeyshow'); if(bs) bs.textContent='遮罩：'+['關','紅','白'][+S.keyShow||0];
+  const bs=$('bkeyshow'); if(bs) bs.textContent='遮罩：'+['關','描邊','填充','外暗','白'][+S.keyShow||0];
 }
 /* 細滑桿（唔入 S.hist：筆刷設定唔值得佔 undo 位） */
 function mkRange(host,skey,label,min,max,unit,scale){
@@ -2824,6 +2968,8 @@ function mkRange(host,skey,label,min,max,unit,scale){
     out.textContent=inp.value+(unit||'');
     if(skey==='keyFeath'){ _keyVer++; S.pvKey++; S.pvCache.clear(); scheduleRender(true); }
     if(skey==='brushR') updateBrushRing(window.__lastKeyEv||{clientX:-999,clientY:-999});
+    /* v25 顯示層：純 view-only → 淨重畫，唔好 invalidate grade（慳一次全解 render） */
+    if(skey==='keyOvA'||skey==='keyEdgeW') paint();
   });
   inp.addEventListener('change',()=>{ if(skey==='keyFeath'){ S.pvKey++; S.pvCache.clear(); scheduleRender(); } });
   host.appendChild(el); return el;
@@ -3098,7 +3244,8 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
   const nrOn = kp>0 && S.chrNR!==false && (!$('chrnr')||$('chrnr').checked);
   const src = nrOn ? chromaPrewash(lab,1) : lab;
   const _t1=_T?performance.now():0;
-  const kf  = (kp>0 && hasKey()) ? keyFieldFor(lab) : null;
+  /* v25：S.keyBy = bypass（驗「matte 開 vs 關」用）。只係拎走 kf，其餘管線完全唔郁。 */
+  const kf  = (kp>0 && hasKey() && !S.keyBy) ? keyFieldFor(lab) : null;
   const fl  = kp>0 ? FL() : null;
   const _t2=_T?performance.now():0;
   if(_T){ _T.prewash+=_t1-_t0; _T.key+=_t2-_t1; }
@@ -3334,7 +3481,10 @@ const S={
   /* v5 膚色 key：一張 512 格 soft matte（筆刷畫），唔再係矩形框 */
   keyMatte:null, keyUndo:[], keyMode:null,  /* null | 'brush' | 'rect' | 'wand' */
   brushR:48, brushHard:0.55, brushAdd:true, /* 筆刷半徑（圖 px）· 硬度 0..1 · 加/減 */
-  keyFeath:6, wandTol:10, keyShow:0,        /* 全域羽化（matte 格）· 魔術棒容差 · 遮罩顯示 0/1/2 */
+  keyFeath:6, wandTol:10, keyShow:1,        /* 全域羽化（matte 格）· 魔術棒容差 · 顯示 0=關 1=描邊 2=填充 3=外暗 4=白 */
+  /* v25：顯示層參數——全部「淨影響畫面，唔入 grade」，落 grade 時永遠唔計 */
+  keyOvA:0.35, keyOvC:0, keyEdgeW:2,        /* overlay 濃度 0..1 · 色 0=紅 1=青 2=綠 3=洋紅 4=黃 5=白 · 描邊粗幼（格） */
+  keyBy:false, blink:false, keyHide:false,  /* matte bypass（驗 grade 用）· blink A/B · 撳實收遮罩 */
   /* v22：逐段計時（prewash / key / pix / blit / paint / total，ms）+ 像素數 */
   timing:{grade:0,prewash:0,key:0,pix:0,blit:0,paint:0,total:0,n:0,w:0,quick:false},
   chrNR:true,                               /* NR before look */
@@ -4685,68 +4835,141 @@ function buildLeftPanel(){
   /* ── 膚色 key v5：soft matte（筆刷）───────────────────────────
      v4 淨得一個矩形框 —— 塊面唔係矩形，點框都唔貼。v5 係一張畫出嚟嘅
      soft matte：筆刷畫／拖框寫入／自動（皮膚形狀）／魔術棒（跟色擴展）。 */
-  const kr=document.createElement('div');
-  kr.className='checks';
-  kr.style.cssText='display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0 6px';
-  const klb=document.createElement('span');
-  klb.id='keylb'; klb.style.cssText='font-size:11px;opacity:.6;flex:1 1 100%;margin-bottom:2px';
-  kr.appendChild(klb);
-  /* 第 1 行：模式 */
-  [['筆刷','bkeybrush','brush'],['拖框','bkeyrect','rect'],['魔術棒','bkeywand','wand']]
-  .forEach(([lb,id,m])=>{
-    const b=document.createElement('button'); b.type='button'; b.className='b sm';
-    b.id=id; b.dataset.m=m; b.textContent=lb;
-    b.onclick=()=>setKeyMode(m);
-    kr.appendChild(b);
+  /* ── v25 工具欄：按功能分組 ───────────────────────────────────
+     工具 / 加·減 / 編輯 / 顯示 / 輸出。低頻同破壞性動作收埋喺「更多 ▾」
+     （舊版 14 粒掣同權重平排，「清除」同「全選」隔 6px，太易誤撳）。 */
+  const ICO={
+    brush:'<svg viewBox="0 0 18 18"><circle cx="5.4" cy="12.6" r="2.5"/><path d="M7.3 10.7 L13.6 4.4"/><path d="M11.2 3.1 l3-1.1 -1.1 3"/></svg>',
+    rect :'<svg viewBox="0 0 18 18"><rect x="3" y="4.6" width="12" height="9" rx="1.2" stroke-dasharray="3 2.2"/></svg>',
+    wand :'<svg viewBox="0 0 18 18"><path d="M12.6 4.6 L7.4 9.8"/><path d="M6.1 11.1 L4.5 15.5 L9 13.9"/><path d="M14.4 2.6 l.65 1.4 1.4.65 -1.4.65 -.65 1.4 -.65-1.4 -1.4-.65 1.4-.65z"/></svg>',
+    plus :'<svg viewBox="0 0 14 14"><path d="M3 7 h8"/><path d="M7 3 v8"/></svg>',
+    minus:'<svg viewBox="0 0 14 14"><path d="M3 7 h8"/></svg>',
+    chev :'<svg viewBox="0 0 14 14" style="width:11px;height:11px;flex:0 0 auto"><path d="M3.5 5.5 L7 9 L10.5 5.5"/></svg>'
+  };
+  const mkLbl=t=>{ const e=document.createElement('span'); e.className='klab'; e.textContent=t; return e; };
+  const mkSep=()=>{ const e=document.createElement('div'); e.className='keysep'; return e; };
+  const mkBtn=(host,lb,cls,tt)=>{ const b=document.createElement('button'); b.type='button';
+    b.className=cls||'b low'; b.textContent=lb; if(tt) b.title=tt; host.appendChild(b); return b; };
+  const kr=document.createElement('div'); kr.className='keygrp';
+  const klb=document.createElement('span'); klb.id='keylb'; klb.className='klab'; kr.appendChild(klb);
+
+  /* ① 工具（三選一 · 46px 高 · 圖示＋字 · 撳選中嗰粒 = 退出） */
+  kr.appendChild(mkLbl('工具'));
+  const r1=document.createElement('div'); r1.className='krow';
+  [['brush','筆刷','撳住畫 · [ ] 改大細 · Alt 或「減」= 擦 · Esc 退出'],
+   ['rect','拖框','拉一個框寫入 · 配合下面 加／減'],
+   ['wand','魔術棒','點一下跟色擴散 · 容差喺下面']].forEach(([m,lb,tt])=>{
+    const b=document.createElement('button'); b.type='button'; b.className='b tool';
+    b.id='bkey_'+m; b.dataset.m=m; b.title=lb+' · '+tt;
+    b.innerHTML=ICO[m]+'<span>'+lb+'</span>';
+    b.onclick=()=>setKeyMode(S.keyMode===m?null:m);
+    r1.appendChild(b);
   });
-  /* 第 2 行：加 / 減（筆刷同魔術棒都用） */
-  const aseg=document.createElement('div'); aseg.className='seg'; aseg.id='keyaddseg';
-  aseg.style.cssText='display:inline-flex;flex:0 0 auto;margin:0;border-radius:5px';
-  [[ '加','1'],['減','0']].forEach(([lb,v])=>{
-    const b=document.createElement('button'); b.type='button'; b.dataset.v=v; b.textContent=lb;
-    b.style.cssText='padding:3px 11px;font-size:11.5px';
-    b.onclick=()=>{ S.brushAdd=(v==='1'); syncKeyUI(); };
-    aseg.appendChild(b);
-  });
-  kr.appendChild(aseg);
-  /* 第 3 行：自動 / 全選 / 反相 / 復原 / 清 */
-  [['自動',()=>{ if(autoSkinMatte()){ S.pvKey++; S.pvCache.clear(); scheduleRender(); } }],
-   ['全選',keyFillAll],
-   ['增長',()=>morphMatte(3)],
-   ['收縮',()=>morphMatte(-3)],
-   ['反相',keyInvert],
-   ['復原',keyUndo],
-   ['清',  keyClear],
-   ['套全部',keyApplyAll],
-   ['追蹤',keyTrackAll]
-  ].forEach(([lb,fn])=>{
-    const b=document.createElement('button'); b.type='button'; b.className='b sm';
-    if(lb==='復原') b.id='bkeyundo';
-    b.textContent=lb; b.onclick=fn; kr.appendChild(b);
-  });
-  const bs=document.createElement('button'); bs.type='button'; bs.className='b sm';
-  bs.id='bkeyshow'; bs.textContent='遮罩：關';
-  bs.onclick=keyCycleShow; kr.appendChild(bs);
-  /* 互通：遮罩出得去、入得返（唔好困喺瀏覽器入面） */
-  const be=document.createElement('button'); be.type='button'; be.className='b sm';
-  be.id='bkeyexp'; be.textContent='匯出遮罩'; be.onclick=exportKeyPNG; be.title='PNG · alpha = 保護量 · 來稿全解尺寸';
-  kr.appendChild(be);
-  const bi2=document.createElement('button'); bi2.type='button'; bi2.className='b sm';
-  bi2.id='bkeyimp'; bi2.textContent='匯入遮罩'; bi2.onclick=pickKeyPNG; bi2.title='讀返 alpha 做 matte（格內平均）';
-  kr.appendChild(bi2);
-  g1b.body.appendChild(kr);
-  /* 滑桿（flex:1 1 100% → 自己一行） */
+  kr.appendChild(r1);
   const kb=document.createElement('div');
   kb.style.cssText='display:flex;flex-wrap:wrap;gap:0 10px';
   mkRange(kb,'brushR',    '筆刷大細',4,400,'px',1);
   mkRange(kb,'brushHard', '筆刷硬度',0,100,'%',0.01);
-  mkRange(kb,'keyFeath',  '羽化',    0,40,'',1);
   mkRange(kb,'wandTol',   '魔術棒容差',2,40,'',1);
-  g1b.body.appendChild(kb);
+  mkRange(kb,'keyFeath',  '羽化 ▸影響 grade',0,40,'',1);
+  kr.appendChild(kb);
+  kr.appendChild(mkSep());
+
+  /* ② 加 / 減（segmented · 互斥兩態） */
+  kr.appendChild(mkLbl('加 / 減'));
+  const aseg=document.createElement('div'); aseg.className='seg2'; aseg.id='keyaddseg';
+  [['加','1',ICO.plus],['減','0',ICO.minus]].forEach(([lb,v,ic])=>{
+    const b=document.createElement('button'); b.type='button'; b.dataset.v=v;
+    b.title=lb+(v==='1'?' · 撳實 Alt 臨時變「減」':' · 撳實 Alt 都可以');
+    b.innerHTML=ic+'<span>'+lb+'</span>';
+    b.onclick=()=>{ S.brushAdd=(v==='1'); syncKeyUI(); };
+    aseg.appendChild(b);
+  });
+  kr.appendChild(aseg);
+  kr.appendChild(mkSep());
+
+  /* ③ 編輯（自動做 CTA，其餘收埋） */
+  kr.appendChild(mkLbl('編輯'));
+  const r3=document.createElement('div'); r3.className='krow';
+  mkBtn(r3,'自動','b mid pri','用膚色色度自動生成整塊 matte · 快捷鍵 A').onclick=()=>{
+    if(autoSkinMatte()){ S.pvKey++; S.pvCache.clear(); scheduleRender(); } };
+  mkBtn(r3,'全選','b mid','成張圖做 key（＝全保）').onclick=keyFillAll;
+  const bMore=document.createElement('button'); bMore.type='button'; bMore.className='b mid';
+  bMore.innerHTML='<span style="display:inline-flex;align-items:center;gap:4px">更多'+ICO.chev+'</span>';
+  bMore.title='低頻／破壞性動作：增長 · 收縮 · 反相 · 復原 · 清除 · 套全部 · 追蹤';
+  r3.appendChild(bMore);
+  kr.appendChild(r3);
+  const r3b=document.createElement('div'); r3b.className='more'; r3b.id='keymore';
+  bMore.onclick=()=>{ const op=r3b.classList.toggle('open'); bMore.classList.toggle('pri',op); };
+  [['增長',()=>morphMatte(3), '向外擴 3 格','b low'],
+   ['收縮',()=>morphMatte(-3),'向內收 3 格','b low'],
+   ['反相',keyInvert,         '遮罩反轉','b low'],
+   ['復原',keyUndo,           '還原上一步','b low'],
+   ['清除',keyClearArmed,     '清走成個 matte · 破壞性，要撳兩次','b low dgr'],
+   ['套全部',keyApplyAll,     '呢張 key 套去全部 shot','b low'],
+   ['追蹤',keyTrackAll,       '跟住呢張 key 去其他 shot（template match）','b low']
+  ].forEach(([lb,fn,tt,cls])=>{
+    const b=mkBtn(r3b,lb,cls,lb+' · '+tt); b.onclick=fn;
+    if(lb==='復原') b.id='bkeyundo';
+  });
+  kr.appendChild(r3b);
+  kr.appendChild(mkSep());
+
+  /* ④ 顯示（全部 view-only，唔入 grade） */
+  kr.appendChild(mkLbl('顯示'));
+  const vs=document.createElement('div'); vs.className='seg5'; vs.id='keyviewseg';
+  [['關',0,'唔畫遮罩'],
+   ['描邊',1,'淨畫邊界（＋羽化帶）· 唔遮畫面 → 驗結果嘅主模式'],
+   ['填充',2,'舊行為 · 畫遮罩時會自動轉呢個'],
+   ['外暗',3,'暗化非遮罩區，保住主體（皮膚）乾淨'],
+   ['白',4,'純 matte 值 · 搵窿用']].forEach(([lb,v,tt])=>{
+    const b=document.createElement('button'); b.type='button'; b.dataset.v=v;
+    b.textContent=lb; b.title=lb+' · '+tt;
+    b.onclick=()=>keyCycleShow(v); vs.appendChild(b);
+  });
+  kr.appendChild(vs);
+  const r4=document.createElement('div');
+  r4.style.cssText='display:flex;flex-wrap:wrap;gap:0 10px';
+  mkRange(r4,'keyOvA',  '濃度',    0,100,'%',0.01);
+  mkRange(r4,'keyEdgeW','描邊粗幼',1,4,'',1);
+  kr.appendChild(r4);
+  const r4b=document.createElement('div'); r4b.className='krow'; r4b.style.gap='8px';
+  const sw=document.createElement('div'); sw.className='swset'; sw.id='keyovsw';
+  OV_COLS.forEach((c,i)=>{
+    const s=document.createElement('i'); s.dataset.i=i; s.title=OV_CN[i];
+    s.style.background='rgb('+c[0]+','+c[1]+','+c[2]+')';
+    s.onclick=()=>{ S.keyOvC=i; syncKeyUI(); paint(); };
+    sw.appendChild(s);
+  });
+  r4b.appendChild(sw);
+  const swt=document.createElement('span');
+  swt.style.cssText='font-size:10.5px;color:var(--tx3);margin-left:2px';
+  swt.textContent='只影響顯示';
+  r4b.appendChild(swt);
+  kr.appendChild(r4b);
+  const r4c=document.createElement('div'); r4c.className='krow';
+  mkBtn(r4c,'matte：開','b low','bypass 膚色 matte（淨用 hue gate）· 快捷鍵 K · 再配 V 鍵 wipe 對比').onclick=()=>setKeyBy(!S.keyBy);
+  r4c.lastChild.id='bkeyby';
+  mkBtn(r4c,'blink','b low','0.8s 交替 matte 開／關 · 一眼睇到個 key 有冇做嘢').onclick=()=>setBlink(!S.blink);
+  r4c.lastChild.id='bkeyblink';
+  kr.appendChild(r4c);
+  kr.appendChild(mkSep());
+
+  /* ⑤ 輸出（低頻 · 降級放最底） */
+  kr.appendChild(mkLbl('輸出'));
+  const r5=document.createElement('div'); r5.className='krow';
+  mkBtn(r5,'匯出遮罩','b low','PNG · alpha = 保護量 · 來稿全解尺寸').onclick=exportKeyPNG;
+  r5.lastChild.id='bkeyexp';
+  mkBtn(r5,'匯入遮罩','b low','讀返 alpha 做 matte（格內平均）').onclick=pickKeyPNG;
+  r5.lastChild.id='bkeyimp';
+  kr.appendChild(r5);
+  g1b.body.appendChild(kr);
   const khint=document.createElement('div');
-  khint.style.cssText='font-size:10.5px;opacity:.5;line-height:1.5;margin:-2px 0 8px';
-  khint.textContent='筆刷：撳住畫 · 滾輪或 [ ] 改大細 · Alt 或「減」= 擦 · Esc 退出　｜　'+
-                    '冇 matte 就淨用 hue gate';
+  khint.style.cssText='font-size:10.5px;opacity:.5;line-height:1.6;margin:0 0 8px';
+  khint.innerHTML='筆刷：撳住畫 · 滾輪或 [ ] 改大細 · Alt 或「減」= 擦 · Esc 退出<br>'+
+    '驗結果：顯示揀<b style="color:#9c9c9c">描邊</b>（唔遮畫面）· 撳實 <b style="color:#9c9c9c">X</b> 收遮罩 · '+
+    '<b style="color:#9c9c9c">K</b> bypass matte 再撳 <b style="color:#9c9c9c">V</b> wipe 對比<br>'+
+    '冇 matte 就淨用 hue gate';
   g1b.body.appendChild(khint);
   const lbn=document.createElement('label'); lbn.className='chk'; lbn.style.marginLeft='4px';
   lbn.innerHTML='<input type="checkbox" id="chrnr" checked> 色度降噪';
@@ -5281,6 +5504,7 @@ function switchShot(i){
   saveShotState();
   S.shotIdx=i;
   S.hover=-1; S.hold=false;              /* 換 shot 一定要清 hover，否則會 render 錯張 */
+  stopBlink();                           /* v25：blink 喺換 shot 時一定要停（否則對比緊唔同張圖） */
   const sh=S.shots[i];
   S.vendorImg=sh.img; S.vendorName=sh.name;
   S.vendorAn=sh.an;
@@ -5618,7 +5842,9 @@ function paint(){
   try{ if(typeof rgDrawOverlay==='function') rgDrawOverlay(); }catch(_rg){}
   /* 膚色 matte 預覽（畫喺最面：睇得清楚邊度會被保護）
      筆刷模式會強制顯示 —— 畫緊嗰陣一定要見到自己畫咗啲乜 */
-  try{ if(S.keyShow||S.keyMode==='brush') drawKeyOverlay(S.keyMode==='brush'); }catch(_ko){}
+  /* v25：撳實 `（睇原圖）或 X（淨收遮罩）→ 一定唔畫遮罩。
+     舊版連「睇原圖」都照畫層紅上去，根本睇唔到乾淨畫面。 */
+  try{ if(!S.keyHide && !S.hold && (S.keyShow||S.keyMode==='brush')) drawKeyOverlay(S.keyMode==='brush'); }catch(_ko){}
   applyZoom();          /* 每次重繪都要守住 zoom（轉 before/after 都唔好彈返適應） */
 }
 /* ---------- zoom / pan ----------
@@ -7045,6 +7271,15 @@ window.addEventListener('keydown',e=>{
     spaceDown=true; return;
   }
   if(!S.vendorImg) return;
+  /* v25：1/2/3 = 揀工具（淨喺 key 模式入面攔，否則照舊係揀第幾個 look） */
+  if(S.keyMode && (e.key==='1'||e.key==='2'||e.key==='3')){
+    const m=['brush','rect','wand'][+e.key-1];
+    setKeyMode(S.keyMode===m?null:m); e.preventDefault(); return;
+  }
+  /* A = 自動皮膚 · K = bypass matte（驗 grade 用）· 撳實 X = 收遮罩 */
+  if(e.key==='a'||e.key==='A'){ if(autoSkinMatte()){ S.pvKey++; S.pvCache.clear(); scheduleRender(); } e.preventDefault(); return; }
+  if(e.key==='k'||e.key==='K'){ setKeyBy(!S.keyBy); e.preventDefault(); return; }
+  if(e.key==='x'||e.key==='X'){ if(!S.keyHide){ S.keyHide=true; paint(); } e.preventDefault(); return; }
   if(e.key==='\\'){ toggleAB(); e.preventDefault(); return; }   /* \ = A/B 一鍵對比 */
   /* ~ = 全屏檢查（Premiere Pro 式）。Shift+` 同一粒掣：冇 Shift 係「撳實睇原圖」 */
   if(e.key==='~'||(e.code==='Backquote'&&e.shiftKey)){ toggleFs(); e.preventDefault(); return; }
@@ -7081,9 +7316,14 @@ window.addEventListener('keydown',e=>{
 });
 window.addEventListener('keyup',e=>{
   if(e.key==='`'){ S.hold=false; paint(); }
+  if(e.key==='x'||e.key==='X'){ if(S.keyHide){ S.keyHide=false; paint(); } }
   if(e.code==='Space'){ spaceDown=false; }
 });
-window.addEventListener('blur',()=>{ if(S.hold){ S.hold=false; paint(); } });
+window.addEventListener('blur',()=>{
+  if(S.hold){ S.hold=false; paint(); }
+  if(S.keyHide){ S.keyHide=false; paint(); }   /* v25：走咗焦一定要放手，否則遮罩會永久失蹤 */
+  stopBlink();
+});
 
 let toastT=null;
 function toast(msg){
