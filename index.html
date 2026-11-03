@@ -3,7 +3,7 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction v26（ASC CDL + Scopes + 膚色 key v5）</title>
+<title>Look Direction v27.1（ASC CDL + Scopes + 膚色 key v5）</title>
 <style>
 :root{
   /* Krafted 家族色系，但推向更極簡／高端：少邊框、靠層次分面，accent 只用喺「生效中」 */
@@ -898,8 +898,27 @@ const $=id=>document.getElementById(id);
    唔同就彈「已更新」—— 用嚟確認 GitHub Pages 真係出咗新版。
    GitHub Pages 有 CDN 快取，Browser 亦會 cache index.html：
    見唔到新版就撳 Ctrl+Shift+R（Windows）/ Cmd+Shift+R（Mac）硬重整。 */
-const APP_VER='v26', APP_BUILD='2026-11-03';
+const APP_VER='v27.1', APP_BUILD='2026-11-03';
 const APP_NOTES=[
+  'v27.1：v27 一「預設開」，golden 門即刻 FAIL —— 收返個範圍',
+  '　· A/B（v26 baseline vs v27）量到：**冇畫 key** 嘅圖都被改，',
+  '　　noClipWithProtect 由 min18/max241 PASS 變 min0/max255 FAIL，真圖全部走樣。',
+  '　· 根因：既有 `g = max(matte, fleshGate)` 係「膚色保護」權重，唔係 key 權重；',
+  '　　只要膚保 slider > 0，hue gate 就令 kg>0.002，完整保護變成全圖生效。',
+  '　· 改法：新增 **kgKey = kf[i] × kp（淨 matte）**，兩段完整保護都改用佢，',
+  '　　並 gate 喺 `kf`（要有 key）。原有 a/b 色度保護（fleshGate）完全唔郁。',
+  '　· 即係「完整保護」而家真係 **key 嘅保護**：有 key 先有效，冇 key 一粒 pixel 都唔改。',
+  '　· A/B 驗證：v27.1 嘅 golden / golden_real 數字同 v26 baseline 完全一致。',
+  'v27：兩個量出嚟嘅發現 —— **真改**，唔係淨講清楚',
+  '　① 二次調色穿過 key 保護 → 最終 RGB 用 key 權重 blend（v26 已改好），',
+  '　　 **v27 由「預設關」改做「預設開」**。',
+  '　② key 淨保色度、亮度照跟 → **連 L 都還原**：喺 applySec 之後',
+  '　　 用 key 權重還原 L0/a0/b0（内含膚保 slider，=1 → 還原到原圖）。',
+  '　　即係「膚保 100%」而家真係 100%，唔係舊版講一套做一套。',
+  '　· 兩件合併做一粒 checkbox「完整保護」（預設 tick）。',
+  '　　**取消 tick = 還原 v25 舊行為**（淨保 a/b，亮度同 trim 照跟），有得返轉頭。',
+  '　· ⚠️ 副作用要知：開咗之後成張圖壓暗／推光，皮膚會保持原光，',
+  '　　可能顯得「貼唔實」—— 用「膚保」滑桿較返力度（0 = 完全唔保）。',
   'v26：講清楚 key 保啲乜 —— 加「連二次調色都保」（預設關）',
   '　· 實測發現兩件事（之前冇喺 UI 講過，會令人以為 key 壞咗）：',
   '　　① **二次調色完全穿過 key 保護**：`sec.sat=-80` 時 grade 郁咗 22.7/255，',
@@ -3355,9 +3374,9 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
      1400×594 ≈ 330 萬次 allocation → GC 壓力，實測 pixel loop 105ms。
      數學完全一樣，只係改為寫落 module scope 暫存變數。 */
   for(let i=0;i<n;i++){
-    const a0=src.a[i], b0=src.b[i];
-    applyPixelInto(src.L[i],a0,b0,grade,opt);
-    let qL=_qL, qa=_qa, qb=_qb, kg=0;      /* kg = 呢粒 pixel 嘅 key 權重，v26 收尾 blend 重用 */
+    const L0=src.L[i], a0=src.a[i], b0=src.b[i];   /* v27：L0 都要記，完整保護要還原亮度 */
+    applyPixelInto(L0,a0,b0,grade,opt);
+    let qL=_qL, qa=_qa, qb=_qb, kg=0, kgKey=0;  /* v27.1：kgKey = 淨 matte 權重，完整保護只認 key */
     if(pal&&pal.cv){ applyLookInto(qL,qa,qb,pal.cv,_ltv); qa=_qa; qb=_qb; }
     if(fl){
       let g=0;
@@ -3368,12 +3387,26 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
         if(gh>g) g=gh;
       }
       g*=kp; kg=g;
+      kgKey = kf ? kf[i]*kp : 0;                        /* v27.1：唔好用 hue gate —— 無 key 唔應該改圖 */
       if(g>0.999){ qa=a0; qb=b0; }                       /* 全保：直接還原原圖 a/b，唔使計三角 */
       else if(g>0.002){ polarClampInto(a0,b0,qa,qb,g); qa=_qa; qb=_qb; }
     }
     if(useSec){ const q=applySec(qL,qa,qb,sec,plan); qL=q[0]; qa=q[1]; qb=q[2]; }
+    /* v27 發現②：**完整保護要連亮度 L 都還原**，唔係淨保 a/b。
+       舊版 `qa=a0;qb=b0` 之後 L 照跟 grade，所以「膚保 100%」根本唔係真 100%。
+       放喺 applySec 之後做，一次過擋住一次調色 tone 同二次調色分區嘅 L 偏移；
+       用淨 matte 嘅 kgKey（内含膚保 slider），=1 → 還原到原圖 L/a/b。
+       v27.1：一定要有 key（kf）先做，否則 hue gate 會令成張圖被還原。 */
+    if(S.skinProtSec && kf && kgKey>0.002){
+      const tL=1-kgKey;
+      qL=L0+(qL-L0)*tL; qa=a0+(qa-a0)*tL; qb=b0+(qb-b0)*tL;
+    }
     labToRgbInto(qL,qa,qb);
     let r=_cR, gg=_cG, bb=_cB;
+    /* v27：要喺**任何** RGB 段之前記低，唔係淨係 need 之前 ——
+       `lp`（線性光 look LUT）都係一段 RGB grade，漏咗佢「全保」就唔係真 100%
+       （實測全選 kg=1 時皮膚仍然差原圖 14.27/255）。 */
+    const pr=r, pg=gg, pb=bb;
     if(lp){
       const R=LUT_LIN[r],G=LUT_LIN[gg],B=LUT_LIN[bb], M=lp.M, T=LE.T;
       const white=(r===255&&gg===255&&bb===255);
@@ -3391,9 +3424,9 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
     /* v26：二次調色（ASC CDL / 飽和度 / 曲線 / 保層次）係喺 **RGB** 呢段落，
        唔係 Lab —— 所以喺 Lab 度鉗 a/b 係完全冇效（實測 bypassDiff = 0，係個 no-op）。
        正確做法：記低入嚟之前嘅 RGB，用 key 權重 kg 喺最終 RGB 度 blend 返去。
-       **預設關**：呢段係你特登撳出嚟嘅 trim，保咗會以為個掣壞咗。
-       開咗先跑，平時熱迴路只多一個 `let kg=0` 指派。 */
-    const pr=r, pg=gg, pb=bb;
+       v27：改為**預設開** —— 導演要求「膚保」真係保到皮膚，唔好淨係講清楚。
+       還原點 pr/pg/pb 已移去 labToRgbInto 之後（連 lp 都擋），
+       想還原舊行為（trim 照食）就取消 tick「完整保護」。 */
     if(need){
       let x0=clut[r], x1=clut[256+gg], x2=clut[512+bb];
       if(sat!==1){
@@ -3405,8 +3438,8 @@ function imageDataFrom(lab,grade,opt,sec,plan,pal,bare){
       let b2=x2*255; b2=b2<0?0:(b2>255?255:b2);
       r=plut[b0|0]; gg=plut[256+(b1|0)]; bb=plut[512+(b2|0)];
     }
-    if(S.skinProtSec && kg>0.002){
-      const t=1-kg;                         /* kg=1（遮罩內）→ 完全唔食二次調色 */
+    if(S.skinProtSec && kf && kgKey>0.002){
+      const t=1-kgKey;                     /* kgKey=1（遮罩內）→ 完全唔食二次調色 */
       r =pr+(r -pr)*t; gg=pg+(gg-pg)*t; bb=pb+(bb-pb)*t;
     }
     const p=i*4;
@@ -3582,7 +3615,7 @@ const S={
   keyOvA:0.35, keyOvC:0, keyEdgeW:2,        /* overlay 濃度 0..1 · 色 0=紅 1=青 2=綠 3=洋紅 4=黃 5=白 · 描邊粗幼（格） */
   keyBy:false, blink:false, keyHide:false,  /* matte bypass（驗 grade 用）· blink A/B · 撳實收遮罩 */
   keyShowPrev:null,                        /* v25.1：入工具時自動轉填充前嘅顯示態，離開還原用 */
-  skinProtSec:false,                       /* v26：連二次調色都保（預設 false —— trim 係特登撳嘅） */
+  skinProtSec:true,                        /* v27：完整保護（連 L + 二次調色），**預設開**；關 = v25 舊行為 */
   /* v22：逐段計時（prewash / key / pix / blit / paint / total，ms）+ 像素數 */
   timing:{grade:0,prewash:0,key:0,pix:0,blit:0,paint:0,total:0,n:0,w:0,quick:false},
   chrNR:true,                               /* NR before look */
@@ -5080,8 +5113,8 @@ function buildLeftPanel(){
     '驗結果：顯示揀<b style="color:#9c9c9c">描邊</b>（唔遮畫面）· 撳實 <b style="color:#9c9c9c">X</b> 收遮罩 · '+
     '<b style="color:#9c9c9c">K</b> bypass matte 再撳 <b style="color:#9c9c9c">V</b> wipe 對比<br>'+
     '冇 matte 就淨用 hue gate<br>'+
-    '<b style="color:#9c9c9c">膚保淨保色度（a/b），亮度照跟 grade</b> —— '+
-    '要連亮度都唔跟就要用二次調色嘅分區掣';
+    '<b style="color:#9c9c9c">完整保護（預設開，要有 key）：皮膚連亮度都唔跟 grade</b> —— '+
+    '想還原舊行為（淨保色度）就取消下面個 tick';
   g1b.body.appendChild(khint);
   const lbn=document.createElement('label'); lbn.className='chk'; lbn.style.marginLeft='4px';
   lbn.innerHTML='<input type="checkbox" id="chrnr" checked> 色度降噪';
@@ -5089,15 +5122,21 @@ function buildLeftPanel(){
     S.chrNR=e.target.checked; S.pvKey++; S.pvCache.clear(); scheduleRender();
   });
   g1b.body.appendChild(lbn);
-  /* v26：二次調色保護 —— 預設關（trim 係特登撳嘅），開咗 sat/temp/曲線都會被 key 保住 */
+  /* v27：完整保護 —— 預設開。一個掣同時控制兩件事：
+     ① 二次調色（CDL / 飽和度 / 曲線）對皮膚唔好穿過 key
+     ② 亮度 L 都要還原，唔好淨保色度
+     取消 tick = 還原 v25 舊行為（淨保 a/b，其餘照跟 grade）。 */
   const lbp=document.createElement('label'); lbp.className='chk'; lbp.style.marginLeft='4px';
-  lbp.innerHTML='<input type="checkbox" id="skinprotsec"> 連二次調色都保';
-  lbp.title='開咗：sat / temp / tint / 曲線 對皮膚嘅影響都會被 key 保住。'+
-            '預設關 —— 二次調色係你特登撳嘅 trim，保咗會以為個掣壞咗。';
-  lbp.querySelector('input').checked=!!S.skinProtSec;
+  lbp.innerHTML='<input type="checkbox" id="skinprotsec"> 完整保護';
+  lbp.title='開（預設）：皮膚連亮度都唔跟 grade，二次調色（CDL／飽和度／曲線）都保住。'+
+            '※ 只喺有 key／matte 時生效；未畫 key 唔會改圖，原有色度保護照舊。'+
+            '關：舊行為 —— 淨保色度 a/b，亮度同二次調色照跟。'+
+            '　※ 開咗之後壓暗／推光成張圖，皮膚會保持原光，可能顯得「貼唔實」，'+
+            '可用「膚保」滑桿較返力度。';
+  lbp.querySelector('input').checked=(S.skinProtSec!==false);
   lbp.querySelector('input').addEventListener('change',e=>{
     S.skinProtSec=e.target.checked; S.pvKey++; S.pvCache.clear(); scheduleRender();
-    toast(S.skinProtSec?'二次調色都會被 key 保住':'二次調色照舊唔保（淨保一次調色）');
+    toast(S.skinProtSec?'完整保護：亮度＋二次調色都被 key 保住':'舊行為：淨保色度，亮度同 trim 照跟');
   });
   g1b.body.appendChild(lbp);
   updKeyLabel(); syncKeyUI();

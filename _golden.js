@@ -54,7 +54,8 @@ const FILE='C:/Users/kincheung/WorkBuddy/2026-10-21-01-48-56/look-direction/gold
     const withSec=async(o)=>{ for(const k in o) S.sec[k]=o[k];
       S.pvKey++; S.pvCache.clear(); P.render(false); await sleep(80); return stats(); };
 
-    const out={ver:(window.ldKey&&document.title.match(/v\d+/))?document.title.match(/v\d+/)[0]:'?', frames:{}};
+    /* v27.1：直接用 APP_VER，唔好用 title 嘅 /v\d+/ —— 會將 v27.1 截做 v27 */
+    const out={ver:(typeof APP_VER!=='undefined')?APP_VER:'?', frames:{}};
     for(const kind of ['dark','bright','warm']){
       const c=frame(kind);
       /* addShot 需要 img-like；canvas 可以直接畀 */

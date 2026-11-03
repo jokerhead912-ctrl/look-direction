@@ -1,5 +1,5 @@
 /* v26：key 保啲乜 —— 「連二次調色都保」。
-   T21 預設（關）：二次調色完全穿過保護 → bypassDiff 必須 ≈ 0（= v25.2 行為）
+   T21 顯式關（v27 起預設開，所以呢度要自己 set false）：二次調色完全穿過保護 → bypassDiff 必須 ≈ 0
    T22 開咗：二次調色要被保住 → bypassDiff 必須大
    T23 開咗都淨影響皮膚：遮罩**外面**唔可以變
    T24 預設關時新 code 完全唔跑：false→true→false 之後全圖 checksum 必須一樣
