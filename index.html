@@ -3,7 +3,7 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction v24（ASC CDL + Scopes + 膚色 key v5）</title>
+<title>Look Direction v24.1（ASC CDL + Scopes + 膚色 key v5）</title>
 <style>
 :root{
   /* Krafted 家族色系，但推向更極簡／高端：少邊框、靠層次分面，accent 只用喺「生效中」 */
@@ -869,8 +869,12 @@ const $=id=>document.getElementById(id);
    唔同就彈「已更新」—— 用嚟確認 GitHub Pages 真係出咗新版。
    GitHub Pages 有 CDN 快取，Browser 亦會 cache index.html：
    見唔到新版就撳 Ctrl+Shift+R（Windows）/ Cmd+Shift+R（Mac）硬重整。 */
-const APP_VER='v24', APP_BUILD='2026-11-01';
+const APP_VER='v24.1', APP_BUILD='2026-11-03';
 const APP_NOTES=[
+  'v24.1：搵得到膚色 key v5 —— 左欄嗰個 group 改名',
+  '　· 舊名「方向預覽 DIRECTIONS」完全冇提 key，加埋預設收埋 → 搵唔到 v5。',
+  '　· 改叫「方向預覽 · 膚色 key」。撳開呢個 group 就見到全部掣：',
+  '　　筆刷／拖框／魔術棒／自動／全選／增長／收縮／反相／復原／清／套全部／追蹤／遮罩／匯出遮罩',
   'v24：key 跨 shot 追蹤（template match on 膚色色度）+ 逐 shot 記／套全部',
   '　· 「追蹤」掣：喺目標 shot 搵返呢嚿皮膚去咗邊，按位移＋縮放搬 matte 過去',
   '　· 配對訊號用**色度**（skinChroma）唔係亮度 —— 換 grade／曝光 L 會變、',
@@ -4605,8 +4609,11 @@ function buildLeftPanel(){
   g1.body.appendChild(optWrap);
   g1.secKeys=['chromaStr','toneStr'];
 
-  /* --- 方向注入 --- */
-  const g1b=mkGroup(box,'palette','方向預覽 DIRECTIONS',false);
+  /* --- 方向注入 ---
+     呢個 group 入面仲有【膚色 key v5】（筆刷／拖框／自動／魔術棒／羽化／遮罩），
+     但個名淨係叫「方向預覽」+ 預設收埋 —— 用家報「搵唔到膚色 key v5」。
+     所以個名要寫埋出嚟，等佢一眼搵到。 */
+  const g1b=mkGroup(box,'palette','方向預覽 · 膚色 key',false);
   const vseg=document.createElement('div'); vseg.className='palseg'; vseg.id='palview';
   [['wall','方向牆'],['sw','色板']].forEach(([v,lb])=>{
     const b=document.createElement('button'); b.type='button'; b.dataset.v=v; b.textContent=lb;
