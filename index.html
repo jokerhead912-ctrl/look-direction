@@ -3,7 +3,7 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction v28（ASC CDL + Scopes + 膚色 key v5）</title>
+<title>Look Direction v29（ASC CDL + Scopes + 膚色 key v5）</title>
 <style>
 :root{
   /* Krafted 家族色系，但推向更極簡／高端：少邊框、靠層次分面，accent 只用喺「生效中」 */
@@ -537,6 +537,13 @@ button.b.pri:hover{filter:brightness(1.08);color:#10121c;background:var(--acc)}
 /* v28：主掣入面嘅副標／進度（.menu button em 唔會套用到 toolbar 掣） */
 button.b em{font-style:normal;font-size:10px;opacity:.62;font-family:var(--mono);margin-left:5px;letter-spacing:0}
 button.b.pri em{opacity:.7}
+/* v29：自動儲存還原提示條 */
+.restorebar{position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:400;
+  background:var(--panel3);border:1px solid var(--acc-line);border-top:0;
+  border-radius:0 0 var(--r) var(--r);padding:9px 14px;display:flex;align-items:center;gap:11px;
+  font-size:12.5px;color:var(--tx);box-shadow:0 10px 30px rgba(0,0,0,.6)}
+.restorebar[hidden]{display:none}
+.restorebar #rbinfo{color:var(--tx2)}
 button.b:disabled{opacity:.3;cursor:not-allowed}
 button.b:disabled:hover{border-color:var(--line);color:var(--tx2);background:var(--panel2)}
 button.b.sm{padding:3px 8px;font-size:12px}
@@ -751,6 +758,12 @@ textarea{
         <div class="warnflat" id="warnflat" hidden></div>
         <div id="veil">放低就加入 reference</div>
         <div class="toast" id="toast"></div>
+        <div class="restorebar" id="restorebar" hidden>
+          <span id="rbinfo"></span>
+          <button class="b sm" id="rbyes" type="button">還原</button>
+          <button class="b sm" id="rbno" type="button">丟棄</button>
+        </div>
+        <input type="file" id="projfile" accept=".ldproj,.zip,.json" hidden>
         <div class="pip bl" id="pip" hidden>
           <canvas id="pipcv" width="206" height="136"></canvas>
           <div class="pipbar"><span id="pipnm">目標</span><button type="button" id="pipx" title="收起（R）" aria-label="收起目標圖">×</button></div>
@@ -788,6 +801,8 @@ textarea{
         <button class="b" id="b-reset" type="button" title="全部微調歸零">↺ 微調</button>
         <button class="b icon" id="b-lookexp" type="button" title="匯出自訂 LOOK（.json，搬去第部機用）">⇩</button>
         <button class="b icon" id="b-lookimp" type="button" title="匯入自訂 LOOK（.json）">⇧</button>
+        <button class="b" id="b-projsave" type="button" title="儲存專案 .ldproj：所有設定 + 全部來稿／參考圖原檔 + 每張 grade 同膚色 key，一個檔搬去第部機（Ctrl/⌘+S）">💾 儲存專案</button>
+        <button class="b" id="b-projopen" type="button" title="開啟 .ldproj 專案檔，還原所有來稿同設定">📂 開啟</button>
         <span class="hspacer"></span>
         <button class="b" id="b-side2" type="button">抄對比圖</button>
         <button class="b" id="b-expall" type="button" title="淨係呢張：一次過出齊 .cube + .cdl + PNG + 方向紙，同一個檔名">導出全套<em>呢張</em></button>
@@ -808,6 +823,7 @@ textarea{
             <button type="button" id="b-cdl">ASC CDL<em>.cdl</em></button>
             <button type="button" id="b-sheet">方向紙<em>.png</em></button>
             <button type="button" id="b-summary" title="一個 HTML 內嵌晒所有 retouch PNG + 摘要，最易 send 俾人（檔會較大）">摘要頁（單檔全包）<em>.html</em></button>
+            <button type="button" id="b-projnew" title="清空所有來稿／參考圖／設定並刪走自動儲存（要撳兩次確認）">新專案（清空）<em>兩次確認</em></button>
           </div>
         </div>
       </div>
@@ -903,8 +919,18 @@ const $=id=>document.getElementById(id);
    唔同就彈「已更新」—— 用嚟確認 GitHub Pages 真係出咗新版。
    GitHub Pages 有 CDN 快取，Browser 亦會 cache index.html：
    見唔到新版就撳 Ctrl+Shift+R（Windows）/ Cmd+Shift+R（Mac）硬重整。 */
-const APP_VER='v28', APP_BUILD='2026-11-09';
+const APP_VER='v29', APP_BUILD='2026-11-09';
 const APP_NOTES=[
+  'v29：儲存專案 —— 設定 + 所有新舊來稿，一次過留住（參考 Krafted）',
+  '　· 導演：「add the save function, save the project setting and all new old image, you can ref krafted」。',
+  '　· 新增「💾 儲存專案」（Ctrl/⌘+S）→ **.ldproj**：ZIP 入面 `project.json` + `media/` 原始圖檔，',
+  '　　包晒所有來稿／參考圖、每張自己嘅 grade state、膚色 key（存做 8-bit alpha PNG）、',
+  '　　自訂 LOOK、同全部 UI 設定。用返 v28 自寫 ZIP，冇 base64 膨脹、冇加外部庫。',
+  '　· 「📂 開啟」還原；load 自動偵測 ZIP / 舊純 JSON 檔（Krafted 式向後兼容）。',
+  '　· **自動儲存**：debounce 1.5s 寫入 IndexedDB（localStorage 5MB 裝唔落原圖）；',
+  '　　開返 app 會出提示條「上次工作 N 張」比你揀還原／丟棄，**唔會無端端覆蓋**你而家嘅嘢。',
+  '　· 入稿時留低原檔 File bytes → 存檔唔重新編碼、唔失真；paste／網址圖 fallback 無損 PNG。',
+  '　· 「新專案（清空）」喺導出選單，要撳兩次確認；`?fresh` 可跳過自動儲存提示。',
   'v28：全部導出 + 摘要頁 —— 唔使再逐張撳',
   '　· 導演：「many photo … export one by one very slow … can summary … ',
   '　　 the export html need to add to download the retouch png too」。',
@@ -5585,8 +5611,8 @@ function handleFile(file,where){
   const url=URL.createObjectURL(file);
   const im=new Image();
   im.onload=()=>{
-    if(where==='ref') addRef(im,file.name);
-    else              addShot(im,file.name);
+    if(where==='ref') addRef(im,file.name,file);
+    else              addShot(im,file.name,{blob:file});   /* v29：留低原檔 bytes 做專案儲存 */
     URL.revokeObjectURL(url);
   };
   im.onerror=()=>{ toast('讀唔到呢張圖'); URL.revokeObjectURL(url); };
@@ -5610,12 +5636,16 @@ function slimAn(an){
 function shortName(name,fallback){
   return (name||fallback).replace(/\.[^.]+$/,'');
 }
-function addShot(img,name){
+function addShot(img,name,opts){
+  /* v29 opts：blob=原始 File（存專案時直接寫原檔 bytes，唔重新編碼）；
+       noSwitch / st = 還原專案用，唔好逐張彈去嗰張圖 */
   const q=fitSize(img,620,420);
   S.shots.push({name:shortName(name,'shot '+(S.shots.length+1)), img,
                 an:slimAn(analyze(drawTo(img,700,700))),
                 labQuick:labOf(drawTo(img,q.w,q.h)),
-                st:null});          /* st=null：第一次切過去先用預設值 */
+                st:(opts&&opts.st)||null,
+                blob:(opts&&opts.blob)||null, bytes:null});
+  if(opts&&opts.noSwitch) return;
   renderShots();
   switchShot(S.shots.length-1);
   toast('加咗「'+S.shots[S.shots.length-1].name+'」');
@@ -5734,7 +5764,8 @@ function replaceShot(file){
     S.vendorLabFull =labOf(drawTo(im,f.w,f.h));
     S.vendorOrig    =imgToCanvas(im,f.w,f.h);
     resetKeyMatte();                       /* v5：換稿 → 舊 matte 唔留 */
-    if(sh){ sh.img=im; sh.name=name; sh.an=an; sh.labQuick=S.vendorLabQuick; sh.st=null; }
+    if(sh){ sh.img=im; sh.name=name; sh.an=an; sh.labQuick=S.vendorLabQuick; sh.st=null;
+            sh.blob=file; sh.bytes=null; }   /* v29：換圖要換埋原檔 bytes */
     URL.revokeObjectURL(url);
     S.pvKey++; S.pvCache.clear();
     renderShots();
@@ -5793,10 +5824,11 @@ function renderShots(){
     ? n+' 張 · 撳就跳過去 · 每張記住自己套設定（而家第 '+(S.shotIdx+1)+' 張）· ⌘V/Ctrl+V 跟滑鼠落位'
     : '拖幾多張都得 · 逐張撳 · 每張記住自己套設定 · ⌘V/Ctrl+V 跟滑鼠落位';
 }
-function addRef(img,name){
+function addRef(img,name,blob){
   S.refs.push({kind:'image',
     name:shortName(name,'ref '+(S.refs.length+1)),
-    img, an:slimAn(analyze(drawTo(img,700,700)))});
+    img, an:slimAn(analyze(drawTo(img,700,700))),
+    blob:blob||null, bytes:null});   /* v29：原檔 bytes 做專案儲存 */
   renderRefs();
   setActive(PRESETS.length+S.refs.length-1);
   toast('加咗「'+S.refs[S.refs.length-1].name+'」');
@@ -5979,6 +6011,8 @@ function render(quick){
   if(!quick) updateFlatWarn();
   updateABBadge();   /* v11：A/B badge 要跟住有冇圖 + locked 狀態 */
   $('cstat').textContent=(quick?'預覽':'全解')+' · '+(performance.now()-t0).toFixed(0)+'ms';
+  /* v29：任何 render 都排一次 autosave（debounce 1.5s，冇來稿就唔寫） */
+  if(typeof scheduleAutoSave==='function'){ try{ scheduleAutoSave(); }catch(_){} }
 }
 function drawFit(c2d,img,x,y,w,h){
   if(!img||!img.width) return;
@@ -7335,6 +7369,367 @@ async function exportAllShots(mode){
 }
 $('b-expallshots').onclick=()=>exportAllShots('zip');
 $('b-summary').onclick=()=>exportAllShots('html');
+
+/* ============================================================
+   12c. v29 專案儲存 / 開啟 / 自動儲存
+   參考 Krafted：序列化完整 board + debounce autosave + .kpak ZIP
+   （manifest.json + media/ 原始檔，避免 base64 膨脹）+ load 自動偵測格式。
+   呢度用返 v28 自己寫嘅 makeZip，補一個 store-only reader。
+   .ldproj = ZIP：project.json + media/shot_XX + media/ref_XX + media/key_XX
+   ============================================================ */
+const PROJ_DB='ld-autosave', PROJ_STORE='kv', PROJ_KEY='current';
+let _restoring=false, _asTimer=null, _asBusy=false;
+
+function idbOpen(){
+  return new Promise((res,rej)=>{
+    let r; try{ r=indexedDB.open(PROJ_DB,1); }catch(e){ rej(e); return; }
+    r.onupgradeneeded=()=>{ try{ r.result.createObjectStore(PROJ_STORE); }catch(_){} };
+    r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error||new Error('idb'));
+  });
+}
+async function idbPut(v){
+  const db=await idbOpen();
+  return new Promise((res,rej)=>{
+    const t=db.transaction(PROJ_STORE,'readwrite');
+    t.objectStore(PROJ_STORE).put(v,PROJ_KEY);
+    t.oncomplete=()=>{ db.close(); res(true); };
+    t.onerror=()=>{ db.close(); rej(t.error); };
+  });
+}
+async function idbGet(){
+  const db=await idbOpen();
+  return new Promise(res=>{
+    const t=db.transaction(PROJ_STORE,'readonly');
+    const q=t.objectStore(PROJ_STORE).get(PROJ_KEY);
+    q.onsuccess=()=>res(q.result||null); q.onerror=()=>res(null);
+    t.oncomplete=()=>db.close(); t.onerror=()=>db.close();
+  });
+}
+async function idbDel(){
+  try{
+    const db=await idbOpen();
+    await new Promise(res=>{
+      const t=db.transaction(PROJ_STORE,'readwrite');
+      t.objectStore(PROJ_STORE).delete(PROJ_KEY);
+      t.oncomplete=()=>{ db.close(); res(); }; t.onerror=()=>{ db.close(); res(); };
+    });
+  }catch(_){}
+}
+function loadImgBytes(u8){
+  return new Promise((res,rej)=>{
+    const u=URL.createObjectURL(new Blob([u8]));
+    const im=new Image();
+    im.onload=()=>{ URL.revokeObjectURL(u); res(im); };
+    im.onerror=()=>{ URL.revokeObjectURL(u); rej(new Error('解唔到圖')); };
+    im.src=u;
+  });
+}
+function b64ToBytes(s){
+  const b=atob(s), u=new Uint8Array(b.length);
+  for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i);
+  return u;
+}
+/* 圖片 bytes：優先用入稿時留低嘅原檔 File（唔重新編碼、唔失真）；
+   paste / 網址抓返嚟冇 File 就用 canvas export 做無損 PNG，並 cache 起。*/
+async function imgBytesOf(o){
+  if(o.bytes) return o.bytes;
+  let u8;
+  if(o.blob&&o.blob.arrayBuffer) u8=new Uint8Array(await o.blob.arrayBuffer());
+  else{
+    const im=o.img, c=imgToCanvas(im,im.width,im.height);
+    const b=await new Promise(r=>c.toBlob(r,'image/png'));
+    u8=new Uint8Array(await b.arrayBuffer());
+  }
+  o.bytes=u8; return u8;
+}
+/* 膚色 key 係 512 格 Float32Array —— 直接落 JSON 會變幾十萬個 key。
+   存做 8-bit alpha PNG（soft matte 精度足夠），壓完多數得幾 KB。*/
+async function mattePNG(k){
+  const c=document.createElement('canvas'); c.width=k.w; c.height=k.h;
+  const x=c.getContext('2d'), d=x.createImageData(k.w,k.h);
+  const m=k.m;
+  for(let i=0;i<m.length;i++){
+    const v=Math.round(clamp(m[i],0,1)*255);
+    d.data[i*4]=255; d.data[i*4+1]=255; d.data[i*4+2]=255; d.data[i*4+3]=v;
+  }
+  x.putImageData(d,0,0);
+  const b=await new Promise(r=>c.toBlob(r,'image/png'));
+  return new Uint8Array(await b.arrayBuffer());
+}
+async function pngToMatte(u8){
+  const im=await loadImgBytes(u8);
+  const c=document.createElement('canvas'); c.width=im.width; c.height=im.height;
+  const x=c.getContext('2d'); x.drawImage(im,0,0);
+  const d=x.getImageData(0,0,c.width,c.height).data;
+  const m=new Float32Array(c.width*c.height);
+  for(let i=0;i<m.length;i++) m[i]=d[i*4+3]/255;
+  return {w:c.width,h:c.height,m};
+}
+function packShotState(st,keyFile){
+  if(!st) return null;
+  return {
+    active:st.active, chromaStr:st.chromaStr, toneStr:st.toneStr,
+    bands:(st.bands||[true,true,true]).slice(),
+    tone:!!st.tone, skin:!!st.skin, protect:!!st.protect,
+    sec:normSec(st.sec),
+    keyFile:(st.key&&st.key.m&&st.key.m.length)?keyFile:null
+  };
+}
+function unpackShotState(o,key){
+  if(!o) return null;
+  return {
+    active:o.active|0, chromaStr:+o.chromaStr||0, toneStr:+o.toneStr||0,
+    bands:o.bands||[true,true,true],
+    tone:!!o.tone, skin:!!o.skin, protect:!!o.protect,
+    sec:normSec(o.sec), key:key||null
+  };
+}
+function projectSettings(){
+  return {
+    shotIdx:S.shotIdx, active:S.active, mode:S.mode, split:S.split, zoom:S.zoom,
+    chromaStr:S.chromaStr, toneStr:S.toneStr, sec:normSec(S.sec),
+    skinProt:S.skinProt, skinProtSec:S.skinProtSec, chrNR:S.chrNR,
+    keyShow:S.keyShow, keyOvA:S.keyOvA, keyOvC:S.keyOvC, keyEdgeW:S.keyEdgeW,
+    keyFeath:S.keyFeath, wandTol:S.wandTol, brushR:S.brushR, brushHard:S.brushHard,
+    keyBy:S.keyBy, keyHide:S.keyHide, keyMode:S.keyMode,
+    toneMode:S.toneMode, curCh:S.curCh, scopeMode:S.scopeMode, scopeFold:S.scopeFold,
+    palView:S.palView, palSel:S.palSel, palWallMode:S.palWallMode, dirQ:S.dirQ,
+    dockFold:JSON.parse(JSON.stringify(S.dockFold)),
+    pipOn:S.pipOn, pipCorner:S.pipCorner, focus:S.focus,
+    tileSize:S.tileSize, hslSel:S.hslSel,
+    expName:($('expname')&&$('expname').value)||''
+  };
+}
+/* 一個 project 拆做一組 {name,data:Uint8Array}，Save / autosave 共用 */
+async function buildProjectFiles(){
+  const enc=new TextEncoder(), pad=n=>String(n).padStart(2,'0');
+  const files=[], refs=[], shots=[];
+  for(let i=0;i<S.refs.length;i++){
+    const r=S.refs[i], fn='media/ref_'+pad(i)+'.png';
+    files.push({name:fn,data:await imgBytesOf(r)});
+    refs.push({name:r.name,file:fn});
+  }
+  for(let i=0;i<S.shots.length;i++){
+    const sh=S.shots[i], fn='media/shot_'+pad(i)+'.png';
+    files.push({name:fn,data:await imgBytesOf(sh)});
+    /* 當前 shot 可能未 saveShotState（啱啱拖完桿）—— 一定要即場抓 */
+    const st=(S.shotIdx===i)?shotState():sh.st;
+    let keyFile=null;
+    if(st&&st.key&&st.key.m&&st.key.m.length){
+      keyFile='media/key_'+pad(i)+'.png';
+      files.push({name:keyFile,data:await mattePNG(st.key)});
+    }
+    shots.push({name:sh.name,file:fn,w:sh.img.width,h:sh.img.height,
+                st:packShotState(st,keyFile)});
+  }
+  const proj={_ldVersion:1,app:'look-direction',ver:APP_VER,
+              savedAt:new Date().toISOString(),
+              settings:projectSettings(),
+              customs:S.customs.map(c=>Object.assign({},c,{sec:normSec(c.sec)})),
+              refs,shots};
+  files.unshift({name:'project.json',data:enc.encode(JSON.stringify(proj,null,1))});
+  return files;
+}
+/* store-only ZIP reader（自己生成嘅 .ldproj 全部 method=0）；
+   撞到 deflate 就報清楚，唔好靜靜食咗。*/
+async function unzipStore(blob){
+  const u=new Uint8Array(await blob.arrayBuffer()), dv=new DataView(u.buffer);
+  let e=-1;
+  for(let i=u.length-22;i>=Math.max(0,u.length-65557);i--){
+    if(dv.getUint32(i,true)===0x06054b50){ e=i; break; }
+  }
+  if(e<0) throw new Error('唔係 ZIP（冇 EOCD）');
+  const cnt=dv.getUint16(e+10,true);
+  let p=dv.getUint32(e+16,true);
+  const out={};
+  const dec=new TextDecoder();
+  for(let k=0;k<cnt;k++){
+    if(dv.getUint32(p,true)!==0x02014b50) throw new Error('central directory 壞咗');
+    const method=dv.getUint16(p+10,true), csz=dv.getUint32(p+20,true);
+    const fl=dv.getUint16(p+28,true), el=dv.getUint16(p+30,true), cl=dv.getUint16(p+32,true);
+    const lo=dv.getUint32(p+42,true);
+    const name=dec.decode(u.subarray(p+46,p+46+fl));
+    if(method!==0) throw new Error('呢個 ZIP 用咗壓縮（'+name+'），.ldproj 應該係 store-only');
+    const lfl=dv.getUint16(lo+26,true), lel=dv.getUint16(lo+28,true);
+    const start=lo+30+lfl+lel;
+    out[name]=u.subarray(start,start+csz);
+    p+=46+fl+el+cl;
+  }
+  return out;
+}
+function filesToMap(files){
+  const m={};
+  for(const f of files) m[f.name]=f.data;
+  return m;
+}
+async function restoreFromMap(media){
+  const pj=media['project.json'];
+  if(!pj) throw new Error('欠 project.json');
+  const proj=JSON.parse(new TextDecoder().decode(pj));
+  if(proj.app!=='look-direction') throw new Error('唔係 Look Direction 專案檔');
+  await restoreProject(proj,media);
+  return proj;
+}
+async function restoreProject(proj,media){
+  _restoring=true;
+  try{
+    const st=proj.settings||{};
+    /* 1) 自訂 LOOK */
+    S.customs=(proj.customs||[]).filter(validCustom)
+      .map(c=>Object.assign({},c,{sec:normSec(c.sec)}));
+    persistCustoms();
+    /* 2) 參考圖 */
+    S.refs=[];
+    for(const r of (proj.refs||[])){
+      const u=media[r.file]; if(!u) continue;
+      const im=await loadImgBytes(u);
+      addRef(im,r.name);
+      S.refs[S.refs.length-1].bytes=u;
+    }
+    /* 3) 來稿（連每張自己嘅 grade state + 膚色 key）*/
+    S.shots=[]; S.shotIdx=-1;
+    for(const s of (proj.shots||[])){
+      const u=media[s.file]; if(!u) continue;
+      const im=await loadImgBytes(u);
+      let key=null;
+      if(s.st&&s.st.keyFile&&media[s.st.keyFile]) key=await pngToMatte(media[s.st.keyFile]);
+      addShot(im,s.name,{noSwitch:true,st:unpackShotState(s.st,key)});
+      const sh=S.shots[S.shots.length-1];
+      if(sh){ sh.name=s.name; sh.bytes=u; sh.blob=new Blob([u]); }
+    }
+    /* 4) 全域設定 */
+    const num=(k,d)=>(st[k]==null?d:st[k]);
+    S.mode=num('mode','single'); S.split=num('split',0.5); S.zoom=num('zoom',0);
+    S.chromaStr=num('chromaStr',70); S.toneStr=num('toneStr',45);
+    S.sec=normSec(st.sec);
+    S.skinProt=num('skinProt',100); S.skinProtSec=st.skinProtSec!==false;
+    S.chrNR=st.chrNR!==false;
+    S.keyShow=num('keyShow',1); S.keyOvA=num('keyOvA',0.35);
+    S.keyOvC=num('keyOvC',0); S.keyEdgeW=num('keyEdgeW',2);
+    S.keyFeath=num('keyFeath',6); S.wandTol=num('wandTol',10);
+    S.brushR=num('brushR',48); S.brushHard=num('brushHard',0.55);
+    S.keyBy=!!st.keyBy; S.keyHide=!!st.keyHide; S.keyMode=st.keyMode||null;
+    S.toneMode=num('toneMode','spl'); S.curCh=num('curCh','Y');
+    S.scopeMode=num('scopeMode','hist'); S.scopeFold=!!st.scopeFold;
+    S.palView=num('palView','wall'); S.palSel=num('palSel','mid');
+    S.palWallMode=num('palWallMode','color'); S.dirQ=num('dirQ','');
+    if(st.dockFold) S.dockFold=Object.assign({},S.dockFold,st.dockFold);
+    S.pipOn=st.pipOn!==false; S.pipCorner=num('pipCorner','bl');
+    S.focus=!!st.focus; document.body.classList.toggle('focus',S.focus);
+    S.tileSize=num('tileSize','M'); S.hslSel=num('hslSel','orange');
+    if(st.expName&&$('expname')) $('expname').value=st.expName;
+    const cn=$('chrnr'); if(cn) cn.checked=S.chrNR;
+    const sp=$('skinprotsec'); if(sp) sp.checked=S.skinProtSec;
+    if(SLIDERS.skinProt) SLIDERS.skinProt.set(S.skinProt);
+    /* 5) sync UI + 跳去原本嗰張 */
+    renderShots(); renderRefs(); renderPresets();
+    if(typeof syncKeyUI==='function') syncKeyUI();
+    if(typeof refreshPalUI==='function') refreshPalUI();
+    if(typeof drawAllWheels==='function') drawAllWheels();
+    S.active=Math.min(Math.max(0,num('active',0)),Math.max(0,itemCount()-1));
+    if(S.shots.length){
+      S.shotIdx=-1;
+      switchShot(Math.min(Math.max(0,num('shotIdx',0)),S.shots.length-1));
+    }else{
+      S.vendorImg=null; S.outCanvas=null;
+      if($('empty')) $('empty').hidden=false;
+      cv.hidden=true; paint();
+    }
+    S.pvKey++; S.pvCache.clear(); render(false);
+  }finally{ _restoring=false; }
+}
+async function saveProjectFile(){
+  if(!S.shots.length){ toast('未有來稿，冇嘢好儲'); return; }
+  try{
+    toast('打包緊專案…');
+    const files=await buildProjectFiles();
+    const nm=expName()+'.ldproj';
+    await saveBlob(nm,makeZip(files));
+    toast('儲存咗 '+nm+' · '+S.shots.length+' 張來稿 + '+S.refs.length+' 張參考 + '+S.customs.length+' 個 LOOK');
+    return files;
+  }catch(e){ toast('儲存失敗：'+(e&&e.message||e)); return null; }
+}
+async function openProjectBlob(blob){
+  const head=new Uint8Array(await blob.slice(0,4).arrayBuffer());
+  let map;
+  if(head[0]===0x50&&head[1]===0x4b) map=await unzipStore(blob);   /* .ldproj ZIP */
+  else{                                                              /* 舊／手改 .json */
+    const d=JSON.parse(new TextDecoder().decode(new Uint8Array(await blob.arrayBuffer())));
+    map={};
+    for(const k in (d.media||{})) map[k]=b64ToBytes(d.media[k]);
+    map['project.json']=new TextEncoder().encode(JSON.stringify(d.project||d));
+  }
+  return await restoreFromMap(map);
+}
+/* ---- autosave：Krafted 式 debounce，但存去 IndexedDB（localStorage 5MB 裝唔落原圖）---- */
+async function autoSaveNow(){
+  if(_restoring||!S.shots.length) return false;
+  try{
+    await idbPut({files:await buildProjectFiles(),savedAt:Date.now(),ver:APP_VER});
+    return true;
+  }catch(_){ return false; }   /* file:// 唔批 IDB：靜靜跳過，仲有手動 .ldproj */
+}
+function scheduleAutoSave(){
+  if(_restoring||_asBusy) return;
+  clearTimeout(_asTimer);
+  _asTimer=setTimeout(async()=>{
+    if(_restoring||!S.shots.length) return;
+    _asBusy=true;
+    try{ await autoSaveNow(); } finally{ _asBusy=false; }
+  },1500);
+}
+async function checkAutoSave(){
+  let rec=null;
+  try{ rec=await idbGet(); }catch(_){ return; }
+  if(!rec||!Array.isArray(rec.files)) return;
+  const pj=rec.files.find(f=>f.name==='project.json');
+  if(!pj) return;
+  let n=0;
+  try{ n=(JSON.parse(new TextDecoder().decode(pj.data)).shots||[]).length; }catch(_){ return; }
+  if(!n) return;
+  const bar=$('restorebar'); if(!bar) return;
+  $('rbinfo').textContent='上次工作：'+n+' 張來稿 · '+new Date(rec.savedAt).toLocaleString('zh-Hant');
+  bar.hidden=false;
+  $('rbyes').onclick=async()=>{
+    bar.hidden=true;
+    try{ await restoreFromMap(filesToMap(rec.files)); toast('還原咗上次工作（'+S.shots.length+' 張）'); }
+    catch(e){ toast('還原失敗：'+e.message); }
+  };
+  $('rbno').onclick=()=>{ bar.hidden=true; idbDel(); toast('丟棄咗上次工作嘅自動儲存'); };
+}
+let _newArm=0;
+function newProject(){
+  const now=Date.now();
+  if(now-_newArm>4000){ _newArm=now; toast('再撳一次「新專案」確認 —— 會清走所有來稿／參考／設定'); return; }
+  _newArm=0;
+  S.shots=[]; S.refs=[]; S.customs=[]; S.shotIdx=-1;
+  S.keyMatte=null; S.vendorImg=null; S.outCanvas=null; S.lastGrade=null;
+  persistCustoms(); idbDel();
+  renderShots(); renderRefs(); renderPresets();
+  if($('empty')) $('empty').hidden=false;
+  cv.hidden=true;
+  toast('開咗新專案 · 自動儲存已清走');
+}
+$('b-projsave').onclick=()=>saveProjectFile();
+$('b-projopen').onclick=()=>{ const i=$('projfile'); if(i){ i.value=''; i.click(); } };
+$('projfile').onchange=async e=>{
+  const f=e.target.files&&e.target.files[0]; if(!f) return;
+  try{ toast('開緊專案…'); await openProjectBlob(f); toast('還原咗 '+S.shots.length+' 張來稿'); }
+  catch(err){ toast('開唔到：'+(err&&err.message||err)); }
+  e.target.value='';
+};
+$('b-projnew').onclick=newProject;
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&String(e.key||'').toLowerCase()==='s'){
+    e.preventDefault(); saveProjectFile();
+  }
+});
+window.ldProj={
+  buildProjectFiles,unzipStore,makeZip,restoreFromMap,restoreProject,
+  saveProjectFile,openProjectBlob,autoSaveNow,scheduleAutoSave,
+  checkAutoSave,idbGet,idbDel,newProject,filesToMap,
+  get restoring(){return _restoring;}
+};
 function wrapText(x,text,maxw){
   const out=[]; let cur='';
   for(const ch of text){
@@ -7737,6 +8132,8 @@ applyDockFold();
 buildLeftPanel();
 renderShots(); renderPresets(); renderRefs();
 initScopes(); initMenus();
+/* v29：有上次自動儲存就出提示條（唔自動覆蓋，等用家揀）；?fresh 跳過 */
+if(!/[?&]fresh(?:=|&|$)/.test(location.search)) checkAutoSave();
 
 /* ---------- v12：導出選單 + 快捷鍵彈層 ---------- */
 function initMenus(){
