@@ -1,5 +1,5 @@
 {
- "ver": "v29",
+ "ver": "v30",
  "frames": {
   "v4_A_none": {
    "p10": 4.7,
@@ -18,13 +18,13 @@
     },
     "zoneDirection": {
      "shad": {
-      "base": 13.95,
+      "base": 13.94,
       "plus": 35.75,
       "minus": 3.05,
       "pass": true
      },
      "black": {
-      "base": 13.95,
+      "base": 13.94,
       "plus": 27.69,
       "minus": 3.16,
       "pass": true
@@ -57,8 +57,8 @@
     "monotonicContrast": {
      "sds": [
       5.96,
-      17.88,
-      29.83,
+      17.9,
+      29.85,
       39.17,
       45.98
      ],
@@ -66,13 +66,13 @@
     },
     "zoneDirection": {
      "shad": {
-      "base": 3.43,
-      "plus": 31.14,
+      "base": 3.12,
+      "plus": 31.13,
       "minus": 0.15,
       "pass": true
      },
      "black": {
-      "base": 3.43,
+      "base": 3.12,
       "plus": 27.61,
       "minus": 0.16,
       "pass": true
@@ -104,23 +104,23 @@
    "I": {
     "monotonicContrast": {
      "sds": [
-      5.63,
-      16.88,
-      28.14,
-      37.06,
+      5.62,
+      16.87,
+      28.11,
+      37.05,
       43.36
      ],
      "pass": true
     },
     "zoneDirection": {
      "shad": {
-      "base": 6.45,
-      "plus": 32.75,
+      "base": 6.53,
+      "plus": 32.74,
       "minus": 0.07,
       "pass": true
      },
      "black": {
-      "base": 6.45,
+      "base": 6.53,
       "plus": 27.79,
       "minus": 0.07,
       "pass": true
@@ -128,12 +128,12 @@
      "high": {
       "base": 96.87,
       "plus": 167.03,
-      "minus": 45.22,
+      "minus": 45.23,
       "pass": true
      },
      "white": {
       "base": 96.87,
-      "plus": 116.79,
+      "plus": 116.78,
       "minus": 75.75,
       "pass": true
      }
@@ -152,9 +152,9 @@
    "I": {
     "monotonicContrast": {
      "sds": [
-      4.67,
-      14.01,
-      23.34,
+      4.66,
+      13.98,
+      23.3,
       30.96,
       35.95
      ],
@@ -162,21 +162,21 @@
     },
     "zoneDirection": {
      "shad": {
-      "base": 6.04,
-      "plus": 31.5,
+      "base": 6.14,
+      "plus": 31.49,
       "minus": 0.18,
       "pass": true
      },
      "black": {
-      "base": 6.04,
+      "base": 6.14,
       "plus": 28,
       "minus": 0.18,
       "pass": true
      },
      "high": {
       "base": 78.68,
-      "plus": 143.44,
-      "minus": 37.01,
+      "plus": 143.42,
+      "minus": 37,
       "pass": true
      },
      "white": {
@@ -200,23 +200,23 @@
    "I": {
     "monotonicContrast": {
      "sds": [
-      4.87,
-      14.59,
-      24.31,
-      33.14,
+      4.86,
+      14.58,
+      24.29,
+      33.13,
       39.5
      ],
      "pass": true
     },
     "zoneDirection": {
      "shad": {
-      "base": 10.89,
+      "base": 11.1,
       "plus": 34.81,
       "minus": 0.15,
       "pass": true
      },
      "black": {
-      "base": 10.89,
+      "base": 11.1,
       "plus": 27.09,
       "minus": 0.16,
       "pass": true
@@ -224,7 +224,7 @@
      "high": {
       "base": 88.65,
       "plus": 150.55,
-      "minus": 44.64,
+      "minus": 44.66,
       "pass": true
      },
      "white": {

@@ -1,5 +1,5 @@
 {
- "ver": "v29",
+ "ver": "v30",
  "frames": {
   "dark": {
    "anchors": {
@@ -10,36 +10,36 @@
    "I": {
     "monotonicContrast": {
      "sds": [
-      6.53,
-      19.61,
-      32.65,
-      43.24,
+      6.52,
+      19.6,
+      32.64,
+      43.23,
       49.02
      ],
      "pass": true
     },
     "zoneDirection": {
      "shad": {
-      "base": 9.73,
+      "base": 9.8,
       "plus": 34.27,
       "minus": 0.38,
       "pass": true
      },
      "black": {
-      "base": 9.73,
-      "plus": 27.39,
+      "base": 9.8,
+      "plus": 27.38,
       "minus": 0.38,
       "pass": true
      },
      "high": {
       "base": 111.23,
-      "plus": 177.04,
-      "minus": 58.47,
+      "plus": 177.07,
+      "minus": 58.49,
       "pass": true
      },
      "white": {
       "base": 111.23,
-      "plus": 132.76,
+      "plus": 133.16,
       "minus": 84.26,
       "pass": true
      }
@@ -61,8 +61,8 @@
     "monotonicContrast": {
      "sds": [
       6.7,
-      20.09,
-      33.42,
+      20.05,
+      33.38,
       43.08,
       45.56
      ],
@@ -70,27 +70,27 @@
     },
     "zoneDirection": {
      "shad": {
-      "base": 134.85,
-      "plus": 160.47,
+      "base": 134.91,
+      "plus": 160.57,
       "minus": 116.13,
       "pass": true
      },
      "black": {
-      "base": 134.85,
+      "base": 134.91,
       "plus": 143.4,
       "minus": 129.86,
       "pass": true
      },
      "high": {
-      "base": 236.29,
+      "base": 236.27,
       "plus": 248.8,
-      "minus": 206.24,
+      "minus": 206.25,
       "pass": true
      },
      "white": {
-      "base": 236.29,
+      "base": 236.27,
       "plus": 247.79,
-      "minus": 197.63,
+      "minus": 197.58,
       "pass": true
      }
     },
@@ -111,35 +111,35 @@
     "monotonicContrast": {
      "sds": [
       6.97,
-      20.89,
-      34.82,
-      47.83,
-      59.03
+      20.87,
+      34.8,
+      47.82,
+      59.02
      ],
      "pass": true
     },
     "zoneDirection": {
      "shad": {
-      "base": 54.58,
-      "plus": 100.67,
-      "minus": 17.25,
+      "base": 54.64,
+      "plus": 100.66,
+      "minus": 17.11,
       "pass": true
      },
      "black": {
-      "base": 54.58,
-      "plus": 71.04,
-      "minus": 41.53,
+      "base": 54.64,
+      "plus": 71.1,
+      "minus": 41.48,
       "pass": true
      },
      "high": {
       "base": 170.57,
       "plus": 237.19,
-      "minus": 119.75,
+      "minus": 119.82,
       "pass": true
      },
      "white": {
       "base": 170.57,
-      "plus": 212.91,
+      "plus": 212.95,
       "minus": 135.11,
       "pass": true
      }

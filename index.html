@@ -3,7 +3,7 @@
 <head data-page-node-id="tSHy9yPSoPT0t6cG5zsp4b">
 <meta charset="utf-8" data-page-node-id="cvGeLYnHr1tSjPaB0X8H2A">
 <meta name="viewport" content="width=device-width,initial-scale=1" data-page-node-id="E27Og915DTq7yFJMgf7j7C">
-<title>Look Direction v29（ASC CDL + Scopes + 膚色 key v5）</title>
+<title>Look Direction v30（ASC CDL + Scopes + 膚色 key v5）</title>
 <style>
 :root{
   /* Krafted 家族色系，但推向更極簡／高端：少邊框、靠層次分面，accent 只用喺「生效中」 */
@@ -377,6 +377,9 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
    （~ 全屏係「淨留圖」檢查用，唔可以邊睇邊改，兩個模式分工唔同）。 */
 body.focus .main{grid-template-columns:minmax(0,1fr) 300px}
 body.focus .col-l{display:none}
+/* v30：左邊方向欄預設收起（導演：好多時用唔著但霸位，畫面太細）—— 撳 stagetop ☰ 展開 */
+body.lfold .main{grid-template-columns:minmax(0,1fr) 300px}
+body.lfold .col-l{display:none}
 body.focus .dock{display:none}
 body.focus .col-c{padding:8px 10px;position:relative}
 /* A. 示波器浮層：專注模式嗰陣唔好再霸一條垂直空間，浮喺右下角 */
@@ -723,6 +726,7 @@ textarea{
     <!-- CENTER -->
     <div class="col col-c">
       <div class="stagetop">
+        <button class="iconbtn" id="b-dirfold" type="button" title="收起／展開左邊方向欄（v30 預設收起慳位畀張圖）" aria-label="收起／展開方向欄">☰</button>
         <div class="vmodes" id="vmodes" role="group" aria-label="對比模式">
           <button type="button" data-m="single" class="on">單圖</button>
           <button type="button" data-m="wipe">抹除</button>
@@ -919,8 +923,14 @@ const $=id=>document.getElementById(id);
    唔同就彈「已更新」—— 用嚟確認 GitHub Pages 真係出咗新版。
    GitHub Pages 有 CDN 快取，Browser 亦會 cache index.html：
    見唔到新版就撳 Ctrl+Shift+R（Windows）/ Cmd+Shift+R（Mac）硬重整。 */
-const APP_VER='v29', APP_BUILD='2026-11-09';
+const APP_VER='v30', APP_BUILD='2026-11-10';
 const APP_NOTES=[
+  'v30：畫面大咗 —— 左邊方向欄預設收起；「跟 reference 改光暗分佈」預設關',
+  '　· 導演：「左邊方…佔據嘅位置太多，我圖嘅畫面太細」＋「跟 reference 改光暗嘅想預設都唔要開」。',
+  '　· 左欄「方向＋note」預設收起：撳左上角 ☰ 展開，再撳 « 收返（ld.dirfold 記住選擇）；',
+  '　　同「專注（F）」獨立 —— 專注係臨時大圖，呢個係長期慳位。',
+  '　· 「跟 reference 改光暗分佈」預設唔勾：入圖唔會再自動跟 reference 光暗，',
+  '　　想要嗰陣自己 tick 返（每張 shot 各自記住）。舊 .ldproj／autosave 還原照跟存檔時嘅狀態。',
   'v29：儲存專案 —— 設定 + 所有新舊來稿，一次過留住（參考 Krafted）',
   '　· 導演：「add the save function, save the project setting and all new old image, you can ref krafted」。',
   '　· 新增「💾 儲存專案」（Ctrl/⌘+S）→ **.ldproj**：ZIP 入面 `project.json` + `media/` 原始圖檔，',
@@ -3666,6 +3676,7 @@ const S={
   chrNR:true,                               /* NR before look */
   /* v12：調色操作面（簡化/色輪/曲線/數值）、曲線通道、示波器 */
   toneMode:'spl', curCh:'Y', scopeMode:'hist', scopeFold:false,
+  dirFold:true,                             /* v30：左邊方向欄預設收起（ld.dirfold 記住）*/
   fs:false,                                 /* 全屏檢查（~ 鍵）· UI state，唔入 snapshot */
   focus:false,                              /* 專注調色（F 鍵）：收埋方向欄＋底部條，圖放大 */
   pipOn:true, pipCorner:'bl'                /* PiP 目標圖：開關 + 釘喺邊個角 */
@@ -4922,7 +4933,7 @@ function buildLeftPanel(){
   const optWrap=document.createElement('div');
   optWrap.className='checks';
   optWrap.style.cssText='display:flex;flex-direction:column;gap:5px';
-  [['tone','跟 reference 改光暗分佈',true],['skin','保護膚色',true],['protect','保層次 · 唔准死黑爆光',false]].forEach(([id,lb,ck])=>{
+  [['tone','跟 reference 改光暗分佈',false],['skin','保護膚色',true],['protect','保層次 · 唔准死黑爆光',false]].forEach(([id,lb,ck])=>{
     const l=document.createElement('label'); l.className='chk';
     l.innerHTML='<input type="checkbox" id="'+id+'" '+(ck?'checked':'')+'> '+lb;
     l.querySelector('input').addEventListener('change',()=>{
@@ -5709,7 +5720,7 @@ function defaultShotState(){
      用家拖入第 2、3 張會以為「拉極都冇反應」。
      實際 workflow 係：揀好一張 reference，再逐張 vendor render 擺入嚟對。 */
   return {active:Math.max(0,S.active|0),chromaStr:70,toneStr:45,
-          bands:[true,true,true],tone:true,skin:true,sec:newSec(),key:null};
+          bands:[true,true,true],tone:false,skin:true,sec:newSec(),key:null};
 }
 /* v28：silent=true 跳過收尾 render —— 批量匯出逐張切換唔使更新畫面，
    只要 S.lastGrade 啱就得（慳到一次全解 render，實測快近 3×）。
@@ -6750,6 +6761,23 @@ function initScopes(){
   };
   applyFold();
   window.addEventListener('resize',()=>{ if(!S.scopeFold) drawScopes(); });
+
+  /* v30：左邊方向欄預設收起，撳 ☰ 展開；ld.dirfold 記住選擇。
+     同「專注（F）」獨立 —— 專注係臨時大圖，lfold 係長期慳位。 */
+  (function(){
+    const db=$('b-dirfold');
+    try{ if(localStorage.getItem('ld.dirfold')==='0') S.dirFold=false; }catch(_){}
+    function applyDirFold(){
+      document.body.classList.toggle('lfold',!!S.dirFold);
+      if(db){ db.textContent=S.dirFold?'☰':'«'; db.classList.toggle('on',!S.dirFold); }
+    }
+    if(db) db.onclick=()=>{
+      S.dirFold=!S.dirFold;
+      try{ localStorage.setItem('ld.dirfold',S.dirFold?'1':'0'); }catch(_){}
+      applyDirFold(); applyZoom();
+    };
+    applyDirFold();
+  })();
 }
 
 /* ============================================================
